@@ -92,25 +92,34 @@ class PageFetcher:
 
     def _request(self, company: Company, url: str, kind: str):
         """Jedno żądanie przez wszystkie bramki: odstęp hosta → DNS → limit na IP → bramka globalna → fetcher.
-        Zwraca (odpowiedź, ip) albo gotowy `Got`, gdy przebieg zatrzymano lub skończył się czas firmy."""
+        Zwraca (odpowiedź, ip) albo gotowy `Got`, gdy przebieg zatrzymano lub skończył się czas firmy.
+        Czasy etapów (oczekiwanie, dns, pobieranie) trafiają do statystyk przebiegu."""
         rc = self.rc
         if rc.stop.is_set():
             return Got("interrupted")
-        if not company.gate.wait_turn(rc.stop, company.deadline):
+        with rc.stats.timed("oczekiwanie"):
+            turn = company.gate.wait_turn(rc.stop, company.deadline)
+        if not turn:
             return Got("interrupted") if rc.stop.is_set() else Got("limit_czasu")
         parts = urlsplit(url)
         port = parts.port or (443 if parts.scheme == "https" else 80)
         try:
-            ip = rc.fetcher.resolve(parts.hostname or "", port)[0]
+            with rc.stats.timed("dns"):
+                ip = rc.fetcher.resolve(parts.hostname or "", port)[0]
         except FetchError as exc:
             return FetchResult(url=url, error=exc.kind), ""
         budget = max(0.0, company.deadline - rc.clock.now())
-        if not rc.ip_limiter.acquire(ip, rc.stop, timeout=budget):
+        with rc.stats.timed("oczekiwanie"):
+            acquired = rc.ip_limiter.acquire(ip, rc.stop, timeout=budget)
+        if not acquired:
             return Got("interrupted") if rc.stop.is_set() else Got("limit_czasu")
         try:
-            if not rc.global_gate.wait(rc.stop):
+            with rc.stats.timed("oczekiwanie"):
+                allowed = rc.global_gate.wait(rc.stop)
+            if not allowed:
                 return Got("interrupted")
-            return rc.fetcher.fetch_once(url, kind, ip=ip), ip
+            with rc.stats.timed("pobieranie"):
+                return rc.fetcher.fetch_once(url, kind, ip=ip), ip
         finally:
             rc.ip_limiter.release(ip)
 

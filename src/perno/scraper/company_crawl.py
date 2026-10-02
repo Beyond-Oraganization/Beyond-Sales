@@ -69,8 +69,9 @@ class CompanyCrawler:
             retry_after = self.rc.store.db.now() + timedelta(seconds=min(outcome.hint, 7 * 86400))
         elif outcome.reason == "http_429":
             retry_after = self.rc.store.db.now() + timedelta(hours=1)
-        released = self.rc.store.release_firma(company.id, self.rc.run_id, outcome.status, outcome.reason, outcome.message or None,
-                                            outcome.target, retry_after)
+        with self.rc.stats.timed("baza_inne"):
+            released = self.rc.store.release_firma(company.id, self.rc.run_id, outcome.status, outcome.reason,
+                                                   outcome.message or None, outcome.target, retry_after)
         self.rc.stats.firm_done(company.domena, outcome.status if released else "dzierzawa_utracona")
         why = f" ({outcome.reason})" if outcome.reason else ""
         self.rc.log(f"[{company.domena}] koniec: {outcome.status}{why} strony={company.pages} {outcome.message}".rstrip())
@@ -112,7 +113,8 @@ class CompanyCrawler:
                 raise Finish(st.FIRMA_ZABLOKOWANA, "robots_odmowa")
             company.rules = outcome.rules
             text = res.body.decode("utf-8", errors="replace") if outcome.status == robots.OK else ""
-            self.rc.store.save_robots(company.id, self.rc.run_id, outcome.status, text, company.rules.crawl_delay)
+            with self.rc.stats.timed("baza_inne"):
+                self.rc.store.save_robots(company.id, self.rc.run_id, outcome.status, text, company.rules.crawl_delay)
         company.gate.set_robots_delay(company.rules.crawl_delay, after_request=not cached)
         if company.rules.crawl_delay:
             self.rc.log(f"[{company.domena}] robots.txt: Crawl-delay {company.rules.crawl_delay:g}s — respektuję")
@@ -167,11 +169,13 @@ class CompanyCrawler:
         return found
 
     def _prepare_frontier(self, company: Company) -> None:
-        known = self.rc.store.known_urls(company.id)
+        with self.rc.stats.timed("baza_inne"):
+            known = self.rc.store.known_urls(company.id)
         for url, digest in known:
             company.seen.add(digest)
             company.trap.admit(url)  # odbudowa liczników pułapek po wznowieniu
-        company.content = self.rc.store.content_hashes(company.id)
+        with self.rc.stats.timed("baza_inne"):
+            company.content = self.rc.store.content_hashes(company.id)
         if known:
             return
         start = normalize_url(company.website)
@@ -192,14 +196,17 @@ class CompanyCrawler:
             company.seen.add(url_hash(url))
             links.append(LinkRecord(url, url_hash(url), 1,
                                     priority(url, 1, from_sitemap=True, start_prefix=company.start_prefix), "sitemap"))
-        self.rc.store.add_discovered(company.id, self.rc.run_id, links)
+        with self.rc.stats.timed("baza_inne"):
+            self.rc.store.add_discovered(company.id, self.rc.run_id, links)
         self.rc.log(f"[{company.domena}] kolejka startowa: {len(links)} adresów (w tym sitemapa: {len(links) - 1})")
 
     def _next_item(self, company: Company) -> Optional[dict]:
         item = company.pop()
         if item is not None:
             return item
-        for row in self.rc.store.load_frontier(company.id, FRONTIER_MEMORY_CAP):
+        with self.rc.stats.timed("baza_inne"):
+            frontier = self.rc.store.load_frontier(company.id, FRONTIER_MEMORY_CAP)
+        for row in frontier:
             company.push({"url": row["url"], "url_hash": row["url_hash"], "depth": row["glebokosc"],
                       "priorytet": row["priorytet"], "source": row["zrodlo"]})
         return company.pop()
@@ -252,7 +259,8 @@ class CompanyCrawler:
     def _store_page(self, company: Company, item: dict, got: Got, is_start: bool) -> None:
         """Klasyfikuje pobraną stronę, zapisuje ją i dokłada nowe linki do kolejki firmy."""
         res = got.response
-        rec = self.pipeline.classify(company, item, got.url, res)
+        with self.rc.stats.timed("analiza"):
+            rec = self.pipeline.classify(company, item, got.url, res)
         if is_start and rec.status not in (st.STRONA_POBRANO, st.STRONA_DUPLIKAT):
             reason = self.pipeline.failure_reason(res)
             raise Finish(st.PRZYCZYNA_STATUS.get(reason, st.FIRMA_BLAD), reason,
@@ -264,7 +272,8 @@ class CompanyCrawler:
                           "source": link.source})
 
     def _save(self, company: Company, rec: PageRecord) -> int:
-        page_id = self.rc.store.save_result(company.id, self.rc.run_id, rec)
+        with self.rc.stats.timed("zapis"):
+            page_id = self.rc.store.save_result(company.id, self.rc.run_id, rec)
         if rec.counts:
             company.pages += 1
             company.bytes += int(rec.bytes or 0)

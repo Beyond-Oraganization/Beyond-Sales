@@ -98,6 +98,15 @@ class CrawlerCase(NoNetworkMixin):
 
 
 class BasicCrawlTests(CrawlerCase):
+    def test_run_statistics_break_the_time_down_by_stage(self):
+        self.site("a.test", {"/": Page(html("/kontakt", title="Start")), "/kontakt": Page(html("/", title="Kontakt"))})
+        self.firm("a.test")
+        stages = self.crawl()["stats"]["czasy_s"]
+        for stage in ("oczekiwanie", "dns", "pobieranie", "analiza", "zapis", "baza_inne"):
+            self.assertIn(stage, stages)  # baza_inne: kolejka, dzierżawy, robots; oczekiwanie: bramki (z zegarem testowym ~0)
+            self.assertGreaterEqual(stages[stage], 0, stage)
+        self.assertGreater(stages["pobieranie"] + stages["analiza"] + stages["zapis"], 0)
+
     def test_small_site_end_to_end(self):
         self.site("a.test", {
             "/": Page(html("/kontakt", "/o-nas", "/oferta", title="Strona główna")),

@@ -92,7 +92,8 @@ class Scheduler:
     def _worker(self) -> None:
         while not self.rc.stop.is_set():
             try:
-                firma = self.rc.store.claim_next_firma(self.rc.run_id, self.only_ids)
+                with self.rc.stats.timed("baza_inne"):
+                    firma = self.rc.store.claim_next_firma(self.rc.run_id, self.only_ids)
             except (DB_ERRORS + (sa_exc.DBAPIError,)) as exc:
                 self._db_failure(exc)
                 return

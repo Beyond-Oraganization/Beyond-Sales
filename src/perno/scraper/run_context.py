@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import random
 import threading
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable, Iterator, Optional
 
 from perno.scraper.fetcher import Fetcher
 from perno.scraper.politeness import Clock, GlobalGate, IpLimiter, RealClock
@@ -20,6 +22,7 @@ class Stats:
         self._clock = clock
         self.started = clock.now()
         self.counters = {"zapytania": 0, "strony": 0, "bajty": 0, "kontakty": 0, "firmy_start": 0}
+        self.timings: dict[str, float] = {}  # etap -> suma sekund (czas rzeczywisty, sumowany po wszystkich wątkach)
         self.results: dict = {}
         self.active: set = set()
 
@@ -27,6 +30,20 @@ class Stats:
         with self._lock:
             for key, value in kwargs.items():
                 self.counters[key] = self.counters.get(key, 0) + value
+
+    def add_time(self, stage: str, seconds: float) -> None:
+        with self._lock:
+            self.timings[stage] = self.timings.get(stage, 0.0) + seconds
+
+    @contextmanager
+    def timed(self, stage: str) -> Iterator[None]:
+        """Mierzy czas rzeczywisty bloku i dopisuje go do etapu: oczekiwanie (bramki uprzejmości), dns, pobieranie,
+        analiza (dekodowanie, parser, kontakty, linki), zapis (strona w bazie), baza_inne (kolejka, dzierżawy)."""
+        started = time.monotonic()
+        try:
+            yield
+        finally:
+            self.add_time(stage, time.monotonic() - started)
 
     def firm_started(self, domena: str) -> None:
         with self._lock:
@@ -43,7 +60,8 @@ class Stats:
             elapsed = max(0.001, self._clock.now() - self.started)
             return {**self.counters, "firmy_wynik": dict(self.results), "aktywne": len(self.active),
                     "aktywne_domeny": sorted(self.active)[:50], "uplynelo_s": round(elapsed, 1),
-                    "strony_na_min": round(self.counters["strony"] * 60.0 / elapsed, 1)}
+                    "strony_na_min": round(self.counters["strony"] * 60.0 / elapsed, 1),
+                    "czasy_s": {stage: round(seconds, 3) for stage, seconds in sorted(self.timings.items())}}
 
 
 @dataclass
