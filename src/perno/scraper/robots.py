@@ -64,7 +64,7 @@ def _parse_delay(value: str) -> Optional[float]:
     return delay if delay >= 0 and delay == delay and delay != float("inf") else None
 
 
-def parse_robots(text: str, token: str = PRODUCT_TOKEN) -> RobotsRules:
+def parse_robots(text: str | bytes, token: str = PRODUCT_TOKEN) -> RobotsRules:
     if isinstance(text, bytes):
         text = text.decode("utf-8", errors="replace")
     text = text.lstrip("﻿")[:ROBOTS_MAX_BYTES]
@@ -72,7 +72,7 @@ def parse_robots(text: str, token: str = PRODUCT_TOKEN) -> RobotsRules:
 
     groups: list = []  # {"agents": [...], "rules": [...], "delay": float|None}
     sitemaps: list = []
-    current = None
+    current: Optional[dict] = None
     in_rules = False
     for raw in re.split(r"\r\n|\r|\n", text):
         line = raw.split("#", 1)[0].strip()

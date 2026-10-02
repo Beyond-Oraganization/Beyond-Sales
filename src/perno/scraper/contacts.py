@@ -337,7 +337,7 @@ def _embed_has_form(embeds: list) -> bool:
 _RANK = {"mailto": 0, "cfemail": 1, "tel": 0, "jsonld": 2, "link": 1, "forma": 0, "tekst": 3}
 
 
-def _in_domain(email: str, hosts: Iterable[str]) -> bool:
+def _in_domain(email: str, hosts: Iterable[Optional[str]]) -> bool:
     domain = host_key(email.rsplit("@", 1)[1])
     if not domain:
         return False

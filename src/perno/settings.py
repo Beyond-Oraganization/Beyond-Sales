@@ -84,7 +84,7 @@ class Environment:
 
 def load_config(path: str) -> dict:
     """Czyta plik `KEY=value` (bez interpolacji i cudzysłowów); brak pliku to pusta konfiguracja."""
-    config = {}
+    config: dict[str, str] = {}
     if not os.path.exists(path):
         return config
     with open(path, encoding="utf-8") as f:

@@ -100,17 +100,9 @@ warn_redundant_casts = true
 [[tool.mypy.overrides]]
 module = [
     "perno.scraper.schema",       # 36
-    "perno.scraper.crawler",      # 21
     "perno.mailer.smtp_client",   # 5
-    "perno.scraper.robots",       # 5
     "perno.scraper.fetcher",      # 5
     "perno.mailer.image_prep",    # 4
-    "perno.mailer.mime_builder",  # 3
-    "perno.scraper.urls",         # 2
-    "perno.web.pages.scraper",    # 2
-    "perno.web.pages.mailing", "perno.services.sending", "perno.services.firms_import", "perno.settings",
-    "perno.services.bulk", "perno.scraper.settings", "perno.scraper.politeness", "perno.scraper.contacts",
-    "perno.cli.server",           # 1
 ]
 ignore_errors = true
 

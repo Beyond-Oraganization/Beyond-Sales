@@ -112,8 +112,9 @@ class ScanSettings:
                 if name == "contact":
                     contact_source = "param"
 
-        if "contact" not in values and (config or {}).get("SMTP_USER"):
-            values["contact"] = config["SMTP_USER"]
+        smtp_user = (config or {}).get("SMTP_USER")
+        if "contact" not in values and smtp_user:
+            values["contact"] = smtp_user
             contact_source = "smtp_user"
 
         clean: dict = {}

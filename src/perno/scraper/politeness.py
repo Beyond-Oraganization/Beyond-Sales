@@ -131,7 +131,7 @@ class HostGate:
         self.rtt_ewma: Optional[float] = None
         self.ok_streak = 0
         self.consec_429 = 0
-        self.recent_429 = deque(maxlen=RECENT_WINDOW)
+        self.recent_429: deque = deque(maxlen=RECENT_WINDOW)
         self.consec_403 = 0
         self.consec_botwall = 0
         self.consec_5xx = 0

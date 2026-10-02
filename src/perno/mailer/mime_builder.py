@@ -5,6 +5,7 @@ from __future__ import annotations
 import mimetypes
 import os
 from email.message import EmailMessage
+from typing import Sequence, cast
 
 INLINE_IMAGE_CID = "ux_w_lesie_screenshot"
 
@@ -17,8 +18,8 @@ def build_message(
     subject: str,
     html_body: str,
     text_body: str,
-    inline_images: tuple = (),
-    attachment_paths: tuple = (),
+    inline_images: Sequence = (),
+    attachment_paths: Sequence = (),
 ) -> EmailMessage:
     """`inline_images`: iterable of (cid, bytes, subtype) osadzanych w treści
     HTML przez Content-ID. `attachment_paths`: zwykłe załączniki (pusty
@@ -31,7 +32,7 @@ def build_message(
 
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
-    html_part = msg.get_payload()[1]
+    html_part = cast(list, msg.get_payload())[1]  # multipart/alternative: [text/plain, text/html]
     for cid, data, subtype in inline_images:
         html_part.add_related(data, maintype="image", subtype=subtype, cid=f"<{cid}>")
 

@@ -81,10 +81,10 @@ def _ascii_host(host: str) -> Optional[str]:
 
 def host_key(host: str) -> Optional[str]:
     """Klucz domeny: małe litery, IDNA, bez końcowej kropki i bez wiodącego `www.`."""
-    host = _ascii_host(host)
-    if host is None:
+    ascii_host = _ascii_host(host)
+    if ascii_host is None:
         return None
-    return host[4:] if host.startswith("www.") and len(host) > 4 else host
+    return ascii_host[4:] if ascii_host.startswith("www.") and len(ascii_host) > 4 else ascii_host
 
 
 def site_key(url: str) -> Optional[str]:
@@ -103,7 +103,9 @@ def site_key(url: str) -> Optional[str]:
 
 def is_platform(host: str) -> bool:
     key = host_key(host)
-    return bool(key) and any(key == p or key.endswith("." + p) for p in PLATFORM_HOSTS)
+    if not key:
+        return False
+    return any(key == p or key.endswith("." + p) for p in PLATFORM_HOSTS)
 
 
 def url_hash(url: str) -> str:

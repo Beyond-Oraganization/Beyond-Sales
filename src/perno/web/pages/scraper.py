@@ -7,6 +7,7 @@ sprawdzamy go przez `importlib.util.find_spec`). Samo skanowanie działa w osobn
 from __future__ import annotations
 
 import importlib.util
+from typing import Optional
 
 from perno.scraper import runner
 from perno.scraper import statuses as st
@@ -156,7 +157,7 @@ def api_status(req: Request, ctx: AppContext) -> Response:
     })
 
 
-def _id_list(raw, name: str) -> list:
+def _id_list(raw, name: str) -> Optional[list]:
     if raw is None:
         return None
     if not isinstance(raw, list) or any(isinstance(i, bool) or not isinstance(i, int) for i in raw):

@@ -139,7 +139,7 @@ def import_firms(db: Database, rows: list, segment: str, *, dry_run: bool = Fals
         raise FirmsError(f"Nieznany segment: {segment!r} (dozwolone: {', '.join(st.SEGMENT_ORDER)}).")
     result = ImportResult(segment=segment, dry_run=dry_run)
     with db.engine.begin() as conn:
-        existing = {}
+        existing: dict[str, str] = {}
         for found in conn.execute(sa.select(maile.c.id, maile.c.website)):
             key = domain_key(found.website)
             if key:

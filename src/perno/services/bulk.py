@@ -195,7 +195,7 @@ def analyze(found: Mapping, request: BulkRequest, now: datetime) -> Plan:
 
 
 def _warnings_for(row: Mapping, after: Mapping) -> list:
-    codes = []
+    codes: list[str] = []
     new_status = after.get("status")
     if new_status is None:
         return codes
