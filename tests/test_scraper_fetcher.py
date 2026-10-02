@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from perno import settings as cfg
 from perno.scraper import fetcher
 from perno.scraper.fetcher import Fetcher, decode_html, is_public_ip
 from perno.scraper.settings import ROBOTS_MAX_BYTES, ScanSettings
@@ -228,10 +229,10 @@ class ResolverAndSsrfTests(FetcherCase):
 
     def test_environment_switch_enables_private_addresses(self):
         self.net.site(HOST, {"/": Page(html())})
-        with mock.patch.dict(os.environ, {fetcher.ENV_ALLOW_PRIVATE: "1"}):
+        with mock.patch.dict(os.environ, {cfg.ENV_SCRAPER_ALLOW_PRIVATE: "1"}):
             instance = Fetcher(self.settings, resolver=local_resolver)
         self.assertEqual(instance.fetch_once(self.net.url(HOST, "/")).status, 200)
-        with mock.patch.dict(os.environ, {fetcher.ENV_ALLOW_PRIVATE: ""}):
+        with mock.patch.dict(os.environ, {cfg.ENV_SCRAPER_ALLOW_PRIVATE: ""}):
             self.assertFalse(Fetcher(self.settings, resolver=local_resolver).allow_private)
 
     def test_is_public_ip(self):

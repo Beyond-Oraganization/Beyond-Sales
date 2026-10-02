@@ -44,7 +44,7 @@ class MysqlSmokeTests(unittest.TestCase):
         if not TEST_DB.endswith("_test"):
             raise RuntimeError("PERNO_TEST_DB_NAME musi kończyć się na _test (test kasuje tabelę w tej bazie).")
         config = cfg.load_config(cfg.DEFAULT_CONFIG)
-        url = dbmod.build_url({**config, "DB_NAME": TEST_DB}, environ={})
+        url = dbmod.build_url({**config, "DB_NAME": TEST_DB}, env=cfg.Environment())
         cls.database = dbmod.Database(dbmod.make_engine(url))
         cls.info = cls.database.check_connection()
         dbmod.maile.drop(cls.database.engine, checkfirst=True)
@@ -177,7 +177,7 @@ class MysqlScraperSmokeTests(unittest.TestCase):
         if not TEST_DB.endswith("_test"):
             raise RuntimeError("PERNO_TEST_DB_NAME musi kończyć się na _test (test kasuje tabele w tej bazie).")
         config = cfg.load_config(cfg.DEFAULT_CONFIG)
-        url = dbmod.build_url({**config, "DB_NAME": TEST_DB}, environ={})
+        url = dbmod.build_url({**config, "DB_NAME": TEST_DB}, env=cfg.Environment())
         cls.database = dbmod.Database(dbmod.make_engine(url))
         scraper_schema.skraper_metadata.drop_all(cls.database.engine)
         dbmod.maile.drop(cls.database.engine, checkfirst=True)

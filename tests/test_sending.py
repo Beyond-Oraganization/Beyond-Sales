@@ -12,7 +12,7 @@ from perno import settings as cfg
 from perno.domain import statuses as st
 from perno.mailer import mime_builder
 from perno.services import sending
-from perno.settings import ConfigError
+from perno.settings import ConfigError, Environment
 from tests.fixtures import FakeSmtp, make_db, put, sample_row
 
 CONFIG = {"SMTP_USER": "roman@z3x.pl"}
@@ -120,19 +120,29 @@ class RealSmtpGateTests(NoRealSmtpMixin, unittest.TestCase):
     CONFIG = {"SMTP_HOST": "h", "SMTP_PORT": "465", "SMTP_USER": "u", "SMTP_PASSWORD": "p"}
 
     def test_blocked_when_a_test_database_is_configured(self):
+        env = Environment.from_environ({"PERNO_DB_URL": "sqlite://"})
+        self.assertFalse(env.real_smtp_allowed)
+        with self.assertRaises(ConfigError):
+            sending.smtp_factory_from_config(self.CONFIG, env)
+
+    def test_allowed_with_explicit_override_or_without_test_database(self):
+        env = Environment.from_environ({"PERNO_DB_URL": "sqlite://", "PERNO_ALLOW_REAL_SMTP": "1"})
+        self.assertTrue(env.real_smtp_allowed)
+        self.assertTrue(callable(sending.smtp_factory_from_config(self.CONFIG, env)))
+        self.assertTrue(Environment.from_environ({}).real_smtp_allowed)
+
+    def test_process_environment_is_the_default(self):
         with mock.patch.dict(os.environ, {"PERNO_DB_URL": "sqlite://"}):
             os.environ.pop("PERNO_ALLOW_REAL_SMTP", None)
-            self.assertFalse(sending.real_smtp_allowed())
             with self.assertRaises(ConfigError):
                 sending.smtp_factory_from_config(self.CONFIG)
 
-    def test_allowed_with_explicit_override_or_without_test_database(self):
-        with mock.patch.dict(os.environ, {"PERNO_DB_URL": "sqlite://", "PERNO_ALLOW_REAL_SMTP": "1"}):
-            self.assertTrue(sending.real_smtp_allowed())
-            self.assertTrue(callable(sending.smtp_factory_from_config(self.CONFIG)))
-        with mock.patch.dict(os.environ):
-            os.environ.pop("PERNO_DB_URL", None)
-            self.assertTrue(sending.real_smtp_allowed())
+    def test_incomplete_or_malformed_smtp_settings_are_rejected_up_front(self):
+        env = Environment()
+        with self.assertRaisesRegex(ConfigError, "SMTP_PASSWORD"):
+            sending.smtp_factory_from_config({**self.CONFIG, "SMTP_PASSWORD": ""}, env)
+        with self.assertRaisesRegex(ConfigError, "SMTP_PORT"):
+            sending.smtp_factory_from_config({**self.CONFIG, "SMTP_PORT": "abc"}, env)
 
 
 if __name__ == "__main__":

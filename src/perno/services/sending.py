@@ -6,7 +6,6 @@ nigdy nie wysyłają prawdziwych maili.
 
 from __future__ import annotations
 
-import os
 import sys
 import time
 from dataclasses import dataclass
@@ -17,25 +16,20 @@ from perno import settings as cfg
 from perno.db import DB_ERRORS, Database
 from perno.domain import statuses as st
 from perno.mailer import image_prep, mime_builder, smtp_client
-from perno.settings import ConfigError
+from perno.settings import ConfigError, Environment, SmtpSettings
 
 
-def real_smtp_allowed(environ: Mapping = os.environ) -> bool:
-    return not environ.get("PERNO_DB_URL") or environ.get("PERNO_ALLOW_REAL_SMTP") == "1"
-
-
-def smtp_factory_from_config(config: Mapping) -> Callable:
-    if not real_smtp_allowed():
+def smtp_factory_from_config(config: Mapping, env: Optional[Environment] = None) -> Callable:
+    if not (env if env is not None else Environment.from_environ()).real_smtp_allowed:
         raise ConfigError(
             "Ustawiono PERNO_DB_URL (baza testowa/demo), więc prawdziwa wysyłka SMTP jest zablokowana. "
             "Jeśli naprawdę chcesz wysyłać, ustaw też PERNO_ALLOW_REAL_SMTP=1."
         )
 
+    smtp = SmtpSettings.from_config(config)
+
     def factory():
-        return smtp_client.SmtpClient(
-            config["SMTP_HOST"], int(config["SMTP_PORT"]), config["SMTP_USER"],
-            config["SMTP_PASSWORD"], config.get("SMTP_USE_SSL", "true").lower() == "true",
-        )
+        return smtp_client.SmtpClient(smtp.host, smtp.port, smtp.user, smtp.password, smtp.use_ssl)
 
     return factory
 

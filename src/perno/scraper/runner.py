@@ -27,9 +27,9 @@ ASSUMED_RTT = 0.7  # s — założenie do szacunku w --dry-run (mierzone w trakc
 TYPICAL_PAGES_PER_FIRM = 60
 
 
-def log_dir() -> str:
+def log_dir(env: Optional[cfg.Environment] = None) -> str:
     """Katalog logów skrapera: `logs/` (testy ustawiają PERNO_LOG_DIR na katalog tymczasowy)."""
-    return os.environ.get("PERNO_LOG_DIR") or cfg.LOG_DIR
+    return (env if env is not None else cfg.Environment.from_environ()).log_dir or cfg.LOG_DIR
 
 
 def log_path_for(run_id: int) -> str:

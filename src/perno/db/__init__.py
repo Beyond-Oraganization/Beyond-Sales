@@ -11,7 +11,6 @@ Uruchomienie samodzielne:  python3 -m perno.db --check
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -26,7 +25,7 @@ from sqlalchemy.pool import StaticPool
 
 from perno.domain import countries
 from perno.domain import statuses as st
-from perno.settings import ConfigError
+from perno.settings import ConfigError, Environment
 
 # Dawny format Maile.csv (19 pól) — migracja i `--export-legacy` trzymają się go dokładnie.
 LEGACY_COLUMNS = (
@@ -207,8 +206,8 @@ def from_api(data: Mapping, *, partial: bool = False) -> dict:
     return out
 
 
-def build_url(config: Mapping, environ: Mapping = os.environ) -> URL:
-    override = environ.get("PERNO_DB_URL")
+def build_url(config: Mapping, env: Optional[Environment] = None) -> URL:
+    override = (env if env is not None else Environment.from_environ()).db_url
     if override:
         return sa.engine.make_url(override)
     missing = [k for k in ("DB_NAME", "DB_USER", "DB_PASSWORD") if not config.get(k)]
@@ -319,8 +318,8 @@ class Database:
         self._clock = clock or _default_clock
 
     @classmethod
-    def from_config(cls, config: Mapping) -> "Database":
-        url = build_url(config)
+    def from_config(cls, config: Mapping, env: Optional[Environment] = None) -> "Database":
+        url = build_url(config, env)
         try:
             engine = make_engine(url)
         except ModuleNotFoundError as exc:

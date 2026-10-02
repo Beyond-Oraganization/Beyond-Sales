@@ -13,7 +13,6 @@ from __future__ import annotations
 import codecs
 import http.client
 import ipaddress
-import os
 import re
 import socket
 import ssl
@@ -21,7 +20,7 @@ import threading
 import time
 import zlib
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable, Mapping, Optional
 from urllib.parse import urlsplit
 
 from perno.scraper.settings import (
@@ -32,12 +31,12 @@ from perno.scraper.settings import (
     ROBOTS_MAX_BYTES,
     ScanSettings,
 )
+from perno.settings import Environment
 
 SMALL_ERROR_BODY = 64 * 1024
 SITEMAP_MAX_BYTES = 2 * 1024 * 1024
 HTML_TYPES = ("text/html", "application/xhtml+xml")
 XML_TYPES = ("application/xml", "text/xml", "text/plain", "application/xhtml+xml")
-ENV_ALLOW_PRIVATE = "PERNO_SKRAPER_ALLOW_PRIVATE"
 
 ACCEPT = {
     "html": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
@@ -75,29 +74,24 @@ def is_public_ip(ip: str) -> bool:
         return False
 
 
-ENV_HOSTS = "PERNO_SKRAPER_HOSTS"
+def make_default_resolver(host_overrides: Optional[Mapping[str, str]] = None) -> Callable:
+    """Resolver DNS (IPv4 przed IPv6, najwyżej 3 adresy). `host_overrides` to szew testowy/demo z
+    `Environment.scraper_hosts`: niepusty tylko razem z PERNO_SKRAPER_ALLOW_PRIVATE=1, więc w normalnej pracy
+    nie da się nim skierować skrapera na adres lokalny."""
+    overrides = dict(host_overrides or {})
+
+    def resolve(host: str, port: int) -> list:
+        override = overrides.get(host.lower())
+        if override:
+            return [override]
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        ordered = sorted({info[4][0] for info in infos}, key=lambda ip: ":" in ip)
+        return ordered[:3]
+
+    return resolve
 
 
-def _host_overrides() -> dict:
-    """Szew testowy/demo: `PERNO_SKRAPER_HOSTS=a.test=127.0.0.1,b.test=127.0.0.1`. Działa WYŁĄCZNIE razem z
-    `PERNO_SKRAPER_ALLOW_PRIVATE=1`, więc w normalnej pracy nie da się nim skierować skrapera na adres lokalny."""
-    if os.environ.get(ENV_ALLOW_PRIVATE) != "1":
-        return {}
-    pairs = (item.partition("=") for item in os.environ.get(ENV_HOSTS, "").split(",") if "=" in item)
-    return {name.strip().lower(): ip.strip() for name, _, ip in pairs if name.strip() and ip.strip()}
-
-
-def default_resolver(host: str, port: int) -> list:
-    override = _host_overrides().get(host.lower())
-    if override:
-        return [override]
-    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    ordered = sorted({info[4][0] for info in infos}, key=lambda ip: ":" in ip)  # IPv4 przed IPv6
-    return ordered[:3]
-
-
-def _make_ssl_context() -> ssl.SSLContext:
-    cafile = os.environ.get("SSL_CERT_FILE")
+def _make_ssl_context(cafile: str = "") -> ssl.SSLContext:
     context = ssl.create_default_context(cafile=cafile) if cafile else ssl.create_default_context()
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     # Python 3.13 włącza domyślnie VERIFY_X509_STRICT (odrzuca certyfikaty niezgodne ze ścisłym RFC 5280, np. bez
@@ -110,12 +104,14 @@ def _make_ssl_context() -> ssl.SSLContext:
 class Fetcher:
     def __init__(self, settings: ScanSettings, *, resolver: Optional[Callable] = None,
                  allow_private: Optional[bool] = None, ssl_context: Optional[ssl.SSLContext] = None,
+                 env: Optional[Environment] = None,
                  request_deadline: float = REQUEST_DEADLINE, connect_timeout: float = CONNECT_TIMEOUT,
                  recv_timeout: float = RECV_TIMEOUT, max_body: int = MAX_BODY_BYTES):
+        env = env if env is not None else Environment.from_environ()
         self.settings = settings
-        self.resolver = resolver or default_resolver
-        self.allow_private = (os.environ.get(ENV_ALLOW_PRIVATE) == "1") if allow_private is None else allow_private
-        self.ssl_context = ssl_context or _make_ssl_context()
+        self.resolver = resolver or make_default_resolver(env.scraper_hosts)
+        self.allow_private = env.scraper_allow_private if allow_private is None else allow_private
+        self.ssl_context = ssl_context or _make_ssl_context(env.ssl_cert_file)
         self.request_deadline = request_deadline
         self.connect_timeout = connect_timeout
         self.recv_timeout = recv_timeout
