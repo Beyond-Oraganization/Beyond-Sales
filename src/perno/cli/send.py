@@ -26,9 +26,10 @@ from contextlib import nullcontext
 from datetime import datetime
 
 from perno import settings as cfg
-from perno.db import NO_COUNTRY, Database, DbError, RowFilter
+from perno.db import Database, DbError
 from perno.domain import countries
 from perno.domain import statuses as st
+from perno.domain.rowfilter import NO_COUNTRY, RowFilter
 from perno.services import generation, sending
 from perno.settings import ConfigError, load_config, require_smtp
 

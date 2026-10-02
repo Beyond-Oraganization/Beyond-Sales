@@ -12,6 +12,7 @@ from unittest import mock
 from perno import db as dbmod
 from perno import settings as cfg
 from perno.cli import send as send_emails
+from perno.domain.rowfilter import NO_COUNTRY
 from perno.settings import ConfigError
 from tests.fixtures import put, sample_row
 
@@ -161,7 +162,7 @@ class CliTests(unittest.TestCase):
     def test_parse_countries(self):
         self.assertEqual(send_emails.parse_countries("PL, gb"), ("PL", "GB"))
         self.assertEqual(send_emails.parse_countries("Polska,polska,Niemcy"), ("PL", "DE"))
-        self.assertEqual(send_emails.parse_countries("none"), (dbmod.NO_COUNTRY,))
+        self.assertEqual(send_emails.parse_countries("none"), (NO_COUNTRY,))
         for bad in ("", " , ", "Atlantyda", "PL,XX"):
             with self.assertRaises(argparse.ArgumentTypeError, msg=bad):
                 send_emails.parse_countries(bad)

@@ -14,9 +14,9 @@ from datetime import datetime
 from typing import BinaryIO, Optional
 
 from perno import db as dbmod
-from perno.db import RowFilter
 from perno.domain import countries
 from perno.domain import statuses as st
+from perno.domain.rowfilter import ALL_ROWS, RowFilter
 
 BODY_COLUMNS = ("body_html", "body_text")
 # `country_name` nie jest kolumną bazy — to polska nazwa kraju wyliczana z kodu, żeby plik był czytelny w Excelu.
@@ -100,7 +100,7 @@ class ExportError(Exception):
 @dataclass(frozen=True)
 class ExportSpec:
     fmt: str
-    flt: RowFilter = RowFilter()
+    flt: RowFilter = ALL_ROWS
     bodies: bool = False
     delimiter: str = ";"
     columns: Optional[tuple] = None  # None = zestaw standardowy (z treścią maili, gdy `bodies`); podane `bodies` ignoruje

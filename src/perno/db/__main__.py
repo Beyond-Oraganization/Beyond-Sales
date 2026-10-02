@@ -1,6 +1,7 @@
-"""`python -m perno.db --check` (diagnostyka bazy)."""
+"""`python3 -m perno.db --check` (diagnostyka bazy) — kod w perno.cli.dbcheck."""
 
-from perno.db import main
+import sys
 
-if __name__ == "__main__":
-    main()
+from perno.cli.dbcheck import main
+
+sys.exit(main())

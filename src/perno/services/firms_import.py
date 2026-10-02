@@ -19,8 +19,7 @@ from urllib.parse import urlsplit
 
 import sqlalchemy as sa
 
-from perno import db as dbmod
-from perno.db import Database, DbError, InvalidValue, maile
+from perno.db import Database, DbError, InvalidValue, format_value, from_api, maile
 from perno.domain import countries
 from perno.domain import statuses as st
 from perno.scraper.urls import host_key
@@ -71,7 +70,7 @@ def backup_table(db: Database, directory: str, label: str, now: Optional[datetim
             writer = csv.writer(handle)
             writer.writerow(names)
             for row in result:
-                writer.writerow([dbmod._fmt(value) for value in row])
+                writer.writerow([format_value(value) for value in row])
     os.replace(tmp, path)
     return path
 
@@ -164,7 +163,7 @@ def import_firms(db: Database, rows: list, segment: str, *, dry_run: bool = Fals
                 "description": row["description"],
             }
             try:
-                dbmod.from_api(values)
+                from_api(values)
             except InvalidValue as exc:
                 problems.append(f"{row['company']}: {exc}")
                 continue

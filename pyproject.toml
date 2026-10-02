@@ -25,6 +25,7 @@ perno-enrich = "perno.cli.enrich:main"
 perno-migrate = "perno.cli.migrate:main"
 perno-seed = "perno.cli.seed:main"
 perno-dashboard = "perno.cli.dashboard:main"
+perno-dbcheck = "perno.cli.dbcheck:main"
 
 [dependency-groups]
 dev = [
@@ -100,7 +101,6 @@ warn_redundant_casts = true
 module = [
     "perno.scraper.schema",       # 36
     "perno.scraper.crawler",      # 21
-    "perno.db",                   # 18
     "perno.scraper.store",        # 8
     "perno.mailer.smtp_client",   # 5
     "perno.scraper.robots",       # 5
@@ -129,6 +129,7 @@ markers = [
 # ---------------------------------------------------------------------------------------------
 [tool.importlinter]
 root_package = "perno"
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "domain nie zależy od adapterów, usług, WWW ani CLI"
@@ -137,10 +138,17 @@ source_modules = ["perno.domain"]
 forbidden_modules = ["perno.db", "perno.mailer", "perno.services", "perno.scraper", "perno.web", "perno.cli"]
 
 [[tool.importlinter.contracts]]
+name = "domain jest czysty (bez bazy, sieci, parserów i plików biurowych)"
+type = "forbidden"
+source_modules = ["perno.domain"]
+forbidden_modules = ["sqlalchemy", "pymysql", "bs4", "lxml", "openpyxl", "PIL"]
+
+[[tool.importlinter.contracts]]
 name = "adaptery (db, mailer, scraper) nie zależą od usług, WWW ani CLI"
 type = "forbidden"
 source_modules = ["perno.db", "perno.mailer", "perno.scraper"]
 forbidden_modules = ["perno.services", "perno.web", "perno.cli"]
+ignore_imports = ["perno.db.__main__ -> perno.cli.dbcheck"]  # `python -m perno.db` to tylko skrót do polecenia z cli/
 
 [[tool.importlinter.contracts]]
 name = "usługi nie zależą od WWW ani CLI"

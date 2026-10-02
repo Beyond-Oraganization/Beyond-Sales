@@ -25,6 +25,7 @@ from sqlalchemy import exc as sa_exc
 from perno import db as dbmod
 from perno import settings as cfg
 from perno.domain import statuses as st
+from perno.domain.rowfilter import NO_COUNTRY, RowFilter
 from perno.scraper import schema as scraper_schema
 from perno.scraper import statuses as sst
 from perno.scraper.contacts import Contact
@@ -156,8 +157,8 @@ class MysqlSmokeTests(unittest.TestCase):
     def test_filter_dimensions_light_list_and_ordered_ids_against_mysql(self):
         self.put(sample_row(1, country="PL", email="a@x.pl"), sample_row(2, country="GB", email="   ", body_html="", body_text=""),
                  sample_row(3, country="", email=""), sample_row(4, status="wyslano", sent_at="2026-09-29T23:59:59", country="DE"))
-        ids = lambda **kw: [r["id"] for r in self.database.iter_rows(dbmod.RowFilter(**kw), ("id",))]
-        self.assertEqual(sorted(ids(countries=("PL", dbmod.NO_COUNTRY))), ["eventy-001", "eventy-003"])
+        ids = lambda **kw: [r["id"] for r in self.database.iter_rows(RowFilter(**kw), ("id",))]
+        self.assertEqual(sorted(ids(countries=("PL", NO_COUNTRY))), ["eventy-001", "eventy-003"])
         self.assertEqual(sorted(ids(has_email=False)), ["eventy-002", "eventy-003"])  # spacje to brak adresu
         self.assertEqual(ids(has_body=False), ["eventy-002"])
         from datetime import date

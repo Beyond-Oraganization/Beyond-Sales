@@ -14,6 +14,7 @@ from perno import db as dbmod
 from perno import settings as config
 from perno.db import legacy_csv
 from perno.domain import statuses as st
+from perno.domain.rowfilter import RowFilter
 from tests.fixtures import FakeClock, make_db, put, sample_row
 
 
@@ -300,7 +301,7 @@ class QueryTests(unittest.TestCase):
 
     def test_counts_and_iteration(self):
         self.assertEqual(self.database.count_rows(), 4)
-        self.assertEqual(self.database.count_rows(dbmod.RowFilter(segments=("eventy",), statuses=("blad", "wyslano"))), 2)
+        self.assertEqual(self.database.count_rows(RowFilter(segments=("eventy",), statuses=("blad", "wyslano"))), 2)
         self.assertEqual(self.database.status_counts(), {"do_wyslania": 2, "wyslano": 1, "blad": 1})
         self.assertEqual(self.database.distinct_segments(), ["eventy", "driverzy"])
         rows = list(self.database.iter_rows(columns=("id", "sent_at")))

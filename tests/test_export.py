@@ -10,8 +10,8 @@ from datetime import datetime
 import openpyxl
 
 from perno import db as dbmod
-from perno.db import RowFilter
 from perno.domain import statuses as st
+from perno.domain.rowfilter import RowFilter
 from perno.services import export as exporter
 from perno.web.app import Request
 from tests.fixtures import make_app, make_db, put, sample_row

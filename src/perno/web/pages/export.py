@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from perno.db import NO_COUNTRY, RowFilter
 from perno.domain import countries
 from perno.domain import statuses as st
+from perno.domain.rowfilter import NO_COUNTRY, RowFilter
 from perno.services import export as exporter
 from perno.web import layout
 from perno.web.app import HttpError, Request, Response, json_response

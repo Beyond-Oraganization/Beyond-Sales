@@ -7,7 +7,7 @@ from __future__ import annotations
 import csv
 import os
 
-from perno.db import LEGACY_COLUMNS
+from perno.db.schema import LEGACY_COLUMNS
 
 
 def read_rows(path: str) -> list:
