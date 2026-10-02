@@ -4,6 +4,7 @@
 
     .venv/bin/python scripts/bench_scraper.py                       # 60 firm x 40 stron, opóźnienia 50-300 ms
     .venv/bin/python scripts/bench_scraper.py --firms 200 --pages 30 --threads 50
+    .venv/bin/python scripts/bench_scraper.py --db-url "$(scripts/scratch_mysql.sh url)"   # na prawdziwym MySQL
 
 Uwaga: odstępy uprzejmości (podłoga 1 s, 2,5 s) są tu WYŁĄCZONE (`ScanSettings.for_tests`), bo mierzymy narzut
 naszego kodu na lokalnym serwerze. Prawdziwy skan jest ograniczony odstępem na domenę, więc tempo w produkcji to
@@ -24,7 +25,8 @@ import sqlalchemy as sa
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from perno.db import Database, make_engine
+from perno.db import Database, maile, make_engine
+from perno.scraper import schema as scraper_schema
 from perno.scraper.crawler import Crawler
 from perno.scraper.fetcher import Fetcher
 from perno.scraper.politeness import IpLimiter
@@ -56,6 +58,20 @@ def build_site(rng: random.Random, pages: int, latency: tuple) -> dict:
     return site
 
 
+def open_database(workdir: str, db_url: str) -> Database:
+    """Baza benchmarku: świeży plik sqlite albo (z --db-url) serwer, w którym baza musi kończyć się na `_test`,
+    bo tabele skrapera i `maile` są tam kasowane przed przebiegiem."""
+    if not db_url:
+        return Database(make_engine(sa.engine.make_url(f"sqlite:///{os.path.join(workdir, 'bench.db')}")))
+    url = sa.engine.make_url(db_url)
+    if not (url.database or "").endswith("_test"):
+        raise SystemExit("Nazwa bazy benchmarku musi kończyć się na _test (tabele są w niej kasowane).")
+    database = Database(make_engine(url))
+    scraper_schema.skraper_metadata.drop_all(database.engine)
+    maile.drop(database.engine, checkfirst=True)
+    return database
+
+
 def main() -> int:
     """Uruchamia benchmark i drukuje tempo oraz podział czasu na etapy."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -65,13 +81,14 @@ def main() -> int:
     parser.add_argument("--latency-min", type=float, default=0.05, help="najkrótsze opóźnienie odpowiedzi serwera (s)")
     parser.add_argument("--latency-max", type=float, default=0.3, help="najdłuższe opóźnienie odpowiedzi serwera (s)")
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--db-url", default="", help="adres bazy testowej (np. z scripts/scratch_mysql.sh); domyślnie sqlite")
     args = parser.parse_args()
 
     rng = random.Random(args.seed)
     internet = FakeInternet().start()
     workdir = tempfile.mkdtemp(prefix="perno-bench-")
     try:
-        db = Database(make_engine(sa.engine.make_url(f"sqlite:///{os.path.join(workdir, 'bench.db')}")))
+        db = open_database(workdir, args.db_url)
         store = Store(db)
         store.ensure_schema()
         for number in range(args.firms):
@@ -91,7 +108,8 @@ def main() -> int:
         store.finish_run(run_id, result["status"], result["stats"])
         stats = result["stats"]
 
-        print(f"Firm: {args.firms}, wątków: {args.threads}, opóźnienia serwera {args.latency_min}-{args.latency_max} s")
+        print(f"Baza: {db.engine.dialect.name}; firm: {args.firms}, wątków: {args.threads}, "
+              f"opóźnienia serwera {args.latency_min}-{args.latency_max} s")
         print(f"Wynik: {result['status']}; czas {wall:.1f} s; CPU procesu {cpu:.1f} s (z serwerem testowym)")
         print(f"Strony: {stats['strony']} ({stats['strony'] / wall:.1f}/s), żądania: {stats['zapytania']} "
               f"({stats['zapytania'] / wall:.1f}/s, {stats['zapytania'] / max(1, stats['strony']):.2f} na stronę), "
