@@ -16,11 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Mapping, Optional
 
-import sqlalchemy as sa
-
-from perno import db as dbmod
-from perno.db import Database, DbError, InvalidValue, maile
-from perno.domain import countries
+from perno.db import Database, DbError, InvalidValue, RowNotFound, from_api
+from perno.domain import countries, mail_rules
 from perno.domain import statuses as st
 
 MAX_BULK_IDS = 2000
@@ -81,10 +78,9 @@ def parse_request(payload: Mapping) -> BulkRequest:
     status = None
     if "status" in changes:
         status = changes["status"]
-        if not isinstance(status, str) or status not in st.VALID_STATUSES:
-            raise InvalidValue(f"Nieprawidłowy status: {status!r}.")
-        if status == st.STATUS_SENDING:
-            raise InvalidValue("Statusu „Wysyłanie…” nie można ustawić ręcznie.")
+        problem = mail_rules.manual_status_problem(status)
+        if problem:
+            raise InvalidValue(problem)
 
     data = {}
     for name in DATA_FIELDS:
@@ -95,7 +91,7 @@ def parse_request(payload: Mapping) -> BulkRequest:
             value = ""
         if not isinstance(value, str):
             raise InvalidValue(f"Pole {name} musi być tekstem.")
-        data[name] = dbmod.from_api({name: value.strip()}, partial=True)[name]  # kraj → kod ISO, pusty tekst → None
+        data[name] = from_api({name: value.strip()}, partial=True)[name]  # kraj → kod ISO, pusty tekst → None
 
     acknowledged = payload.get("acknowledge", [])
     if not isinstance(acknowledged, list) or not all(isinstance(code, str) for code in acknowledged):
@@ -162,26 +158,6 @@ class Plan:
         }
 
 
-_HAS_BODY = sa.case((sa.and_(maile.c.body_html.is_not(None), maile.c.body_html != ""), 1), else_=0).label("has_body")
-
-
-def _load(conn, ids, lock: bool) -> dict:
-    """Wiersze o podanych id (tylko pola potrzebne do analizy — bez treści maili), czytane partiami w kolejności id.
-    Przy `lock` zakładają blokady wierszy (SELECT … FOR UPDATE) zawsze w tej samej kolejności, więc dwie jednoczesne
-    operacje nie zakleszczą się nawzajem."""
-    columns = [maile.c.id, maile.c.status, maile.c.sent_at, maile.c.email, maile.c.country, maile.c.city,
-               maile.c.address, _HAS_BODY]
-    found = {}
-    ordered = sorted(ids)
-    for start in range(0, len(ordered), dbmod.ID_CHUNK):
-        stmt = sa.select(*columns).where(maile.c.id.in_(ordered[start:start + dbmod.ID_CHUNK])).order_by(maile.c.id)
-        if lock:
-            stmt = stmt.with_for_update()
-        for row in conn.execute(stmt).mappings():
-            found[row["id"]] = dict(row)
-    return found
-
-
 def analyze(found: Mapping, request: BulkRequest, now: datetime) -> Plan:
     """Co zmieniłaby operacja na wczytanych wierszach — bez zapisu. Każdy wiersz trafia do dokładnie jednej grupy:
     zmieniany, bez zmian albo pominięty (z powodem); ostrzeżenia zbierane są tylko dla zmienianych."""
@@ -234,8 +210,8 @@ def _warnings_for(row: Mapping, after: Mapping) -> list:
 
 def preview(db: Database, request: BulkRequest) -> Plan:
     """Dry-run: analiza na bieżących danych, bez blokad i bez zapisu."""
-    with db.engine.connect() as conn:
-        return analyze(_load(conn, request.ids, lock=False), request, db.now())
+    with db.connection() as conn:
+        return analyze(db.load_for_bulk(conn, request.ids, lock=False), request, db.now())
 
 
 # ---- zapis i cofanie ---------------------------------------------------------------------------
@@ -288,12 +264,11 @@ class UndoLog:
 def apply(db: Database, request: BulkRequest, log: UndoLog) -> dict:
     """Zapisuje zmianę w jednej transakcji. Brak potwierdzenia któregoś z ostrzeżeń → `AckRequired` i zero zmian."""
     now = db.now()
-    with db.engine.begin() as conn:
-        plan = analyze(_load(conn, request.ids, lock=True), request, now)
+    with db.transaction() as conn:
+        plan = analyze(db.load_for_bulk(conn, request.ids, lock=True), request, now)
         if any(code not in request.acknowledged for code in plan.needs_ack):
             raise AckRequired(plan)
-        for change in plan.changes:
-            conn.execute(sa.update(maile).where(maile.c.id == change.id).values(**change.after, updated_at=now))
+        db.update_rows(conn, [(change.id, change.after) for change in plan.changes], now)
     result = plan.to_json()
     if plan.changes:
         operation = Operation(uuid.uuid4().hex[:12], now, describe(request, len(plan.changes)), plan.changes)
@@ -310,11 +285,12 @@ def undo(db: Database, log: UndoLog, operation_id: Optional[str] = None) -> dict
     with log.exclusive_undo():
         operation = log.get(operation_id)
         if operation is None:
-            raise dbmod.RowNotFound("Nie ma takiej operacji do cofnięcia (dziennik jest w pamięci serwera i znika po jego restarcie).")
+            raise RowNotFound("Nie ma takiej operacji do cofnięcia (dziennik jest w pamięci serwera i znika po jego restarcie).")
         now = db.now()
         restored, conflicts = 0, []
-        with db.engine.begin() as conn:
-            found = _load(conn, [change.id for change in operation.changes], lock=True)
+        with db.transaction() as conn:
+            found = db.load_for_bulk(conn, [change.id for change in operation.changes], lock=True)
+            updates = []
             for change in operation.changes:
                 row = found.get(change.id)
                 if row is None:
@@ -336,8 +312,9 @@ def undo(db: Database, log: UndoLog, operation_id: Optional[str] = None) -> dict
                 if blocked:
                     conflicts.append({"id": change.id, "message": f"zmienione po tej operacji: {', '.join(blocked)}"})
                 if restore:
-                    conn.execute(sa.update(maile).where(maile.c.id == change.id).values(**restore, updated_at=now))
+                    updates.append((change.id, restore))
                     restored += 1
+            db.update_rows(conn, updates, now)
         log.discard(operation.id)
         return {"label": operation.label, "total": len(operation.changes), "restored": restored,
                 "conflicts": conflicts[:LISTED_IDS], "conflict_count": len(conflicts)}

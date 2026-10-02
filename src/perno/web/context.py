@@ -12,6 +12,7 @@ from typing import Callable, Optional, Sequence
 
 from perno.db import Database
 from perno.scraper.store import Store
+from perno.services import sending
 from perno.services.bulk import UndoLog
 from perno.settings import ConfigFile
 from perno.web.page import Page
@@ -54,3 +55,7 @@ class AppContext:
 
     def __post_init__(self) -> None:
         self.scan_store = Lazy(lambda: open_scan_store(self.db))
+
+    def mailer(self) -> sending.Mailer:
+        """Dane wysyłki z aktualnego config.env (rzuca `ConfigError`, gdy brakuje danych SMTP)."""
+        return sending.build_mailer(self.config.load(), self.config.path, smtp_factory=self.smtp_factory)

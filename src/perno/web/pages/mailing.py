@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from perno.domain import statuses as st
+from typing import Optional
+
 from perno.services import bulk, generation, sending
-from perno.settings import require_smtp, smtp_configured
+from perno.settings import smtp_configured
 from perno.web import layout
-from perno.web.app import HttpError, Request, Response, json_response
 from perno.web.context import AppContext
+from perno.web.http import HttpError, Request, Response, json_response
 from perno.web.page import Page
 
 
@@ -62,31 +63,14 @@ def api_update_row(req: Request, ctx: AppContext) -> Response:
     return json_response({"row": ctx.db.apply_edit(row_id, changes)})
 
 
+def _daily_cap(payload: dict) -> Optional[int]:
+    """Dzienny limit z żądania; wartość nie-całkowita albo ≤ 0 oznacza „bez limitu” (jak dotąd)."""
+    value = payload.get("daily_cap")
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
 def api_send_one(req: Request, ctx: AppContext) -> Response:
-    row_id = _row_id(req)
-    row = ctx.db.get(row_id)
-    if row is None:
-        raise HttpError(404, f"Nie znaleziono wiersza {row_id}.")
-    if row["status"] == st.STATUS_SENT:
-        raise HttpError(400, "Ten mail już został wysłany.")
-    if row["status"] in st.KEEPS_SENT_AT:
-        raise HttpError(400, f"Ten wiersz ma status „{st.STATUS_META[row['status']][0]}” — nie wysyłam. "
-                             "Jeśli to pomyłka, zmień status ręcznie.")
-    if not row["email"] or not row["body_html"]:
-        raise HttpError(400, "Brak e-maila lub treści — uzupełnij przed wysyłką.")
-
-    config = require_smtp(ctx.config.load(), ctx.config.path)
-    daily_cap = req.json.get("daily_cap")
-    if isinstance(daily_cap, int) and not isinstance(daily_cap, bool) and daily_cap > 0:
-        if ctx.db.sent_today_count() >= daily_cap:
-            raise HttpError(429, f"Dzienny limit wysyłki ({daily_cap}) jest wyczerpany.")
-
-    smtp_factory = ctx.smtp_factory or sending.smtp_factory_from_config(config)
-    result = sending.send_row(
-        ctx.db, row_id, smtp_factory=smtp_factory, config=config,
-        sender_name=config.get("SENDER_NAME", ""),
-        allowed_from=(st.STATUS_PENDING, st.STATUS_ERROR),
-    )
+    result = sending.send_one(ctx.db, _row_id(req), ctx.mailer, daily_cap=_daily_cap(req.json))
     if result.outcome == "skipped":
         raise HttpError(409, result.message, row=result.row)
     return json_response({"row": result.row, "outcome": result.outcome, "message": result.message})
@@ -104,11 +88,7 @@ def api_bulk_update(req: Request, ctx: AppContext) -> Response:
     request = bulk.parse_request(req.json)
     if req.json.get("dry_run") is True:
         return json_response({"dry_run": True, **bulk.preview(ctx.db, request).to_json()})
-    try:
-        result = bulk.apply(ctx.db, request, ctx.undo_log)
-    except bulk.AckRequired as exc:
-        raise HttpError(409, str(exc), **exc.plan.to_json()) from None
-    return json_response({"dry_run": False, **result})
+    return json_response({"dry_run": False, **bulk.apply(ctx.db, request, ctx.undo_log)})
 
 
 def api_bulk_undo(req: Request, ctx: AppContext) -> Response:

@@ -10,8 +10,8 @@ from perno.domain import statuses as st
 from perno.domain.rowfilter import NO_COUNTRY, RowFilter
 from perno.services import export as exporter
 from perno.web import layout
-from perno.web.app import HttpError, Request, Response, json_response
 from perno.web.context import AppContext
+from perno.web.http import HttpError, Request, Response, json_response
 from perno.web.page import Page
 
 MAX_EXPORT_IDS = 20_000  # ≈0,5 MB JSON — mieści się w limicie żądania (2 MB)

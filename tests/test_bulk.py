@@ -9,7 +9,7 @@ from unittest import mock
 import sqlalchemy as sa
 
 from perno import db as dbmod
-from perno.db import InvalidValue
+from perno.db import InvalidValue, mail_repository
 from perno.services import bulk
 from tests.fixtures import FakeClock, make_db, put, sample_row
 
@@ -231,7 +231,7 @@ class ApplyTests(BulkCase):
                 raise RuntimeError("awaria bazy")
             return real_update(*args, **kwargs)
 
-        with mock.patch.object(bulk.sa, "update", flaky):
+        with mock.patch.object(mail_repository.sa, "update", flaky):
             with self.assertRaises(RuntimeError):
                 self.apply(1, 2, 6, 7, status="zainteresowany")
         self.assertEqual(len(calls), 3)

@@ -22,8 +22,9 @@ from urllib.parse import parse_qs, urlsplit
 from perno import settings as cfg
 from perno.db import Database, DbError
 from perno.settings import ConfigError, ConfigFile
-from perno.web.app import MAX_BODY, App, Request, Response
+from perno.web.app import App
 from perno.web.context import AppContext
+from perno.web.http import MAX_BODY, Request, Response
 from perno.web.pages import PAGES
 from perno.web.pages import scraper as scraper_page
 

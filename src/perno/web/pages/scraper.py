@@ -6,16 +6,14 @@ sprawdzamy go przez `importlib.util.find_spec`). Samo skanowanie działa w osobn
 
 from __future__ import annotations
 
-import functools
 import importlib.util
 
 from perno.scraper import runner
 from perno.scraper import statuses as st
 from perno.scraper.settings import HARD_DELAY_FLOOR, LIMITS, STALE_AFTER, ScanSettings, SettingsError
-from perno.scraper.store import DomainTaken, FirmaBusy, InvalidFirma, NotFound, RunActive
 from perno.web import layout
-from perno.web.app import HttpError, Request, Response, json_response
 from perno.web.context import AppContext
+from perno.web.http import HttpError, Request, Response, json_response
 from perno.web.page import Page
 
 MAX_START_IDS = 500
@@ -48,21 +46,6 @@ def shutdown_hint(ctx: AppContext):
         return None
     return (f"Skraper nadal działa (przebieg #{run['id']}). Zatrzymaj go w zakładce Skraper albo poleceniem: "
             "python3 scrape.py stop")
-
-
-def guarded(handler):
-    """Tłumaczy błędy magazynu na kody HTTP (bez zmian w src/perno/web/app.py)."""
-    @functools.wraps(handler)
-    def wrapper(req: Request, ctx: AppContext) -> Response:
-        try:
-            return handler(req, ctx)
-        except (RunActive, FirmaBusy, DomainTaken) as exc:
-            raise HttpError(409, str(exc)) from None
-        except NotFound as exc:
-            raise HttpError(404, str(exc)) from None
-        except (InvalidFirma, SettingsError) as exc:
-            raise HttpError(400, str(exc)) from None
-    return wrapper
 
 
 def render(ctx: AppContext) -> str:
@@ -121,12 +104,10 @@ def api_meta(req: Request, ctx: AppContext) -> Response:
     })
 
 
-@guarded
 def api_seed(req: Request, ctx: AppContext) -> Response:
     return json_response(ctx.scan_store.get().seed_from_maile())
 
 
-@guarded
 def api_dodaj(req: Request, ctx: AppContext) -> Response:
     url = req.json.get("url")
     name = req.json.get("nazwa")
@@ -137,7 +118,6 @@ def api_dodaj(req: Request, ctx: AppContext) -> Response:
     return json_response(ctx.scan_store.get().add_manual(url, name))
 
 
-@guarded
 def api_firmy(req: Request, ctx: AppContext) -> Response:
     status = req.arg("status")
     if status and status not in st.FIRMA_STATUSY:
@@ -148,7 +128,6 @@ def api_firmy(req: Request, ctx: AppContext) -> Response:
     return json_response({"rows": rows, "total": total})
 
 
-@guarded
 def api_firma(req: Request, ctx: AppContext) -> Response:
     detail = ctx.scan_store.get().firma_detail(
         _int(req.arg("id"), "id", minimum=1), page=_int(req.arg("page", "0"), "page"), per_page=100)
@@ -157,7 +136,6 @@ def api_firma(req: Request, ctx: AppContext) -> Response:
     return json_response(detail)
 
 
-@guarded
 def api_status(req: Request, ctx: AppContext) -> Response:
     store = ctx.scan_store.get()
     run = store.active_run()
@@ -188,7 +166,6 @@ def _id_list(raw, name: str) -> list:
     return sorted(set(raw))
 
 
-@guarded
 def api_start(req: Request, ctx: AppContext) -> Response:
     store = ctx.scan_store.get()
     store.recover_dead_runs()
@@ -220,14 +197,12 @@ def api_start(req: Request, ctx: AppContext) -> Response:
     return json_response({"run_id": run_id, "queued": queued}, 202)
 
 
-@guarded
 def api_stop(req: Request, ctx: AppContext) -> Response:
     store = ctx.scan_store.get()
     recovered = store.recover_dead_runs()
     return json_response({"ok": store.request_stop(), "odzyskano": recovered})
 
 
-@guarded
 def api_ponow(req: Request, ctx: AppContext) -> Response:
     ids = _id_list(req.json.get("firma_ids"), "firma_ids")
     if not ids:
@@ -235,12 +210,10 @@ def api_ponow(req: Request, ctx: AppContext) -> Response:
     return json_response({"zmieniono": ctx.scan_store.get().requeue(ids)})
 
 
-@guarded
 def api_uzyj_domeny(req: Request, ctx: AppContext) -> Response:
     return json_response(ctx.scan_store.get().use_target_domain(_int(req.json.get("firma_id"), "firma_id", minimum=1)))
 
 
-@guarded
 def api_usun_dane(req: Request, ctx: AppContext) -> Response:
     ctx.scan_store.get().delete_firma_data(_int(req.json.get("firma_id"), "firma_id", minimum=1))
     return json_response({"ok": True})

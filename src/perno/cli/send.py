@@ -18,16 +18,13 @@ from __future__ import annotations
 
 import argparse
 import os
-import random
 import sys
-import time
 from collections import Counter
-from contextlib import nullcontext
 from datetime import datetime
 
 from perno import settings as cfg
 from perno.db import Database, DbError
-from perno.domain import countries
+from perno.domain import countries, mail_rules
 from perno.domain import statuses as st
 from perno.domain.rowfilter import NO_COUNTRY, RowFilter
 from perno.services import generation, sending
@@ -92,102 +89,116 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
-    if not args.dry_run:
-        require_smtp(config, args.config)
-    sender_name = config.get("SENDER_NAME", "")
-
+def open_database(config: dict) -> Database:
+    """Baza z gotowym schematem; przywraca też wiersze zawieszone w „Wysyłanie…” po przerwanym przebiegu."""
     db = Database.from_config(config)
     if not db.check_connection()["table_exists"]:
         raise DbError("Tabela maile nie istnieje. Uruchom migrate_csv_to_sql.py (lub: python3 -m perno.db --init).")
     db.upgrade_schema()  # idempotentne: dodaje brakujące, opcjonalne kolumny (kraj, miasto, adres, opis)
-
     recovered = db.recover_stale_claims()
     if recovered:
         print(f"UWAGA: zawieszone wysyłki oznaczono jako błąd (sprawdź folder Wysłane): {', '.join(recovered)}")
+    return db
 
+
+def generate(db: Database, args: argparse.Namespace, sender_name: str) -> None:
     segments = ("eventy", "driverzy") if args.segment == "both" else (args.segment,)
     result = generation.refresh_segments(
         db, segments, sender_name, args.regenerate_pending, allow_empty=args.allow_empty_db)
     for segment, stats in result.items():
         print(f"{segment}: {stats['created']} nowych, {stats['regenerated']} przeliczonych.")
 
-    if args.dry_run:
-        if args.country:
-            pending = db.count_rows(RowFilter(statuses=(st.STATUS_PENDING,), countries=args.country))
-            scope = " w wybranych krajach"
-        else:
-            pending, scope = db.status_counts().get(st.STATUS_PENDING, 0), ""
-        print(f"\n--dry-run: nic nie wysłano. {pending} maili{scope} ma status 'do_wyslania'. "
-              "Otwórz panel (python3 server.py), żeby je przejrzeć.")
-        return 0
 
-    smtp_factory = sending.smtp_factory_from_config(config)
+def report_dry_run(db: Database, args: argparse.Namespace) -> int:
+    if args.country:
+        pending = db.count_rows(RowFilter(statuses=(st.STATUS_PENDING,), countries=args.country))
+        scope = " w wybranych krajach"
+    else:
+        pending, scope = db.status_counts().get(st.STATUS_PENDING, 0), ""
+    print(f"\n--dry-run: nic nie wysłano. {pending} maili{scope} ma status 'do_wyslania'. "
+          "Otwórz panel (python3 server.py), żeby je przejrzeć.")
+    return 0
 
-    if args.test_send:
-        if not (args.id or args.company):
-            sys.exit("Użyj --id lub --company, żeby wskazać, który mail wysłać testowo.")
-        found = [r for r in db.select_candidates(
-            row_id=args.id or "", company=args.company or "", countries=args.country,
-            statuses=tuple(st.VALID_STATUSES), limit=None) if r["body_html"]]
-        if not found:
-            sys.exit("Nie znaleziono wygenerowanego maila pasującego do filtra.")
-        if len(found) > 1:
-            sys.exit(f"Filtr pasuje do {len(found)} wierszy — doprecyzuj --id.")
-        row = found[0]
-        message = sending.build_message_for_row(row, args.test_send, config["SMTP_USER"], sender_name)
-        with smtp_factory() as client:
-            client.send(message)
-        print(f"Wysłano testowo na {args.test_send} (treść z {row['id']} / {row['company']}). "
-              "Status tego wiersza NIE został zmieniony.")
-        return 0
 
-    sent_today = db.sent_today_count()
-    limit = min(args.limit, max(0, args.daily_cap - sent_today))
-    to_send = db.select_candidates(
-        segment=args.segment, row_id=args.id or "", company=args.company or "", countries=args.country,
-        statuses=(st.STATUS_PENDING,), limit=limit) if limit > 0 else []
+def send_test(db: Database, mailer: sending.Mailer, args: argparse.Namespace) -> int:
+    """Wysyła jeden wybrany mail na adres testowy; status wiersza zostaje bez zmian."""
+    if not (args.id or args.company):
+        sys.exit("Użyj --id lub --company, żeby wskazać, który mail wysłać testowo.")
+    found = [r for r in db.select_candidates(
+        row_id=args.id or "", company=args.company or "", countries=args.country,
+        statuses=tuple(st.VALID_STATUSES), limit=None) if r["body_html"]]
+    if not found:
+        sys.exit("Nie znaleziono wygenerowanego maila pasującego do filtra.")
+    if len(found) > 1:
+        sys.exit(f"Filtr pasuje do {len(found)} wierszy — doprecyzuj --id.")
+    row = found[0]
+    message = sending.build_message_for_row(row, args.test_send, mailer.sender)
+    with mailer.smtp_factory() as client:
+        client.send(message)
+    print(f"Wysłano testowo na {args.test_send} (treść z {row['id']} / {row['company']}). "
+          "Status tego wiersza NIE został zmieniony.")
+    return 0
 
-    if not to_send:
-        print(f"\nBrak maili do wysłania (dzisiaj już wysłano {sent_today}, limit dzienny {args.daily_cap}).")
-        return 0
 
+def confirm_batch(to_send: list, sent_today: int, args: argparse.Namespace, mailer: sending.Mailer) -> bool:
     print(f"\nDo wysłania teraz: {len(to_send)} maili (dzisiaj już wysłano {sent_today}/{args.daily_cap}).")
     summary, foreign = country_summary(to_send)
     print(f"Kraje: {summary}.")
     if foreign:
         print(f"UWAGA: {foreign} z tych maili jedzie do firm spoza Polski, a szablony są po polsku. "
               "Sprawdź treść albo zawęź wysyłkę do Polski: --country PL.")
-    if not args.yes:
-        answer = input(f"Wysyłam {len(to_send)} maili z konta {config['SMTP_USER']}. Kontynuować? [y/N] ")
-        if answer.strip().lower() not in ("y", "yes", "tak"):
-            print("Przerwano.")
-            return 0
+    if args.yes:
+        return True
+    answer = input(f"Wysyłam {len(to_send)} maili z konta {mailer.sender.address}. Kontynuować? [y/N] ")
+    return answer.strip().lower() in ("y", "yes", "tak")
+
+
+def send_pending(db: Database, mailer: sending.Mailer, args: argparse.Namespace) -> int:
+    sent_today = db.sent_today_count()
+    limit = min(args.limit, mail_rules.daily_quota_left(sent_today, args.daily_cap))
+    to_send = db.select_candidates(
+        segment=args.segment, row_id=args.id or "", company=args.company or "", countries=args.country,
+        statuses=(st.STATUS_PENDING,), limit=limit) if limit > 0 else []
+    if not to_send:
+        print(f"\nBrak maili do wysłania (dzisiaj już wysłano {sent_today}, limit dzienny {args.daily_cap}).")
+        return 0
+    if not confirm_batch(to_send, sent_today, args, mailer):
+        print("Przerwano.")
+        return 0
 
     labels = {"sent": "OK   ", "sent_unrecorded": "OK?  ", "error": "BLAD ", "skipped": "POMIN"}
-    log_lines = []
+    log_lines: list = []
+
+    def report(row: dict, outcome: sending.SendResult) -> None:
+        line = f"{labels[outcome.outcome]} {row['id']}  {row['company']}  <{row['email']}>"
+        if outcome.message:
+            line += f"  -- {outcome.message}"
+        print(line)
+        log_lines.append(line)
+
     try:
-        with smtp_factory() as client:
-            for i, row in enumerate(to_send):
-                outcome = sending.send_row(
-                    db, row["id"], smtp_factory=lambda: nullcontext(client), config=config,
-                    sender_name=sender_name, allowed_from=(st.STATUS_PENDING,))
-                line = f"{labels[outcome.outcome]} {row['id']}  {row['company']}  <{row['email']}>"
-                if outcome.message:
-                    line += f"  -- {outcome.message}"
-                print(line)
-                log_lines.append(line)
-                if i < len(to_send) - 1:
-                    time.sleep(random.uniform(args.delay_min, args.delay_max))
+        sending.send_batch(db, mailer, to_send, delay=(args.delay_min, args.delay_max), on_result=report)
     except KeyboardInterrupt:
         print("\nPrzerwano (Ctrl+C). Wiersz, który był wysyłany, oznaczono jako błąd — sprawdź folder Wysłane.")
         return 130
-
     log_path = write_log(log_lines)
     ok_count = sum(1 for line in log_lines if line.startswith("OK"))
     print(f"\nGotowe: {ok_count}/{len(to_send)} wysłanych. Log: {log_path}")
     return 0
+
+
+def run(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    if not args.dry_run:
+        require_smtp(config, args.config)
+    db = open_database(config)
+    generate(db, args, config.get("SENDER_NAME", ""))
+    if args.dry_run:
+        return report_dry_run(db, args)
+    mailer = sending.build_mailer(config, args.config)
+    if args.test_send:
+        return send_test(db, mailer, args)
+    return send_pending(db, mailer, args)
 
 
 def main() -> None:

@@ -44,6 +44,12 @@ class Database(MailRepository):
         return f"{url.database} @ {where}"
 
     @contextmanager
+    def connection(self):
+        """Połączenie do odczytu (bez transakcji zapisu)."""
+        with self.engine.connect() as conn:
+            yield conn
+
+    @contextmanager
     def transaction(self):
         with self.engine.begin() as conn:
             yield conn

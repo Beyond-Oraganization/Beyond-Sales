@@ -8,14 +8,14 @@ listę wysyłki) są w `perno.domain.mail_rules`; tu zostaje wyłącznie ich wyk
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Callable, Iterator, Mapping, Optional
+from typing import Any, Callable, Iterable, Iterator, Mapping, Optional
 
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
 from perno.db.codec import format_value, from_api, to_api
 from perno.db.errors import InvalidValue, RowLocked, RowNotFound
-from perno.db.queries import filter_clauses, id_chunks, ordering
+from perno.db.queries import ID_CHUNK, filter_clauses, id_chunks, ordering
 from perno.db.schema import COLUMNS, LIGHT_COLUMNS, maile
 from perno.domain import mail_rules
 from perno.domain import statuses as st
@@ -153,7 +153,29 @@ class MailRepository:
                     if row is not None:
                         yield {name: row[name] for name in names}
 
+    def load_for_bulk(self, conn, ids: Iterable[str], *, lock: bool) -> dict:
+        """Wiersze o podanych id (tylko pola potrzebne do analizy zmiany zbiorczej — bez treści maili, za to z
+        `has_body`), czytane partiami w kolejności id. Przy `lock` zakładają blokady wierszy (SELECT … FOR UPDATE)
+        zawsze w tej samej kolejności, więc dwie jednoczesne operacje nie zakleszczą się nawzajem."""
+        has_body = sa.case((sa.and_(maile.c.body_html.is_not(None), maile.c.body_html != ""), 1), else_=0).label("has_body")
+        columns = [maile.c.id, maile.c.status, maile.c.sent_at, maile.c.email, maile.c.country, maile.c.city,
+                   maile.c.address, has_body]
+        found = {}
+        ordered = sorted(ids)
+        for start in range(0, len(ordered), ID_CHUNK):
+            stmt = sa.select(*columns).where(maile.c.id.in_(ordered[start:start + ID_CHUNK])).order_by(maile.c.id)
+            if lock:
+                stmt = stmt.with_for_update()
+            for row in conn.execute(stmt).mappings():
+                found[row["id"]] = dict(row)
+        return found
+
     # ---- zapis --------------------------------------------------------
+
+    def update_rows(self, conn, updates: Iterable[tuple], now: datetime) -> None:
+        """Zapisuje `[(id, {pole: wartość})]` w transakcji wywołującego i odnotowuje czas zmiany (`updated_at`)."""
+        for row_id, values in updates:
+            conn.execute(sa.update(maile).where(maile.c.id == row_id).values(**values, updated_at=now))
 
     def insert_rows(self, conn, rows: list) -> int:
         stamp = self.now()

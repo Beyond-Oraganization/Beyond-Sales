@@ -1,8 +1,7 @@
-"""Rdzeń aplikacji webowej: żądanie/odpowiedź, zabezpieczenia i routing stron.
+"""Rdzeń aplikacji webowej: zabezpieczenia i routing stron.
 
-Strony nie dotykają `BaseHTTPRequestHandler` — dostają `Request` i zwracają
-`Response`. Dzięki temu całą logikę (w tym zabezpieczenia) da się testować
-bez gniazd sieciowych; `server.py` to tylko cienki adapter HTTP.
+Strony dostają `Request` i zwracają `Response` (patrz `perno.web.http`), a `cli/server.py` to tylko cienki adapter
+HTTP. Wyjątki zamienia na kody HTTP `perno.web.errors`.
 """
 
 from __future__ import annotations
@@ -10,71 +9,21 @@ from __future__ import annotations
 import json
 import sys
 import traceback
-from dataclasses import dataclass, field
-from typing import BinaryIO, Callable, Optional, Sequence
+from typing import Callable, Optional, Sequence
 
-from perno import db as dbmod
-from perno.settings import ConfigError
+from perno.db import DB_ERRORS, DbUnavailable
+from perno.web import errors
 from perno.web.context import AppContext
+from perno.web.http import (
+    MAX_BODY,
+    SECURITY_HEADERS,
+    HttpError,
+    Request,
+    Response,
+    error_response,
+    html_response,
+)
 from perno.web.page import Page
-
-MAX_BODY = 2 * 1024 * 1024
-
-SECURITY_HEADERS = {
-    "X-Frame-Options": "DENY",
-    "X-Content-Type-Options": "nosniff",
-    "Cache-Control": "no-store",
-    "Referrer-Policy": "no-referrer",
-}
-
-
-@dataclass
-class Request:
-    method: str
-    path: str
-    query: dict = field(default_factory=dict)
-    headers: dict = field(default_factory=dict)
-    body: bytes = b""
-    content_length: Optional[int] = None
-    json: dict = field(default_factory=dict)
-
-    def arg(self, name: str, default: str = "") -> str:
-        values = self.query.get(name)
-        return values[0] if values else default
-
-    def args(self, name: str) -> list:
-        return list(self.query.get(name, []))
-
-
-@dataclass
-class Response:
-    status: int = 200
-    body: bytes = b""
-    content_type: str = "text/plain; charset=utf-8"
-    headers: dict = field(default_factory=dict)
-    stream: Optional[BinaryIO] = None
-    length: Optional[int] = None
-
-
-class HttpError(Exception):
-    def __init__(self, status: int, message: str, **extra):
-        super().__init__(message)
-        self.status = status
-        self.message = message
-        self.extra = extra
-
-
-def json_response(payload, status: int = 200) -> Response:
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    return Response(status, body, "application/json; charset=utf-8")
-
-
-def html_response(html: str, status: int = 200) -> Response:
-    return Response(status, html.encode("utf-8"), "text/html; charset=utf-8")
-
-
-def error_response(status: int, message: str, **extra) -> Response:
-    return json_response({"error": message, **extra}, status)
 
 
 class App:
@@ -107,24 +56,14 @@ class App:
     def dispatch(self, req: Request) -> Response:
         try:
             resp = self._dispatch(req)
-        except HttpError as exc:
-            resp = error_response(exc.status, exc.message, **exc.extra)
-        except dbmod.RowNotFound as exc:
-            resp = error_response(404, str(exc))
-        except dbmod.RowLocked as exc:
-            resp = error_response(409, str(exc), row=exc.row)
-        except dbmod.EmptyDatabase as exc:
-            resp = error_response(409, str(exc))
-        except dbmod.InvalidValue as exc:
-            resp = error_response(400, str(exc))
-        except ConfigError as exc:
-            resp = error_response(400, str(exc))
-        except (dbmod.DbUnavailable, *dbmod.DB_ERRORS):
+        except (DbUnavailable, *DB_ERRORS):
             traceback.print_exc(file=sys.stderr)
             resp = error_response(503, "Baza danych jest niedostępna. Sprawdź, czy MySQL działa (python3 -m perno.db --check).")
-        except Exception:  # noqa: BLE001 — granica HTTP: nieoczekiwany błąd to 500, szczegóły w terminalu serwera
-            traceback.print_exc(file=sys.stderr)
-            resp = error_response(500, "Wewnętrzny błąd serwera (szczegóły w terminalu, w którym działa server.py).")
+        except Exception as exc:  # noqa: BLE001 — granica HTTP: nieznany błąd to 500, szczegóły w terminalu serwera
+            known = errors.to_response(exc)
+            if known is None:
+                traceback.print_exc(file=sys.stderr)
+            resp = known or error_response(500, "Wewnętrzny błąd serwera (szczegóły w terminalu, w którym działa server.py).")
         resp.headers = {**SECURITY_HEADERS, **resp.headers}
         return resp
 

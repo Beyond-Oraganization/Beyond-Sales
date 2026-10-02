@@ -12,9 +12,8 @@ import sqlalchemy.exc as sa_exc
 
 from perno.cli import server
 from perno.settings import ConfigFile
-from perno.web import app as appmod
 from perno.web import layout
-from perno.web.app import MAX_BODY, Request, json_response
+from perno.web.http import MAX_BODY, SECURITY_HEADERS, Request, json_response
 from perno.web.page import Page
 from perno.web.pages import PAGES
 from tests.fixtures import FakeSmtp, make_app, make_db, put, sample_row
@@ -64,7 +63,7 @@ class PageTests(WebCase):
 
     def test_security_headers_on_every_response(self):
         for resp in (self.call("GET", "/"), self.call("GET", "/nie-ma"), self.call("GET", "/api/maile")):
-            for name in appmod.SECURITY_HEADERS:
+            for name in SECURITY_HEADERS:
                 self.assertIn(name, resp.headers)
 
     def test_new_page_appears_in_menu_and_serves_its_routes(self):

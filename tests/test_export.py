@@ -13,7 +13,7 @@ from perno import db as dbmod
 from perno.domain import statuses as st
 from perno.domain.rowfilter import RowFilter
 from perno.services import export as exporter
-from perno.web.app import Request
+from perno.web.http import Request
 from tests.fixtures import make_app, make_db, put, sample_row
 
 PORT = 8799
