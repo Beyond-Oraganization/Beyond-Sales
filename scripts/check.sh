@@ -39,7 +39,8 @@ step "testy"
 if [ "$fast" = 1 ]; then
     .venv/bin/python -m pytest -n auto -m "not slow"
 else
-    .venv/bin/python -m pytest -n auto
+    # Pełny przebieg pilnuje też pokrycia (stan z fazy 3: 93%; próg 90% przepuszcza drobne wahania, łapie dziury).
+    .venv/bin/python -m pytest -n auto --cov=perno --cov-report=term:skip-covered --cov-fail-under=90
 fi
 
 if [ "$audit" = 1 ]; then

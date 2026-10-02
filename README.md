@@ -198,9 +198,10 @@ Poprawki robisz w panelu albo w tym pliku; zmianę z pliku wprowadzisz polecenie
 
 **Wycofanie.** Stan sprzed dodania kraju i importu to pierwszy plik `backup/Maile_20261001_*_przed-importem.csv`. Nowe firmy to wiersze z `-n` w id: `DELETE FROM maile WHERE id LIKE '%-n%';`; kolumny usuwa `ALTER TABLE maile DROP COLUMN country, DROP COLUMN city, DROP COLUMN address, DROP COLUMN description;` (poprzednia wersja programu działa i bez nich, i z nimi).
 
-**Uwaga o treści maili:** kraj jest zapisany w bazie, ale szablony (`templates/*.html`) jeszcze go nie używają — wszystkie
-generowane maile są po polsku. Dotyczy to też firm spoza Polski; filtr „Wielka Brytania”/„Niemcy” w panelu pokazuje, do kogo
-polski mail już poszedł.
+**Uwaga o treści maili:** język maila zależy od ścieżki, którą powstał. Maile generowane z dossier (`send_emails.py`,
+„Odśwież dane” w panelu; patrz „7. Treść maili”) są zawsze po polsku, także dla firm spoza Polski — filtr
+„Wielka Brytania”/„Niemcy” w panelu pokazuje, do kogo polski mail już poszedł. Maile uzupełniane ze skanu
+(`wypelnij.py`) dostają język kraju firmy (PL → polski, GB/IE → angielski, DE/AT → niemiecki, ES → hiszpański).
 
 ### Dodawanie nowej strony do menu
 
@@ -305,7 +306,16 @@ maili jedzie do firm spoza Polski (szablony są po polsku). Świeża instalacja 
 ## 7. Treść maili
 
 - Szablony: `templates/eventy.html`, `templates/driverzy.html` (tokeny `{{obs}}`, `{{pitch}}`, `{{f_chcial}}` …).
-  Po zmianie uruchom `--dry-run --regenerate-pending` (wysłane maile nigdy nie są nadpisywane).
+  Po zmianie uruchom `--dry-run --regenerate-pending` (wysłane maile nigdy nie są nadpisywane). Wersje językowe
+  (`eventy.en.html`, `eventy.de.html`, `eventy.es.html`, to samo dla `driverzy`) są używane tylko przez `wypelnij.py`.
+- **Uzupełnianie ze skanu — `wypelnij.py`.** Dla firm z zakończonym skanem (zakładka Skraper albo `scrape.py`) przygotowuje
+  treść maila z kontaktów znalezionych na stronach firmy:
+  `python3 wypelnij.py lista` (które firmy się kwalifikują), `kontekst --out DIR` (po jednym pliku .md na firmę: opis,
+  kontakty, tekst kluczowych stron — materiał do napisania `obs`/`pitch`/`channel_summary`),
+  `zapisz tresci.json --dry-run` (walidacja bez zapisu), potem `zapisz tresci.json` (przed zapisem powstaje kopia w
+  `backup/`; firma dostaje status „Do wysłania”, wysyłka nadal wymaga Twojej decyzji). Adres e-mail musi pochodzić ze
+  skanu, a w mailu obcojęzycznym nie wolno zostawić polskich liter. `--ponownie` przelicza też wiersze „Do wysłania”,
+  `--takze-przerwane` uwzględnia skan przerwany przez serwer (≥ 10 stron).
 - Ręcznie pisana treść firm Eventy: tablica `const companies = [...]` w `../Maile_GTM_Eventy/index.html`,
   potem `python3 build_seed_data.py`.
 - Obrazek w treści (UX w Lesie) jest osadzany tylko wtedy, gdy wyrenderowany HTML zawiera `cid:ux_w_lesie_screenshot`.
@@ -328,13 +338,18 @@ mysqldump -u perno_app -p --single-transaction --no-tablespaces --skip-triggers 
 ## 9. Testy
 
 ```bash
-python3 -m unittest discover -s tests -t . -v
+scripts/check.sh                                       # ruff + mypy + kontrakty warstw + testy z progiem pokrycia (ok. 1 min)
+scripts/check.sh --fast                                # bez wolnych testów: szybka pętla przy refaktoryzacji
+.venv/bin/python -m pytest tests/test_x.py -k nazwa    # pojedyncze testy
+.venv/bin/python -m unittest discover -s tests -t . -v # to samo bez pytest
 ```
 
-Testy używają sqlite w pamięci i atrapy SMTP — nie dotykają prawdziwej bazy ani poczty. Logikę przeglądarki (filtry,
+Testy używają sqlite i atrapy SMTP — nie dotykają prawdziwej bazy ani poczty (prawdziwe `smtplib` jest w testach zablokowane
+w `tests/__init__.py`). Logikę przeglądarki (filtry,
 wyszukiwarka, sortowanie, zaznaczanie — `src/perno/web/pages/assets/filters.js`, `selection.js`) sprawdzają testy w JavaScript
 (`tests/js/*.test.js`), które ten sam zestaw uruchamia przez Node.js 18+ (bez Node są pomijane; osobno:
-`node --test tests/js/filters.test.js tests/js/selection.test.js`). Wspólne wektory `tests/filter_cases.json` pilnują,
+`node --test tests/js/*.test.js`); `tests/js/skaper_xss.test.js` uruchamia skrypt zakładki Skraper z wrogimi danymi
+(`<script>`, `onerror=`, `javascript:`) i pilnuje, żeby żadne nie stało się znacznikiem ani atrybutem. Wspólne wektory `tests/filter_cases.json` pilnują,
 żeby filtry w przeglądarce i `RowFilter` na serwerze wybierały te same wiersze. Opcjonalny test
 na prawdziwym MySQL (tryb ścisły, utf8mb4, `FOR UPDATE`, strumieniowanie, zbiorcza zmiana z cofaniem i jednoczesne
 operacje bez zakleszczeń, filtry z `TRIM`/`CASE`, oraz tabele i zapytania skrapera: kolumny ASCII, upserty, BLOB,

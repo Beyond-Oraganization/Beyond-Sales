@@ -15,6 +15,7 @@ SLOW_PREFIXES = (
     "tests/test_scraper_cli.py::InProcessRunTests",
     "tests/test_scraper_cli.py::RunnerHelperTests::test_spawn_detached_really_starts_a_process_that_the_cli_accepts",
     "tests/test_export.py::LargeTableTests",
+    "tests/test_entrypoints.py::RootScriptTests",
     "tests/test_scraper_crawler.py::ConcurrencyTests",
     "tests/test_scraper_crawler.py::ResilienceTests::test_user_stop_requeues_the_firm_and_resume_continues_where_it_stopped",
     "tests/test_scraper_crawler.py::ResilienceTests::test_database_failure_ends_the_run_as_interrupted_and_firms_return_to_the_queue",

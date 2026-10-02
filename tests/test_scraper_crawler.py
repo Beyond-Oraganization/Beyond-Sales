@@ -66,6 +66,11 @@ class CrawlerCase(NoNetworkMixin):
         self.store.finish_run(run_id, result["status"], result["stats"])
         return result
 
+    def assert_slept(self, seconds, tolerance=1e-6):
+        """Czas na zegarze udającym czas składa się z ułamków wynikających z prawdziwego RTT, więc dokładna równość
+        `60.0` bywa 59.99999999999 — porównujemy z tolerancją."""
+        self.assertTrue(any(abs(slept - seconds) < tolerance for slept in self.clock.sleeps), self.clock.sleeps)
+
     def row(self, firma_id):
         return self.store.get_firma(firma_id)
 
@@ -340,7 +345,7 @@ class RobotsAndSitemapTests(CrawlerCase):
         firm = self.row(firma_id)
         self.assertEqual((firm["skan_status"], firm["skan_przyczyna"]), (st.FIRMA_ZABLOKOWANA, "robots_odmowa"))
         self.assertEqual(self.hit_paths("a.test"), ["/robots.txt", "/robots.txt"])
-        self.assertIn(60.0, self.clock.sleeps)
+        self.assert_slept(60.0)
 
     def test_robots_server_error_is_an_error_not_permission(self):
         self.site("a.test", {"/": Page(html())}, robots=Page("boom", status=500, content_type="text/plain"))
@@ -412,7 +417,7 @@ class RefusalTests(CrawlerCase):
         firm = self.row(firma_id)
         self.assertEqual((firm["skan_status"], firm["skan_przyczyna"]), (st.FIRMA_ZABLOKOWANA, "http_403"))
         self.assertEqual(self.hit_paths("a.test").count("/"), 2)
-        self.assertIn(60.0, self.clock.sleeps)
+        self.assert_slept(60.0)
         self.assertEqual(self.by_path(firma_id)["/"]["status"], "oczekuje")
 
     def test_bot_wall_stops_the_firm_and_we_never_try_to_get_around_it(self):

@@ -13,9 +13,11 @@ Uruchom ponownie, gdy folder Firmy/Eventy urośnie o kolejne dossier.
 
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 from collections import Counter
+from typing import Optional
 
 from perno import settings as cfg
 from perno.services.seed import driverzy as de
@@ -161,7 +163,12 @@ def write_csv(path: str, columns: list[str], rows: list[dict]) -> None:
             writer.writerow({col: row.get(col, "") for col in columns})
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    return argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+
+
+def main(argv: Optional[list] = None) -> None:
+    build_parser().parse_args(argv)  # bez opcji; chroni przed uruchomieniem budowy przy `--help`
     eventy_rows = build_eventy_rows()
     write_csv(EVENTY_OUT, EVENTY_COLUMNS, eventy_rows)
 

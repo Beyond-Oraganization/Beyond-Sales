@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import weakref
 from datetime import datetime, timedelta
 from typing import Callable, Optional, Sequence
 
@@ -32,6 +33,7 @@ class FakeClock:
 def make_db(clock=None, url: str = "sqlite://") -> dbmod.Database:
     engine = dbmod.make_engine(sa.engine.make_url(url))
     database = dbmod.Database(engine, clock=clock or FakeClock())
+    weakref.finalize(database, engine.dispose)  # zamyka połączenia sqlite, gdy test porzuci bazę (bez ResourceWarning)
     database.ensure_schema()
     return database
 

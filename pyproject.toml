@@ -66,7 +66,6 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Skrypty CLI drukują wynik dla człowieka; biblioteka przechodzi na logging w fazie 3.4.
 "src/perno/cli/**" = ["T201"]
-"src/perno/services/sending.py" = ["T201"]      # ostrzeżenie o wysłanym mailu bez zapisu statusu (faza 3.4)
 "src/perno/scraper/runner.py" = ["T201"]        # RunLogger drukuje linie logu (faza 4.11)
 "tests/**" = ["S104", "S105", "S106", "S107", "S603", "RUF012", "PLR0912", "PLR0913", "PLR0915", "C901"]
 
@@ -95,11 +94,15 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
+module = ["perno.domain.*", "perno.services.*"]
+disallow_untyped_defs = true       # kod z regułami biznesowymi ma pełne adnotacje (plan 3.5)
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
 module = [
     "perno.scraper.schema",       # 36
     "perno.mailer.smtp_client",   # 5
     "perno.scraper.fetcher",      # 5
-    "perno.mailer.image_prep",    # 4
 ]
 ignore_errors = true
 
