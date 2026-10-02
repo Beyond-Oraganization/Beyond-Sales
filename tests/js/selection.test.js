@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const S = require('../../lib/pages/assets/selection.js');
+const S = require('../../src/perno/web/pages/assets/selection.js');
 
 const ORDER = ['a', 'b', 'c', 'd', 'e', 'f'];
 const sorted = (sel) => sel.toArray().sort();

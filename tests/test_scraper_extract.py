@@ -4,8 +4,8 @@ import subprocess
 import sys
 import unittest
 
-from lib.scraper import extract
-from lib.scraper.extract import nofollow_requested, parse_html
+from perno.scraper import extract
+from perno.scraper.extract import nofollow_requested, parse_html
 
 BASE = "https://firma.pl/kontakt/"
 
@@ -159,9 +159,9 @@ class RobotsDirectiveTests(unittest.TestCase):
 
 class ImportIsolationTests(unittest.TestCase):
     def test_importing_extract_and_pages_does_not_import_bs4(self):
-        code = ("import sys; import lib.scraper.extract, lib.scraper.contacts; "
+        code = ("import sys; import perno.scraper.extract, perno.scraper.contacts; "
                 "assert 'bs4' not in sys.modules, 'bs4 zaimportowany przy imporcie'; "
-                "import lib.pages; assert 'bs4' not in sys.modules")
+                "import perno.web.pages; assert 'bs4' not in sys.modules")
         proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 

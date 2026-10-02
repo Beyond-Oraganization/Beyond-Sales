@@ -11,7 +11,7 @@ import subprocess
 import unittest
 from datetime import date
 
-from lib.db import RowFilter
+from perno.db import RowFilter
 from tests.fixtures import make_db, put, sample_row
 
 HERE = os.path.dirname(os.path.abspath(__file__))

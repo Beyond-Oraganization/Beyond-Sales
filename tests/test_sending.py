@@ -8,10 +8,11 @@ from unittest import mock
 
 import sqlalchemy.exc as sa_exc
 
-from lib import config as cfg
-from lib import mime_builder, sending
-from lib import statuses as st
-from lib.config import ConfigError
+from perno import settings as cfg
+from perno.domain import statuses as st
+from perno.mailer import mime_builder
+from perno.services import sending
+from perno.settings import ConfigError
 from tests.fixtures import FakeSmtp, make_db, put, sample_row
 
 CONFIG = {"SMTP_USER": "roman@z3x.pl"}

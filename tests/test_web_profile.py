@@ -7,7 +7,7 @@ import os
 import re
 import tempfile
 
-from lib import dashboard
+from perno.services import dashboard
 from tests.fixtures import put, sample_row
 from tests.test_web import WebCase
 

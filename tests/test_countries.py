@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from lib import countries
-from lib.countries import choices, country_name, flag, normalize_country
+from perno.domain import countries
+from perno.domain.countries import choices, country_name, flag, normalize_country
 
 
 class NormalizeTests(unittest.TestCase):

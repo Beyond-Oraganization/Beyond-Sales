@@ -8,9 +8,9 @@ from unittest import mock
 
 import sqlalchemy as sa
 
-from lib import bulk
-from lib import db as dbmod
-from lib.db import InvalidValue
+from perno import db as dbmod
+from perno.db import InvalidValue
+from perno.services import bulk
 from tests.fixtures import FakeClock, make_db, put, sample_row
 
 SENT_AT = "2026-09-29T14:00:00"

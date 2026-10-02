@@ -6,11 +6,10 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 from sqlalchemy.schema import CreateIndex, CreateTable
 
-from lib import db as dbmod
-from lib.scraper import schema, statuses
-from lib.scraper.settings import (HARD_DELAY_FLOOR, LIMITS, STORE_HTML_MODES, ScanSettings,
-                                  SettingsError)
-from lib.scraper.store import Store
+from perno import db as dbmod
+from perno.scraper import schema, statuses
+from perno.scraper.settings import HARD_DELAY_FLOOR, LIMITS, STORE_HTML_MODES, ScanSettings, SettingsError
+from perno.scraper.store import Store
 from tests.fixtures import make_db
 
 

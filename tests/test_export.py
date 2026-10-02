@@ -9,12 +9,12 @@ from datetime import datetime
 
 import openpyxl
 
-from lib import db as dbmod
-from lib import exporter
-from lib import statuses as st
-from lib.app import App, Request
-from lib.db import RowFilter
-from lib.pages import PAGES
+from perno import db as dbmod
+from perno.db import RowFilter
+from perno.domain import statuses as st
+from perno.services import export as exporter
+from perno.web.app import App, Request
+from perno.web.pages import PAGES
 from tests.fixtures import make_db, put, sample_row
 
 PORT = 8799

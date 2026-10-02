@@ -12,14 +12,14 @@ from unittest import mock
 import sqlalchemy as sa
 from sqlalchemy import exc as sa_exc
 
-from lib.scraper import crawler as crawler_mod
-from lib.scraper import statuses as st
-from lib.scraper.crawler import Crawler
-from lib.scraper.fetcher import Fetcher
-from lib.scraper.politeness import IpLimiter
-from lib.scraper.schema import firmy, kontakty, strony, strony_tresc
-from lib.scraper.settings import ScanSettings
-from lib.scraper.store import Store
+from perno.scraper import crawler as crawler_mod
+from perno.scraper import statuses as st
+from perno.scraper.crawler import Crawler
+from perno.scraper.fetcher import Fetcher
+from perno.scraper.politeness import IpLimiter
+from perno.scraper.schema import firmy, kontakty, strony, strony_tresc
+from perno.scraper.settings import ScanSettings
+from perno.scraper.store import Store
 from tests.fake_sites import FakeInternet, NoNetworkMixin, Page, html, local_resolver
 from tests.fixtures import FakeClock, FakeTime, ZeroRng, make_db
 

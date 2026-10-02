@@ -4,8 +4,8 @@ import sys
 import unittest
 import urllib.robotparser
 
-from lib.scraper import robots
-from lib.scraper.robots import parse_robots
+from perno.scraper import robots
+from perno.scraper.robots import parse_robots
 
 
 def allowed(text, path, token="PernoContextBot"):

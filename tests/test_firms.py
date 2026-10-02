@@ -12,12 +12,20 @@ from unittest import mock
 
 import sqlalchemy as sa
 
-import firmy
-from lib import config as cfg
-from lib import db as dbmod
-from lib import firms
-from lib import statuses as st
-from lib.firms import FirmsError, assign_profiles, domain_key, import_firms, profile_report, read_import_csv, read_profile_csv
+from perno import db as dbmod
+from perno import settings as cfg
+from perno.cli import firms as firmy
+from perno.domain import statuses as st
+from perno.services import firms_import as firms
+from perno.services.firms_import import (
+    FirmsError,
+    assign_profiles,
+    domain_key,
+    import_firms,
+    profile_report,
+    read_import_csv,
+    read_profile_csv,
+)
 from tests.fixtures import make_db, old_database, put, sample_row
 
 
@@ -402,7 +410,7 @@ class CliTests(TempCase):
     def test_countries_dry_run_needs_the_new_columns_and_explains_how_to_get_them(self):
         code, _, err = self.cli("kraje", self.countries_csv, "--dry-run")
         self.assertEqual(code, 1)
-        self.assertIn("python3 -m lib.db --upgrade", err)
+        self.assertIn("python3 -m perno.db --upgrade", err)
 
     def test_countries_end_to_end(self):
         self.cli("import", self.new_csv, "--segment", "eventy")

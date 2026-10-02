@@ -10,9 +10,9 @@ import tempfile
 import unittest
 from unittest import mock
 
-from lib.scraper import fetcher
-from lib.scraper.fetcher import Fetcher, decode_html, is_public_ip
-from lib.scraper.settings import ROBOTS_MAX_BYTES, ScanSettings
+from perno.scraper import fetcher
+from perno.scraper.fetcher import Fetcher, decode_html, is_public_ip
+from perno.scraper.settings import ROBOTS_MAX_BYTES, ScanSettings
 from tests.fake_sites import FakeInternet, NoNetworkMixin, Page, html, local_resolver
 
 HOST = "site.test"

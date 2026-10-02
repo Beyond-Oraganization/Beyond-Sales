@@ -14,12 +14,12 @@ import unittest
 from datetime import datetime
 from unittest import mock
 
-import scrape
-from lib import config as cfg
-from lib.scraper import runner
-from lib.scraper import statuses as st
-from lib.scraper.settings import ScanSettings
-from lib.scraper.store import Store
+from perno import settings as cfg
+from perno.cli import scrape
+from perno.scraper import runner
+from perno.scraper import statuses as st
+from perno.scraper.settings import ScanSettings
+from perno.scraper.store import Store
 from tests.fake_sites import FakeInternet, NoNetworkMixin, Page, html
 from tests.fixtures import FakeClock, make_db, put, sample_row
 
@@ -233,7 +233,7 @@ class RealProcessTests(unittest.TestCase):
         return self.store.add_manual(self.net.url("a.test", "/"))["id"]
 
     def spawn(self, *argv):
-        proc = subprocess.Popen([sys.executable, "-u", os.path.join(BASE, "scrape.py"), "--config", self.config, *argv],
+        proc = subprocess.Popen([sys.executable, "-u", "-m", "perno.cli.scrape", "--config", self.config, *argv],
                                 cwd=BASE, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.procs.append(proc)
         return proc
@@ -365,8 +365,8 @@ class RunnerHelperTests(unittest.TestCase):
         self.assertIsInstance(argv, list)
         self.assertEqual(pid, 4321)
         self.assertEqual(argv[0], sys.executable)
-        self.assertEqual(argv[2], os.path.join(cfg.BASE_DIR, "scrape.py"))
-        self.assertEqual(argv[3:], ["--config", "/x/config.env", "run", "--run-id", "7"])  # --config przed podpoleceniem
+        self.assertEqual(argv[1:4], ["-u", "-m", "perno.cli.scrape"])  # moduł, nie ścieżka pliku: nie zależy od wrappera
+        self.assertEqual(argv[4:], ["--config", "/x/config.env", "run", "--run-id", "7"])  # --config przed podpoleceniem
         kwargs = popen.call_args[1]
         self.assertTrue(kwargs["start_new_session"] and kwargs["close_fds"])
         self.assertNotIn("shell", kwargs)

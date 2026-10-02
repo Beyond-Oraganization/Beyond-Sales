@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import sqlalchemy as sa
 
-from lib import db as dbmod
+from perno import db as dbmod
 
 
 class FakeClock:

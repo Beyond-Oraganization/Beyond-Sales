@@ -10,9 +10,10 @@ import unittest
 from sqlalchemy.dialects import mysql
 from sqlalchemy.schema import CreateIndex, CreateTable
 
-from lib import config, legacy_csv
-from lib import db as dbmod
-from lib import statuses as st
+from perno import db as dbmod
+from perno import settings as config
+from perno.db import legacy_csv
+from perno.domain import statuses as st
 from tests.fixtures import FakeClock, make_db, put, sample_row
 
 

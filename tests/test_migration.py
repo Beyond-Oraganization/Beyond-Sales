@@ -10,10 +10,10 @@ import tempfile
 import unittest
 from unittest import mock
 
-import migrate_csv_to_sql as migrate
-from lib import config as cfg
-from lib import db as dbmod
-from lib import legacy_csv
+from perno import db as dbmod
+from perno import settings as cfg
+from perno.cli import migrate
+from perno.db import legacy_csv
 from tests.fixtures import sample_row
 
 

@@ -2,7 +2,7 @@
 // Uruchamiane przez `node --test` (z tests/test_js.py). Sprawdzają czystą logikę filters.js — bez przeglądarki.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const F = require('../../lib/pages/assets/filters.js');
+const F = require('../../src/perno/web/pages/assets/filters.js');
 const shared = require('../filter_cases.json');
 
 const STATUS_META = {

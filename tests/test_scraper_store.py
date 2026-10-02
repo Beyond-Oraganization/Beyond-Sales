@@ -11,12 +11,26 @@ from datetime import timedelta
 import sqlalchemy as sa
 from sqlalchemy import exc as sa_exc
 
-from lib.scraper import statuses as st
-from lib.scraper.contacts import Contact
-from lib.scraper.schema import TABLE_NAMES, firmy, firmy_maile, kontakty, skan_przebiegi, strony, strony_tresc
-from lib.scraper.store import (DomainTaken, FirmaBusy, InvalidFirma, LeaseLost, LinkRecord, NotFound, PageRecord,
-                               RunActive, Store, StoreError, ascii_or_none, clean_text, compress_html, pid_alive)
-from lib.scraper.urls import url_hash
+from perno.scraper import statuses as st
+from perno.scraper.contacts import Contact
+from perno.scraper.schema import TABLE_NAMES, firmy, firmy_maile, kontakty, skan_przebiegi, strony, strony_tresc
+from perno.scraper.store import (
+    DomainTaken,
+    FirmaBusy,
+    InvalidFirma,
+    LeaseLost,
+    LinkRecord,
+    NotFound,
+    PageRecord,
+    RunActive,
+    Store,
+    StoreError,
+    ascii_or_none,
+    clean_text,
+    compress_html,
+    pid_alive,
+)
+from perno.scraper.urls import url_hash
 from tests.fixtures import FakeClock, make_db, put, sample_row
 
 
@@ -692,7 +706,7 @@ class RetryTests(StoreCase):
                 raise self.op_error(1213)
             return "ok"
 
-        import lib.scraper.store as module
+        import perno.scraper.store as module
         original = module.time.sleep
         module.time.sleep = lambda s: None
         try:
@@ -718,7 +732,7 @@ class RetryTests(StoreCase):
             calls.append(1)
             raise self.op_error(1205)
 
-        import lib.scraper.store as module
+        import perno.scraper.store as module
         original = module.time.sleep
         module.time.sleep = lambda s: None
         try:

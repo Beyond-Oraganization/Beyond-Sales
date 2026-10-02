@@ -2,10 +2,18 @@ from __future__ import annotations
 
 import unittest
 
-from lib.scraper import contacts
-from lib.scraper.contacts import (decode_cfemail, email_role, emails_in_text, extract_contacts, normalize_email,
-                                  normalize_phone, phones_in_text, social_profile)
-from lib.scraper.extract import parse_html
+from perno.scraper import contacts
+from perno.scraper.contacts import (
+    decode_cfemail,
+    email_role,
+    emails_in_text,
+    extract_contacts,
+    normalize_email,
+    normalize_phone,
+    phones_in_text,
+    social_profile,
+)
+from perno.scraper.extract import parse_html
 
 PAGE = "https://firma.pl/kontakt"
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from lib import db as dbmod
+from perno import db as dbmod
 from tests.fixtures import put, sample_row
 from tests.test_web import WebCase
 

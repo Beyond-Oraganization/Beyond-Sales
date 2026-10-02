@@ -3,8 +3,8 @@ from __future__ import annotations
 import random
 import unittest
 
-from lib.scraper import urls
-from lib.scraper.urls import TrapGuard, host_key, normalize_url, page_class, site_key, static_reject
+from perno.scraper import urls
+from perno.scraper.urls import TrapGuard, host_key, normalize_url, page_class, site_key, static_reject
 
 
 class NormalizeTests(unittest.TestCase):

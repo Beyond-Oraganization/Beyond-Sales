@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from datetime import datetime
 
-from lib import statuses as st
+from perno.domain import statuses as st
 
 NOW = datetime(2026, 9, 30, 12, 0, 0)
 SENT_AT = datetime(2026, 9, 29, 14, 23, 11)

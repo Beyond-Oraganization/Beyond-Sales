@@ -11,12 +11,12 @@ from http.server import ThreadingHTTPServer
 
 import sqlalchemy.exc as sa_exc
 
-import server
-from lib import app as appmod
-from lib import layout
-from lib.app import MAX_BODY, App, Request, json_response
-from lib.pages import PAGES
-from lib.pages.base import Page
+from perno.cli import server
+from perno.web import app as appmod
+from perno.web import layout
+from perno.web.app import MAX_BODY, App, Request, json_response
+from perno.web.pages import PAGES
+from perno.web.pages.base import Page
 from tests.fixtures import FakeSmtp, make_db, put, sample_row
 
 PORT = 8799

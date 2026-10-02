@@ -6,9 +6,9 @@ import time
 import unittest
 from datetime import datetime, timezone
 
-from lib.scraper import politeness as pol
-from lib.scraper.politeness import GlobalGate, HostGate, IpLimiter
-from lib.scraper.settings import ScanSettings
+from perno.scraper import politeness as pol
+from perno.scraper.politeness import GlobalGate, HostGate, IpLimiter
+from perno.scraper.settings import ScanSettings
 from tests.fixtures import FakeTime, ZeroRng
 
 

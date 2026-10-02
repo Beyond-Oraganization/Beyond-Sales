@@ -8,12 +8,12 @@ from unittest import mock
 
 import sqlalchemy as sa
 
-from lib.pages import skaper
-from lib.scraper import statuses as st
-from lib.scraper.contacts import Contact
-from lib.scraper.schema import firmy
-from lib.scraper.store import LinkRecord, PageRecord, Store
-from lib.scraper.urls import url_hash
+from perno.scraper import statuses as st
+from perno.scraper.contacts import Contact
+from perno.scraper.schema import firmy
+from perno.scraper.store import LinkRecord, PageRecord, Store
+from perno.scraper.urls import url_hash
+from perno.web.pages import scraper as skaper
 from tests.fixtures import put, sample_row
 from tests.test_web import SECRET, WebCase, write_config
 
@@ -359,8 +359,8 @@ class StartupHelpersTests(SkaperCase):
 
 class ImportIsolationTests(unittest.TestCase):
     def test_panel_modules_never_import_bs4_or_the_crawler(self):
-        code = ("import sys; import server, lib.pages, lib.pages.skaper; "
-                "bad = [m for m in ('bs4', 'lib.scraper.crawler', 'lib.scraper.extract') if m in sys.modules]; "
+        code = ("import sys; import perno.cli.server, perno.web.pages, perno.web.pages.scraper; "
+                "bad = [m for m in ('bs4', 'perno.scraper.crawler', 'perno.scraper.extract') if m in sys.modules]; "
                 "assert not bad, bad")
         proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=BASE)
         self.assertEqual(proc.returncode, 0, proc.stderr)

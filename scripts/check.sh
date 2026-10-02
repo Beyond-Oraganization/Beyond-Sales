@@ -32,6 +32,9 @@ step "ruff"
 step "mypy"
 .venv/bin/mypy
 
+step "warstwy (import-linter)"
+.venv/bin/lint-imports
+
 step "testy"
 if [ "$fast" = 1 ]; then
     .venv/bin/python -m pytest -n auto -m "not slow"

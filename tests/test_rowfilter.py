@@ -7,8 +7,8 @@ import unittest
 from datetime import date
 from unittest import mock
 
-from lib import db as dbmod
-from lib.db import NO_COUNTRY, RowFilter
+from perno import db as dbmod
+from perno.db import NO_COUNTRY, RowFilter
 from tests.fixtures import make_db, put, sample_row
 
 

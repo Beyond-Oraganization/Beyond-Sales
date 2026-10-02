@@ -8,10 +8,10 @@ import unittest
 import sqlalchemy as sa
 from sqlalchemy.dialects import mysql, sqlite
 
-from lib import db as dbmod
-from lib import legacy_csv
-from lib.db import InvalidValue, add_column_statements, from_api
+from perno import db as dbmod
+from perno.db import InvalidValue, add_column_statements, from_api, legacy_csv
 from tests.fixtures import make_db, old_database, put, sample_row
+
 
 class CountryValidationTests(unittest.TestCase):
     def test_country_is_stored_as_iso_code_whatever_the_input_form(self):

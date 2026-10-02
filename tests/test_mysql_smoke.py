@@ -22,16 +22,16 @@ import openpyxl
 import sqlalchemy as sa
 from sqlalchemy import exc as sa_exc
 
-from lib import bulk
-from lib import config as cfg
-from lib import db as dbmod
-from lib import exporter
-from lib import statuses as st
-from lib.scraper import schema as scraper_schema
-from lib.scraper import statuses as sst
-from lib.scraper.contacts import Contact
-from lib.scraper.store import LeaseLost, LinkRecord, PageRecord, RunActive, Store
-from lib.scraper.urls import url_hash
+from perno import db as dbmod
+from perno import settings as cfg
+from perno.domain import statuses as st
+from perno.scraper import schema as scraper_schema
+from perno.scraper import statuses as sst
+from perno.scraper.contacts import Contact
+from perno.scraper.store import LeaseLost, LinkRecord, PageRecord, RunActive, Store
+from perno.scraper.urls import url_hash
+from perno.services import bulk
+from perno.services import export as exporter
 from tests.fixtures import sample_row
 
 TEST_DB = os.environ.get("PERNO_TEST_DB_NAME", "")

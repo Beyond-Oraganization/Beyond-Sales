@@ -1,3 +1,7 @@
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
 [project]
 name = "perno"
 version = "0.1.0"
@@ -12,6 +16,15 @@ dependencies = [
     "lxml>=5,<7",  # szybszy parser HTML, używany od fazy 4.4 planu przebudowy
 ]
 
+[project.scripts]
+perno-server = "perno.cli.server:main"
+perno-send = "perno.cli.send:main"
+perno-scrape = "perno.cli.scrape:main"
+perno-firms = "perno.cli.firms:main"
+perno-enrich = "perno.cli.enrich:main"
+perno-migrate = "perno.cli.migrate:main"
+perno-seed = "perno.cli.seed:main"
+
 [dependency-groups]
 dev = [
     "ruff",
@@ -25,8 +38,7 @@ dev = [
 ]
 
 [tool.uv]
-# Faza 0: tylko środowisko z zależnościami. Faza 1 przechodzi na układ src/perno (package = true).
-package = false
+package = true   # układ src/perno, instalacja edytowalna (uv sync)
 
 # ---------------------------------------------------------------------------------------------
 # Linter. Reguły łapiące błędy (F, B, BLE, S, C90, PLR) są egzekwowane od razu; reguły stylu,
@@ -42,7 +54,6 @@ extend-exclude = ["backup", "logs", "data"]
 select = ["E", "F", "I", "B", "UP", "SIM", "BLE", "S", "C90", "PLR0912", "PLR0913", "PLR0915", "T20", "RUF"]
 ignore = [
     "E501",    # 255x przy 120; brak formatera, długie komentarze po polsku — nie egzekwujemy
-    "I001",    # 10x; import-y przepisuje faza 1, wtedy włączamy i uruchamiamy `ruff --fix`
     "UP035", "UP037", "UP045", "UP017", "UP041", "UP012",  # ~175x; modernizacja typów (Optional[X] -> X | None) po fazie 1
     "S311",    # random służy do jittera i opóźnień, nie do kryptografii
     "RUF001", "RUF002", "RUF003",  # polskie cudzysłowy typograficzne w tekstach i docstringach
@@ -52,18 +63,12 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Skrypty CLI drukują wynik dla człowieka; biblioteka przechodzi na logging w fazie 3.4.
-"server.py" = ["T201"]
-"send_emails.py" = ["T201"]
-"scrape.py" = ["T201"]
-"firmy.py" = ["T201"]
-"wypelnij.py" = ["T201"]
-"migrate_csv_to_sql.py" = ["T201"]
-"build_seed_data.py" = ["T201"]
-"lib/db.py" = ["T201", "B008"]            # `python -m lib.db --check`; RowFilter to niezmienna dataclass
-"lib/sending.py" = ["T201"]               # ostrzeżenie o wysłanym mailu bez zapisu statusu (faza 3.4)
-"lib/app.py" = ["T201"]                   # komunikat przy błędzie odświeżenia index.html (faza 2.7)
-"lib/scraper/runner.py" = ["T201"]        # RunLogger drukuje linie logu (faza 4.11)
-"lib/exporter.py" = ["RUF009"]            # RowFilter() jako domyślna wartość pola: niezmienna dataclass
+"src/perno/cli/**" = ["T201"]
+"src/perno/db/__init__.py" = ["T201", "B008"]   # `python -m perno.db --check`; RowFilter to niezmienna dataclass
+"src/perno/services/sending.py" = ["T201"]      # ostrzeżenie o wysłanym mailu bez zapisu statusu (faza 3.4)
+"src/perno/web/app.py" = ["T201"]               # komunikat przy błędzie odświeżenia index.html (faza 2.7)
+"src/perno/scraper/runner.py" = ["T201"]        # RunLogger drukuje linie logu (faza 4.11)
+"src/perno/services/export.py" = ["RUF009"]     # RowFilter() jako domyślna wartość pola: niezmienna dataclass
 "tests/**" = ["S104", "S105", "S106", "S107", "S603", "RUF012", "PLR0912", "PLR0913", "PLR0915", "C901"]
 
 [tool.ruff.lint.mccabe]
@@ -82,8 +87,9 @@ max-statements = 70    # ratchet: 70 -> 60 -> 50
 # ---------------------------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.13"
-files = ["lib", "server.py", "send_emails.py", "scrape.py", "firmy.py", "wypelnij.py",
-         "migrate_csv_to_sql.py", "build_seed_data.py"]
+files = ["src"]
+mypy_path = "src"
+explicit_package_bases = true
 ignore_missing_imports = true
 follow_imports = "silent"
 warn_unused_ignores = true
@@ -91,20 +97,20 @@ warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
 module = [
-    "lib.scraper.schema",       # 36
-    "lib.scraper.crawler",      # 21
-    "lib.db",                   # 18
-    "lib.scraper.store",        # 8
-    "lib.smtp_client",          # 5
-    "lib.scraper.robots",       # 5
-    "lib.scraper.fetcher",      # 5
-    "lib.image_prep",           # 4
-    "lib.mime_builder",         # 3
-    "lib.scraper.urls",         # 2
-    "lib.pages.skaper",         # 2
-    "lib.pages.wysylka", "lib.sending", "lib.firms", "lib.config", "lib.bulk",
-    "lib.scraper.settings", "lib.scraper.politeness", "lib.scraper.contacts",
-    "server",                   # 1
+    "perno.scraper.schema",       # 36
+    "perno.scraper.crawler",      # 21
+    "perno.db",                   # 18
+    "perno.scraper.store",        # 8
+    "perno.mailer.smtp_client",   # 5
+    "perno.scraper.robots",       # 5
+    "perno.scraper.fetcher",      # 5
+    "perno.mailer.image_prep",    # 4
+    "perno.mailer.mime_builder",  # 3
+    "perno.scraper.urls",         # 2
+    "perno.web.pages.scraper",    # 2
+    "perno.web.pages.mailing", "perno.services.sending", "perno.services.firms_import", "perno.settings",
+    "perno.services.bulk", "perno.scraper.settings", "perno.scraper.politeness", "perno.scraper.contacts",
+    "perno.cli.server",           # 1
 ]
 ignore_errors = true
 
@@ -115,3 +121,34 @@ addopts = "-q"
 markers = [
     "slow: wolne testy (prawdziwe odliczanie czasu, podprocesy); szybka warstwa: pytest -m 'not slow'",
 ]
+
+# ---------------------------------------------------------------------------------------------
+# Warstwy (egzekwowane przez `lint-imports` w scripts/check.sh). Dziś zabraniamy zależności "w górę";
+# w fazie 2 dojdą kontrakty dla usług i adapterów, gdy zostaną rozdzielone.
+# ---------------------------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "perno"
+
+[[tool.importlinter.contracts]]
+name = "domain nie zależy od adapterów, usług, WWW ani CLI"
+type = "forbidden"
+source_modules = ["perno.domain"]
+forbidden_modules = ["perno.db", "perno.mailer", "perno.services", "perno.scraper", "perno.web", "perno.cli"]
+
+[[tool.importlinter.contracts]]
+name = "adaptery (db, mailer, scraper) nie zależą od usług, WWW ani CLI"
+type = "forbidden"
+source_modules = ["perno.db", "perno.mailer", "perno.scraper"]
+forbidden_modules = ["perno.services", "perno.web", "perno.cli"]
+
+[[tool.importlinter.contracts]]
+name = "usługi nie zależą od WWW ani CLI"
+type = "forbidden"
+source_modules = ["perno.services"]
+forbidden_modules = ["perno.web", "perno.cli"]
+
+[[tool.importlinter.contracts]]
+name = "WWW nie zależy od CLI"
+type = "forbidden"
+source_modules = ["perno.web"]
+forbidden_modules = ["perno.cli"]

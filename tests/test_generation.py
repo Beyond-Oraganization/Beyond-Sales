@@ -3,8 +3,10 @@ from __future__ import annotations
 import unittest
 from datetime import datetime
 
-from lib import config, generation, mime_builder
-from lib import statuses as st
+from perno import settings as config
+from perno.domain import statuses as st
+from perno.mailer import mime_builder
+from perno.services import generation
 
 NOW = datetime(2026, 9, 30, 12, 0, 0)
 CID = mime_builder.INLINE_IMAGE_CID

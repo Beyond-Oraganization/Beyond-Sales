@@ -9,10 +9,10 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from unittest import mock
 
-import send_emails
-from lib import config as cfg
-from lib import db as dbmod
-from lib.config import ConfigError
+from perno import db as dbmod
+from perno import settings as cfg
+from perno.cli import send as send_emails
+from perno.settings import ConfigError
 from tests.fixtures import put, sample_row
 
 
@@ -54,7 +54,7 @@ class CliTests(unittest.TestCase):
             patcher = mock.patch.object(cfg, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
-        patcher = mock.patch("lib.smtp_client.SmtpClient", FakeClient)
+        patcher = mock.patch("perno.mailer.smtp_client.SmtpClient", FakeClient)
         patcher.start()
         self.addCleanup(patcher.stop)
 
