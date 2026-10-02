@@ -356,15 +356,26 @@ wyszukiwarka, sortowanie, zaznaczanie — `src/perno/web/pages/assets/filters.js
 żeby filtry w przeglądarce i `RowFilter` na serwerze wybierały te same wiersze. Opcjonalny test
 na prawdziwym MySQL (tryb ścisły, utf8mb4, `FOR UPDATE`, strumieniowanie, zbiorcza zmiana z cofaniem i jednoczesne
 operacje bez zakleszczeń, filtry z `TRIM`/`CASE`, oraz tabele i zapytania skrapera: kolumny ASCII, upserty, BLOB,
-wyłączność dzierżawy między wątkami) wymaga bazy testowej:
+wyłączność dzierżawy między wątkami) wymaga bazy testowej. Najprościej uruchomić osobny, tymczasowy serwer MySQL, który
+nie dotyka Twojej bazy ani haseł (słucha tylko na 127.0.0.1:33307, dane są w katalogu tymczasowym i syntetyczne):
+
+```bash
+scripts/scratch_mysql.sh start                     # pierwszy raz inicjalizuje katalog danych
+PERNO_TEST_DB_URL="$(scripts/scratch_mysql.sh url)" .venv/bin/python -m pytest tests/test_mysql_smoke.py
+scripts/scratch_mysql.sh stop                      # albo `reset`, żeby skasować dane
+```
+
+Albo na własnym serwerze, ze współdzielonymi danymi logowania z `config.env`:
 
 ```sql
 CREATE DATABASE IF NOT EXISTS perno_maile_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 GRANT ALL PRIVILEGES ON perno_maile_test.* TO 'perno_app'@'localhost', 'perno_app'@'127.0.0.1';
 ```
 ```bash
-PERNO_TEST_DB_NAME=perno_maile_test python3 -m unittest tests.test_mysql_smoke -v
+PERNO_TEST_DB_NAME=perno_maile_test .venv/bin/python -m pytest tests/test_mysql_smoke.py
 ```
+
+W obu wariantach nazwa bazy musi kończyć się na `_test` (test kasuje w niej tabele).
 
 Zmienna `PERNO_DB_URL` (np. `sqlite:////tmp/demo.db`) podmienia bazę na demo/testową — wtedy prawdziwa
 wysyłka SMTP jest zablokowana, dopóki nie ustawisz też `PERNO_ALLOW_REAL_SMTP=1`.

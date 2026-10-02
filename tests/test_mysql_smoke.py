@@ -1,10 +1,12 @@
 """Test dymny warstwy danych na PRAWDZIWYM MySQL (to, czego sqlite nie pokryje:
 tryb ścisły, utf8mb4, słowo zastrzeżone `row_number`, FOR UPDATE, strumieniowanie).
 
-Uruchamiany wyłącznie, gdy ustawiono PERNO_TEST_DB_NAME, np.:
+Uruchamiany wyłącznie, gdy ustawiono PERNO_TEST_DB_NAME albo PERNO_TEST_DB_URL, np.:
     PERNO_TEST_DB_NAME=perno_maile_test python3 -m unittest tests.test_mysql_smoke -v
-Nazwa bazy MUSI kończyć się na `_test` — test usuwa i odtwarza w niej tabelę.
-Dane logowania bierze z config.env (DB_HOST/DB_PORT/DB_USER/DB_PASSWORD).
+    PERNO_TEST_DB_URL=mysql+pymysql://root@127.0.0.1:33307/perno_maile_test .venv/bin/python -m pytest tests/test_mysql_smoke.py
+Nazwa bazy MUSI kończyć się na `_test` — test usuwa i odtwarza w niej tabele.
+Z PERNO_TEST_DB_NAME dane logowania bierze z config.env (DB_HOST/DB_PORT/DB_USER/DB_PASSWORD); PERNO_TEST_DB_URL
+podaje cały adres jawnie (np. do tymczasowego serwera z `scripts/scratch_mysql.sh`) i config.env nie jest czytany.
 
 Druga klasa (`MysqlScraperSmokeTests`) sprawdza tabele i zapytania skrapera na prawdziwym MySQL: kolumny ASCII,
 upserty `ON DUPLICATE KEY UPDATE`, BLOB, `FOR UPDATE`, wyłączność dzierżawy między wątkami, `UNIQUE` z NULL.
@@ -35,18 +37,26 @@ from perno.services import bulk
 from perno.services import export as exporter
 from tests.fixtures import sample_row
 
-TEST_DB = os.environ.get("PERNO_TEST_DB_NAME", "")
+TEST_URL = os.environ.get("PERNO_TEST_DB_URL", "")
+TEST_DB = (sa.engine.make_url(TEST_URL).database if TEST_URL else os.environ.get("PERNO_TEST_DB_NAME", "")) or ""
+SKIP_REASON = "ustaw PERNO_TEST_DB_NAME=perno_maile_test (albo PERNO_TEST_DB_URL), żeby uruchomić test na prawdziwym MySQL"
 
 
-@unittest.skipUnless(TEST_DB, "ustaw PERNO_TEST_DB_NAME=perno_maile_test, żeby uruchomić test na prawdziwym MySQL")
+def resolve_test_url() -> sa.engine.URL:
+    """Adres bazy testowej (jawny PERNO_TEST_DB_URL albo config.env + PERNO_TEST_DB_NAME); baza musi się kończyć na `_test`."""
+    if not TEST_DB.endswith("_test"):
+        raise RuntimeError("Nazwa bazy testowej musi kończyć się na _test (test kasuje w niej tabele).")
+    if TEST_URL:
+        return sa.engine.make_url(TEST_URL)
+    config = cfg.load_config(cfg.DEFAULT_CONFIG)
+    return dbmod.build_url({**config, "DB_NAME": TEST_DB}, env=cfg.Environment())
+
+
+@unittest.skipUnless(TEST_DB, SKIP_REASON)
 class MysqlSmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if not TEST_DB.endswith("_test"):
-            raise RuntimeError("PERNO_TEST_DB_NAME musi kończyć się na _test (test kasuje tabelę w tej bazie).")
-        config = cfg.load_config(cfg.DEFAULT_CONFIG)
-        url = dbmod.build_url({**config, "DB_NAME": TEST_DB}, env=cfg.Environment())
-        cls.database = dbmod.Database(dbmod.make_engine(url))
+        cls.database = dbmod.Database(dbmod.make_engine(resolve_test_url()))
         cls.info = cls.database.check_connection()
         dbmod.maile.drop(cls.database.engine, checkfirst=True)
         cls.database.ensure_schema()
@@ -171,15 +181,11 @@ class MysqlSmokeTests(unittest.TestCase):
 
 
 
-@unittest.skipUnless(TEST_DB, "ustaw PERNO_TEST_DB_NAME=perno_maile_test, żeby uruchomić test na prawdziwym MySQL")
+@unittest.skipUnless(TEST_DB, SKIP_REASON)
 class MysqlScraperSmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if not TEST_DB.endswith("_test"):
-            raise RuntimeError("PERNO_TEST_DB_NAME musi kończyć się na _test (test kasuje tabele w tej bazie).")
-        config = cfg.load_config(cfg.DEFAULT_CONFIG)
-        url = dbmod.build_url({**config, "DB_NAME": TEST_DB}, env=cfg.Environment())
-        cls.database = dbmod.Database(dbmod.make_engine(url))
+        cls.database = dbmod.Database(dbmod.make_engine(resolve_test_url()))
         scraper_schema.skraper_metadata.drop_all(cls.database.engine)
         dbmod.maile.drop(cls.database.engine, checkfirst=True)
         cls.database.ensure_schema()
@@ -209,7 +215,7 @@ class MysqlScraperSmokeTests(unittest.TestCase):
     def page(self, path="/", **kw):
         url = "https://firma1.example.com" + path
         values = dict(url=url, url_hash=url_hash(url), depth=0, priority=0, source="start", status="pobrano",
-                      http_status=200, text="treść", title="Tytuł")
+                      http_status=200, text="treść", title="Tytuł", bytes=1000)
         values.update(kw)
         return PageRecord(**values)
 
