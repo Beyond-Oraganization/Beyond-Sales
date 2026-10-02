@@ -4,32 +4,40 @@ Program generuje i wysyła maile sprzedażowe. Baza maili (kolejka + trwały log
 siedzi w **MySQL** (tabela `maile`); obsługuje ją panel w przeglądarce (`server.py`)
 oraz terminal (`send_emails.py`) — oba mogą pracować jednocześnie.
 
+Polecenia w katalogu głównym to cienkie skrypty uruchamiające pakiet `perno` (kod w `src/perno/`):
+
 ```
-server.py            panel w przeglądarce: menu z zakładkami (Wysyłka, Eksport, Skraper, …)
-send_emails.py       to samo z terminala (paczki z opóźnieniami)
-migrate_csv_to_sql.py  jednorazowa migracja dawnego Maile.csv do bazy
-scrape.py            skraper stron firm (kontekst i kontakty) — z terminala; to samo robi zakładka Skraper
-firmy.py             nowe firmy z CSV do bazy oraz przypisanie im kraju, miasta i adresu (patrz „Kraj i dane o firmie”)
-build_seed_data.py   buduje data/*.csv (dane firm) ze źródeł — bez zmian
+server.py            panel w przeglądarce: menu z zakładkami (Wysyłka, Eksport, Skraper, …)   → perno.cli.server
+send_emails.py       to samo z terminala (paczki z opóźnieniami)                              → perno.cli.send
+migrate_csv_to_sql.py  jednorazowa migracja dawnego Maile.csv do bazy                         → perno.cli.migrate
+scrape.py            skraper stron firm (kontekst i kontakty) — z terminala; to samo robi zakładka Skraper → perno.cli.scrape
+firmy.py             nowe firmy z CSV do bazy oraz przypisanie im kraju, miasta i adresu      → perno.cli.firms
+wypelnij.py          uzupełnianie maili treścią z zakończonych skanów                          → perno.cli.enrich
+build_seed_data.py   buduje data/*.csv (dane firm) ze źródeł                                  → perno.cli.seed
 index.html           statyczny podgląd tylko do odczytu (odświeżany z bazy)
 ```
 
+Układ kodu (`src/perno/`): `domain/` (czysta logika: statusy, kraje, szablony), `db/` (tabela `maile`, połączenie),
+`mailer/` (SMTP, MIME), `services/` (wysyłka, generowanie treści, zmiany zbiorcze, eksport, import firm),
+`scraper/` (skraper), `web/` (serwer, strony panelu i ich pliki JS/CSS), `cli/` (punkty wejścia), `settings.py`.
+Zależności idą tylko „w dół" (`domain` ← `services` ← `web`/`cli`); pilnuje tego `lint-imports` w `scripts/check.sh`.
+
 ## 1. Instalacja
 
-```bash
-cd Wysylka
-python3 -m pip install --user -r requirements.txt
-```
-
-**Środowisko deweloperskie (zalecane): Python 3.13 + narzędzia jakości.** Systemowy Python 3.9 jest po końcu wsparcia, a jego
-LibreSSL nie obsługuje TLS 1.3 (skraper kończył takie strony błędem TLS). Projekt ma więc własne środowisko zarządzane przez
+Wymagany jest Python 3.12 lub nowszy; zalecany 3.13. Systemowy Python 3.9 jest po końcu wsparcia, a jego LibreSSL nie
+obsługuje TLS 1.3 (skraper kończył takie strony błędem TLS). Projekt ma własne środowisko zarządzane przez
 [uv](https://docs.astral.sh/uv/) (`brew install uv`):
 
 ```bash
-uv sync                      # tworzy .venv z Pythonem 3.13 i zależnościami (pyproject.toml, uv.lock)
-.venv/bin/python server.py   # panel z tego środowiska; to samo dotyczy pozostałych skryptów
-scripts/check.sh             # ruff + mypy + testy (po zmianach w kodzie); --fast pomija wolne testy
+cd Wysylka
+uv sync                      # tworzy .venv z Pythonem 3.13 i pakietem perno (pyproject.toml, uv.lock)
+.venv/bin/python server.py   # panel; to samo dotyczy pozostałych skryptów (albo `uv run server.py`)
+scripts/check.sh             # ruff + mypy + kontrakty warstw + testy; --fast pomija wolne testy
 ```
+
+Wszystkie polecenia `python3 …` w dalszej części README uruchamiaj interpreterem projektu (`.venv/bin/python …` albo
+`uv run …`): systemowy `python3` nie zna pakietu `perno` (skrypty wypiszą wtedy podpowiedź). Bez uv:
+`python3.13 -m venv .venv && .venv/bin/pip install -e .`.
 
 ## 2. Baza danych (raz)
 
@@ -49,7 +57,7 @@ Konta tylko dla adresu lokalnego (nigdy `'%'`). Następnie skopiuj dane logowani
 
 ```bash
 chmod 600 config.env
-python3 -m lib.db --check        # połączenie, wersja serwera, tryb SQL, stan tabeli (bez haseł)
+python3 -m perno.db --check      # połączenie, wersja serwera, tryb SQL, stan tabeli (bez haseł)
 ```
 
 Gdyby połączenie TCP nie działało, ustaw w `config.env` `DB_SOCKET=/tmp/mysql.sock`.
@@ -152,8 +160,8 @@ Każda firma w tabeli `maile` ma cztery opcjonalne pola: **kraj** (`country`, ko
 eksporcie widać go z polską nazwą i flagą), **miasto** (`city`, nazwa lokalna, np. `London`, `München`, `Wien`),
 **adres** (`address`: ulica, kod pocztowy) i **opis działalności** (`description`). W panelu edytujesz je po kliknięciu
 w nazwę firmy. Kraj wpisany ręcznie (po polsku lub angielsku, kodem albo „UK”) zapisuje się jako kod ISO, a nieznany
-kraj jest odrzucany z komunikatem; listę krajów rozszerzysz w `lib/countries.py`. Starsza baza dostaje te kolumny
-sama przy starcie panelu i `send_emails.py` (albo ręcznie: `python3 -m lib.db --upgrade`) — istniejące dane się
+kraj jest odrzucany z komunikatem; listę krajów rozszerzysz w `src/perno/domain/countries.py`. Starsza baza dostaje te kolumny
+sama przy starcie panelu i `send_emails.py` (albo ręcznie: `python3 -m perno.db --upgrade`) — istniejące dane się
 nie zmieniają, a poprzednia wersja programu nadal działa na uaktualnionej tabeli.
 
 **Nowe firmy z CSV — `firmy.py`.** Każde polecenie zmieniające bazę najpierw zapisuje jej kopię w `backup/`
@@ -187,9 +195,9 @@ polski mail już poszedł.
 
 ### Dodawanie nowej strony do menu
 
-1. Utwórz `lib/pages/raporty.py` z obiektem `PAGE = Page(key="raporty", label="Raporty", path="/raporty", render=..., routes={("GET", "/api/raporty"): handler})`
-   (wzór: `lib/pages/eksport.py`; HTML/CSS/JS trzymaj w `lib/pages/assets/`).
-2. W `lib/pages/__init__.py` zaimportuj moduł i dopisz `raporty.PAGE` do `PAGES`.
+1. Utwórz `src/perno/web/pages/raporty.py` z obiektem `PAGE = Page(key="raporty", label="Raporty", path="/raporty", render=..., routes={("GET", "/api/raporty"): handler})`
+   (wzór: `src/perno/web/pages/export.py`; HTML/CSS/JS trzymaj w `src/perno/web/pages/assets/`).
+2. W `src/perno/web/pages/__init__.py` zaimportuj moduł i dopisz `raporty.PAGE` do `PAGES`.
 
 Strona pojawi się w menu; `layout.render_page` dokłada zakładki, wspólny wygląd i `APP` (statusy) dla JS.
 Wszystkie żądania POST z JS wysyłaj przez `api()` (`assets/common.js`) — serwer wymaga `Content-Type: application/json`.
@@ -313,7 +321,7 @@ python3 -m unittest discover -s tests -t . -v
 ```
 
 Testy używają sqlite w pamięci i atrapy SMTP — nie dotykają prawdziwej bazy ani poczty. Logikę przeglądarki (filtry,
-wyszukiwarka, sortowanie, zaznaczanie — `lib/pages/assets/filters.js`, `selection.js`) sprawdzają testy w JavaScript
+wyszukiwarka, sortowanie, zaznaczanie — `src/perno/web/pages/assets/filters.js`, `selection.js`) sprawdzają testy w JavaScript
 (`tests/js/*.test.js`), które ten sam zestaw uruchamia przez Node.js 18+ (bez Node są pomijane; osobno:
 `node --test tests/js/filters.test.js tests/js/selection.test.js`). Wspólne wektory `tests/filter_cases.json` pilnują,
 żeby filtry w przeglądarce i `RowFilter` na serwerze wybierały te same wiersze. Opcjonalny test
