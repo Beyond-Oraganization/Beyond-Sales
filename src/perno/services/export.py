@@ -11,7 +11,7 @@ import csv
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
-from typing import BinaryIO, Optional
+from typing import Any, BinaryIO, Iterator, Optional
 
 from perno import db as dbmod
 from perno.domain import countries
@@ -78,7 +78,10 @@ XLSX_MAX_CELL = 32_767
 XLSX_MAX_URL = 2000  # Excel odrzuca dłuższe odnośniki
 DATETIME_TEXT = "%Y-%m-%d %H:%M"
 DATETIME_XLSX = "yyyy-mm-dd hh:mm"
-CSV_DANGEROUS = ("=", "+", "-", "@", "\t", "\r")
+# Znaki, od których arkusz zaczyna formułę (także pełnoszerokie warianty i znaki nowej linii). Taką komórkę poprzedzamy
+# apostrofem — tekst zostaje czytelny i arkusz nie wykona formuły. Uniwersalnej sanityzacji nie ma (OWASP); apostrof
+# wybraliśmy zamiast tabulatora, bo nie psuje wklejania komórki do innych narzędzi.
+CSV_DANGEROUS = ("=", "+", "-", "@", "\t", "\r", "\n", "＝", "＋", "－", "＠")
 
 CONTENT_TYPES = {
     "csv": "text/csv; charset=utf-8",
@@ -133,8 +136,9 @@ def headers(columns: tuple) -> tuple:
     return tuple(COLUMN_INFO[name][0] for name in columns)
 
 
-def status_label(code) -> str:
-    return st.STATUS_META.get(code, (code or "",))[0]
+def status_label(code: Optional[str]) -> str:
+    meta = st.STATUS_META.get(code or "")
+    return meta[0] if meta else (code or "")
 
 
 class _Utf8Sink:
@@ -146,7 +150,7 @@ class _Utf8Sink:
         return len(text)
 
 
-def _csv_cell(name: str, value):
+def _csv_cell(name: str, value: Any) -> Any:
     if value is None:
         return ""
     if name == "status":
@@ -158,7 +162,7 @@ def _csv_cell(name: str, value):
     return value
 
 
-def _rows(db: dbmod.Database, spec: ExportSpec, columns: tuple):
+def _rows(db: dbmod.Database, spec: ExportSpec, columns: tuple) -> Iterator[dict]:
     """Wiersze z bazy (tylko prawdziwe kolumny) uzupełnione o kolumny wyliczane."""
     real = tuple(c for c in columns if c not in DERIVED_COLUMNS)
     if "country_name" in columns and "country" not in real:
@@ -183,7 +187,7 @@ def _write_csv(db: dbmod.Database, spec: ExportSpec, columns: tuple, out: Binary
 class _XlsxStyles:
     """Style komórek tworzone raz (openpyxl łączy identyczne), żeby plik nie puchł."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         from openpyxl.styles import Alignment, Font, PatternFill
 
         self.header_font = Font(bold=True, color="FFFFFFFF")
@@ -191,9 +195,9 @@ class _XlsxStyles:
         self.header_align = Alignment(vertical="center", wrap_text=True)
         self.body_align = Alignment(vertical="top", wrap_text=True)  # długi tekst zawija się w komórce, całość od góry
         self.link_font = Font(color="FF1155CC", underline="single")
-        self._status = {}
+        self._status: dict[str, Any] = {}
 
-    def status_font(self, code):
+    def status_font(self, code: str) -> Any:
         from openpyxl.styles import Font
 
         if code not in self._status:
@@ -202,7 +206,7 @@ class _XlsxStyles:
         return self._status[code]
 
 
-def _xlsx_cell(ws, styles: _XlsxStyles, name: str, value):
+def _xlsx_cell(ws: Any, styles: _XlsxStyles, name: str, value: Any) -> Any:
     from openpyxl.cell import WriteOnlyCell
     from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 

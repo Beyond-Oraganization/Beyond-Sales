@@ -7,8 +7,7 @@ HTTP. Wyjątki zamienia na kody HTTP `perno.web.errors`.
 from __future__ import annotations
 
 import json
-import sys
-import traceback
+import logging
 from typing import Callable, Optional, Sequence
 
 from perno.db import DB_ERRORS, DbUnavailable
@@ -24,6 +23,8 @@ from perno.web.http import (
     html_response,
 )
 from perno.web.page import Page
+
+logger = logging.getLogger(__name__)
 
 
 class App:
@@ -57,12 +58,12 @@ class App:
         try:
             resp = self._dispatch(req)
         except (DbUnavailable, *DB_ERRORS):
-            traceback.print_exc(file=sys.stderr)
+            logger.exception("Baza danych niedostępna (%s %s)", req.method, req.path)
             resp = error_response(503, "Baza danych jest niedostępna. Sprawdź, czy MySQL działa (python3 -m perno.db --check).")
-        except Exception as exc:  # noqa: BLE001 — granica HTTP: nieznany błąd to 500, szczegóły w terminalu serwera
+        except Exception as exc:
             known = errors.to_response(exc)
             if known is None:
-                traceback.print_exc(file=sys.stderr)
+                logger.exception("Nieoczekiwany błąd w obsłudze żądania %s %s", req.method, req.path)
             resp = known or error_response(500, "Wewnętrzny błąd serwera (szczegóły w terminalu, w którym działa server.py).")
         resp.headers = {**SECURITY_HEADERS, **resp.headers}
         return resp

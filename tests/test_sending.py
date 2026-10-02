@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import io
 import os
 import unittest
-from contextlib import redirect_stderr
 from unittest import mock
 
 import sqlalchemy.exc as sa_exc
@@ -106,13 +104,12 @@ class SendRowTests(NoRealSmtpMixin, unittest.TestCase):
         put(database, sample_row(1, email="cel@example.com"))
         smtp = FakeSmtp()
         broken = sa_exc.OperationalError("UPDATE", {}, Exception("baza zniknęła"))
-        stderr = io.StringIO()
         with mock.patch.object(database, "mark_sent", side_effect=broken), \
-                mock.patch("time.sleep"), redirect_stderr(stderr):
+                mock.patch("time.sleep"), self.assertLogs("perno.services.sending", level="ERROR") as logs:
             result = self.send(database, "eventy-001", smtp)
         self.assertEqual(result.outcome, "sent_unrecorded")
         self.assertEqual(len(smtp.sent), 1)
-        self.assertIn("WYSŁANO", stderr.getvalue())
+        self.assertIn("WYSŁANO", logs.output[0])
         self.assertEqual(database.get("eventy-001")["status"], st.STATUS_SENDING)
 
 

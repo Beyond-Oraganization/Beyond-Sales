@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import smtplib
 from email.message import EmailMessage
+
+logger = logging.getLogger(__name__)
 
 
 class SmtpClient:
@@ -28,8 +31,8 @@ class SmtpClient:
         if self._conn is not None:
             try:
                 self._conn.quit()
-            except Exception:  # noqa: BLE001, S110 — błąd zamykania połączenia nie może przesłonić wyniku wysyłki
-                pass
+            except Exception:
+                logger.debug("SMTP quit() nie powiodło się (połączenie i tak zamykamy)", exc_info=True)
 
     def send(self, message: EmailMessage) -> None:
         self._conn.send_message(message)

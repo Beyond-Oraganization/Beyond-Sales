@@ -142,9 +142,12 @@ class SecurityTests(WebCase):
         page = Page(key="t", label="T", path="/t", render=lambda ctx: "",
                     routes={("GET", "/boom"): boom, ("GET", "/down"): db_down})
         self.app = make_app(self.database, [page], allowed_hosts=set(HOSTS))
-        with unittest.mock.patch("traceback.print_exc"):
+        with self.assertLogs("perno.web.app", level="ERROR") as logs:
             resp = self.call("GET", "/boom")
             down = self.call("GET", "/down")
+        self.assertEqual(len(logs.records), 2)  # szczegóły (ślad stosu) trafiają do logu serwera, nie do odpowiedzi
+        self.assertTrue(all(record.exc_info for record in logs.records))
+        self.assertIn("tajny stack trace", logs.output[0])
         self.assertEqual(resp.status, 500)
         self.assertNotIn("tajny", resp.body.decode("utf-8"))
         self.assertEqual(down.status, 503)

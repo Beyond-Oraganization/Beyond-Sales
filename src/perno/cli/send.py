@@ -27,6 +27,7 @@ from perno.db import Database, DbError
 from perno.domain import countries, mail_rules
 from perno.domain import statuses as st
 from perno.domain.rowfilter import NO_COUNTRY, RowFilter
+from perno.logging_setup import configure_logging
 from perno.services import generation, sending
 from perno.settings import ConfigError, load_config, require_smtp
 
@@ -202,6 +203,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
+    configure_logging()
     args = build_parser().parse_args()
     try:
         sys.exit(run(args))

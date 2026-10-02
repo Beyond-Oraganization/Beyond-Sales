@@ -7,8 +7,8 @@ dokładnie te same.
 
 from __future__ import annotations
 
+import logging
 import random
-import sys
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
@@ -21,6 +21,8 @@ from perno.domain import mail_rules
 from perno.domain import statuses as st
 from perno.mailer import image_prep, mime_builder, smtp_client
 from perno.settings import ConfigError, Environment, SmtpSettings, require_smtp
+
+logger = logging.getLogger(__name__)
 
 
 class NotSendable(Exception):
@@ -59,7 +61,7 @@ def smtp_factory_from_config(config: Mapping, env: Optional[Environment] = None)
         )
     smtp = SmtpSettings.from_config(config)
 
-    def factory():
+    def factory() -> smtp_client.SmtpClient:
         return smtp_client.SmtpClient(smtp.host, smtp.port, smtp.user, smtp.password, smtp.use_ssl)
 
     return factory
@@ -115,7 +117,7 @@ def send_row(
             time.sleep(0.5 * (attempt + 1))
     warning = (f"UWAGA: mail do {claimed['email']} ({row_id}) WYSŁANO, ale nie udało się zapisać statusu "
                "w bazie. Wiersz zostanie oznaczony jako błąd po 10 min — nie wysyłaj go ponownie.")
-    print(warning, file=sys.stderr)
+    logger.error(warning)
     return SendResult("sent_unrecorded", claimed, warning)
 
 

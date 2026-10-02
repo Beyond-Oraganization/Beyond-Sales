@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -37,8 +38,18 @@ def log_path_for(run_id: int) -> str:
     return os.path.join(log_dir(), f"skraper_{run_id}_{datetime.now():%Y%m%d_%H%M%S}.log")
 
 
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")  # poza tabulatorem i \n
+
+
+def sanitize_log_message(message: str) -> str:
+    """Do logu trafiają też dane ze skanowanych stron (adresy, tytuły, komunikaty serwerów), więc są niezaufane: znaki
+    sterujące (ESC, \\r, NUL…) zamieniamy na spacje, a każdą kolejną linię wcinamy. Dzięki temu wartość z internetu nie
+    przejmie sterowania terminalem i nie podrobi nowego wpisu logu (prawdziwy wpis zaczyna się godziną w pierwszej kolumnie)."""
+    return _CONTROL_CHARS.sub(" ", message).replace("\n", "\n    ")
+
+
 class RunLogger:
-    """Bezpieczny wątkowo logger linia-po-linii (stdout i/lub plik)."""
+    """Bezpieczny wątkowo logger linia-po-linii (stdout i/lub plik); komunikaty są czyszczone przez `sanitize_log_message`."""
 
     def __init__(self, path: Optional[str] = None, echo: bool = True):
         self.path = path
@@ -47,7 +58,7 @@ class RunLogger:
         self._file = open(path, "a", encoding="utf-8", buffering=1) if path else None  # noqa: SIM115 — zamykany w close()
 
     def __call__(self, message: str) -> None:
-        line = f"{datetime.now():%H:%M:%S} {message}"
+        line = f"{datetime.now():%H:%M:%S} {sanitize_log_message(message)}"
         with self._lock:
             if self.echo:
                 print(line, flush=True)

@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from perno import settings as cfg
 from perno.db import Database, DbError
+from perno.logging_setup import configure_logging
 from perno.services import scan_control
 from perno.settings import ConfigError, ConfigFile
 from perno.web.app import App
@@ -102,6 +103,7 @@ def build_app(config_path: str) -> App:
 
 
 def main() -> None:
+    configure_logging()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true", help="Nie otwieraj przeglądarki automatycznie.")
