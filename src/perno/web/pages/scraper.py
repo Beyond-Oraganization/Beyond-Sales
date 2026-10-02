@@ -44,7 +44,7 @@ def api_seed(req: Request, ctx: AppContext) -> Response:
     return json_response(ctx.scan_store.get().seed_from_maile())
 
 
-def api_dodaj(req: Request, ctx: AppContext) -> Response:
+def api_add_company(req: Request, ctx: AppContext) -> Response:
     url = req.json.get("url")
     name = req.json.get("nazwa")
     if not isinstance(url, str) or not url.strip():
@@ -54,7 +54,7 @@ def api_dodaj(req: Request, ctx: AppContext) -> Response:
     return json_response(ctx.scan_store.get().add_manual(url, name))
 
 
-def api_firmy(req: Request, ctx: AppContext) -> Response:
+def api_companies(req: Request, ctx: AppContext) -> Response:
     status = req.arg("status")
     if status and status not in st.FIRMA_STATUSY:
         raise HttpError(400, f"Nieznany status: {status}.")
@@ -64,7 +64,7 @@ def api_firmy(req: Request, ctx: AppContext) -> Response:
     return json_response({"rows": rows, "total": total})
 
 
-def api_firma(req: Request, ctx: AppContext) -> Response:
+def api_company(req: Request, ctx: AppContext) -> Response:
     detail = ctx.scan_store.get().firma_detail(
         _int(req.arg("id"), "id", minimum=1), page=_int(req.arg("page", "0"), "page"), per_page=100)
     if detail is None:
@@ -112,18 +112,18 @@ def api_stop(req: Request, ctx: AppContext) -> Response:
     return json_response({"ok": store.request_stop(), "odzyskano": recovered})
 
 
-def api_ponow(req: Request, ctx: AppContext) -> Response:
+def api_requeue(req: Request, ctx: AppContext) -> Response:
     ids = _id_list(req.json.get("firma_ids"), "firma_ids")
     if not ids:
         raise HttpError(400, "Wybierz firmy do ponowienia.")
     return json_response({"zmieniono": ctx.scan_store.get().requeue(ids)})
 
 
-def api_uzyj_domeny(req: Request, ctx: AppContext) -> Response:
+def api_use_target_domain(req: Request, ctx: AppContext) -> Response:
     return json_response(ctx.scan_store.get().use_target_domain(_int(req.json.get("firma_id"), "firma_id", minimum=1)))
 
 
-def api_usun_dane(req: Request, ctx: AppContext) -> Response:
+def api_delete_data(req: Request, ctx: AppContext) -> Response:
     ctx.scan_store.get().delete_firma_data(_int(req.json.get("firma_id"), "firma_id", minimum=1))
     return json_response({"ok": True})
 
@@ -133,14 +133,14 @@ PAGE = Page(
     routes={
         ("GET", "/api/skaper/meta"): api_meta,
         ("POST", "/api/skaper/seed"): api_seed,
-        ("POST", "/api/skaper/dodaj"): api_dodaj,
-        ("GET", "/api/skaper/firmy"): api_firmy,
-        ("GET", "/api/skaper/firma"): api_firma,
+        ("POST", "/api/skaper/dodaj"): api_add_company,
+        ("GET", "/api/skaper/firmy"): api_companies,
+        ("GET", "/api/skaper/firma"): api_company,
         ("GET", "/api/skaper/status"): api_status,
         ("POST", "/api/skaper/start"): api_start,
         ("POST", "/api/skaper/stop"): api_stop,
-        ("POST", "/api/skaper/ponow"): api_ponow,
-        ("POST", "/api/skaper/uzyj-domeny"): api_uzyj_domeny,
-        ("POST", "/api/skaper/usun-dane"): api_usun_dane,
+        ("POST", "/api/skaper/ponow"): api_requeue,
+        ("POST", "/api/skaper/uzyj-domeny"): api_use_target_domain,
+        ("POST", "/api/skaper/usun-dane"): api_delete_data,
     },
 )

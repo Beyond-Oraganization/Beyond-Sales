@@ -92,7 +92,7 @@ def settings_from(args, config: dict, stored: Optional[dict] = None) -> ScanSett
     return settings
 
 
-def resolve_firms(store: Store, refs: list) -> list:
+def resolve_companies(store: Store, refs: list) -> list:
     ids = []
     for ref in refs:
         firm = store.find_firma(ref)
@@ -111,7 +111,7 @@ def cmd_seed(args) -> int:
     return 0
 
 
-def cmd_dodaj(args) -> int:
+def cmd_add(args) -> int:
     _, store = open_store(args)
     result = store.add_manual(args.url, args.nazwa)
     print(f"{'Dodano' if result['nowa'] else 'Już istnieje'}: {result['domena']} (id {result['id']}).")
@@ -177,7 +177,7 @@ def cmd_run(args) -> int:
 
     if args.dry_run:
         settings = settings_from(args, config)
-        ids = resolve_firms(store, args.firma) if args.firma else None
+        ids = resolve_companies(store, args.firma) if args.firma else None
         queued = store.count_runnable(ids, None if ids is not None else tuple(args.statuses or st.FIRMA_DOMYSLNIE_DO_SKANU))
         print("PLAN (--dry-run, żadnych połączeń sieciowych, kolejka bez zmian):")
         for line in runner.plan_summary(settings, queued):
@@ -199,7 +199,7 @@ def cmd_run(args) -> int:
         statuses = tuple(stored.get("statuses") or st.FIRMA_DOMYSLNIE_DO_SKANU)
     else:
         settings = settings_from(args, config)
-        firm_ids = resolve_firms(store, args.firma) if args.firma else None
+        firm_ids = resolve_companies(store, args.firma) if args.firma else None
         statuses = tuple(args.statuses or st.FIRMA_DOMYSLNIE_DO_SKANU)
         run_id = store.start_run({"ustawienia": settings.to_dict(), "firma_ids": firm_ids, "statuses": list(statuses)})
 
@@ -219,7 +219,7 @@ def cmd_run(args) -> int:
     return 0 if result["status"] in (st.RUN_ZAKONCZONY, st.RUN_ZATRZYMANY) else 1
 
 
-COMMANDS = {"seed": cmd_seed, "dodaj": cmd_dodaj, "run": cmd_run, "status": cmd_status, "stop": cmd_stop, "purge": cmd_purge}
+COMMANDS = {"seed": cmd_seed, "dodaj": cmd_add, "run": cmd_run, "status": cmd_status, "stop": cmd_stop, "purge": cmd_purge}
 
 
 def main(argv=None) -> int:

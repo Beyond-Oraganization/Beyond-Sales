@@ -152,7 +152,7 @@ def read_dossier_text(path: str) -> str:
         return f.read()
 
 
-def extract_karta_firmy_email(dossier_text: str) -> str:
+def extract_company_card_email(dossier_text: str) -> str:
     """E-mail wyłącznie z wiersza 'Kontakt publiczny' w tabeli Karta firmy —
     NIGDY z całego dokumentu (dossier bywają zawierają w prozie przykłady
     danych-zaślepek ze stron klientów, np. jan.kowalski@gmail.com opisany
@@ -168,7 +168,7 @@ def extract_karta_firmy_email(dossier_text: str) -> str:
     return ""
 
 
-def extract_karta_firmy_website(dossier_text: str) -> str:
+def extract_company_card_website(dossier_text: str) -> str:
     section = KARTA_RE.search(dossier_text)
     if not section:
         return ""

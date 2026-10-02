@@ -39,7 +39,7 @@ def open_stores(args) -> tuple:
     return db, Store(db)
 
 
-def cmd_lista(args) -> int:
+def cmd_list(args) -> int:
     _, store = open_stores(args)
     rows = enrichment.list_candidates(store)
     print(f"Kwalifikuje się {len(rows)} firm (skan zakończony, w tabeli maile bez treści):")
@@ -50,7 +50,7 @@ def cmd_lista(args) -> int:
     return 0
 
 
-def cmd_kontekst(args) -> int:
+def cmd_context(args) -> int:
     _, store = open_stores(args)
     os.makedirs(args.out, exist_ok=True)
     rows = enrichment.list_candidates(store)
@@ -63,7 +63,7 @@ def cmd_kontekst(args) -> int:
     return 0
 
 
-def cmd_zapisz(args) -> int:
+def cmd_save(args) -> int:
     with open(args.json, encoding="utf-8") as fh:
         entries = json.load(fh)
     db, store = open_stores(args)
@@ -107,7 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        return {"lista": cmd_lista, "kontekst": cmd_kontekst, "zapisz": cmd_zapisz}[args.command](args)
+        return {"lista": cmd_list, "kontekst": cmd_context, "zapisz": cmd_save}[args.command](args)
     except DbError as exc:
         print(f"Błąd bazy: {exc}", file=sys.stderr)
         return 2

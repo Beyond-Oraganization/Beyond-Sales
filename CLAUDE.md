@@ -13,9 +13,13 @@ Plan przebudowy (fazy 0-5): `~/.claude/plans/przeanalizuj-dany-projekt-przeczyta
 ## Reguły
 - Nigdy nie wysyłaj prawdziwych maili ani nie łącz się z prawdziwą bazą w testach. Nie czytaj i nie wypisuj `config.env`.
 - Skraper: nie zmieniaj podłogi 1 s, obsługi robots.txt ani limitów na IP bez wyraźnej decyzji użytkownika.
-- Warstwy: `domain` (czysta logika) ← `services` ← `web`/`cli`; adaptery (db, mailer, scraper) wołane przez usługi; pilnuje tego `lint-imports`. Nie dopisuj SQL do handlerów stron ani skryptów CLI.
+- Warstwy: `domain` (czysta logika) ← `services` ← `web`/`cli`; adaptery (db, mailer, scraper) wołane przez usługi; pilnuje tego `lint-imports`. Nie dopisuj SQL do handlerów stron, usług ani skryptów CLI: zapytania żyją w `db/` (repozytorium) i `scraper/store/` (role: companies, runs, queue, pages, read_models, retention).
+- Handler strony: parsuje żądanie, woła usługę, zwraca JSON (≤ ~15 linii). Wyjątki mapuje na HTTP jedna tabela w `web/errors.py`; zależności strony bierze z `AppContext`, nigdy z atrybutów doklejanych do aplikacji.
+- `os.environ` i `config.env` czyta wyłącznie `settings.py` (`Environment`, `ConfigFile`, `SmtpSettings`); reszta dostaje wartości jawnie.
 - Zanim dodasz helper, sprawdź istniejące moduły (`domain/`, `services/`); duplikacja to najczęstszy błąd kodu z AI.
-- Funkcje ≤ ~40 linii i ≤ 5 argumentów, typy na publicznym API, bez mutowalnych argumentów domyślnych.
+- Funkcje ≤ ~40 linii i ≤ 5 argumentów, typy na publicznym API, bez mutowalnych argumentów domyślnych. Bramki ruff: złożoność ≤ 15, gałęzie ≤ 15, instrukcje ≤ 50, argumenty ≤ 8.
+- Nazwy: identyfikatory po angielsku. Wyjątek: skraper trzyma polskie nazwy tabel, kolumn i kodów statusów (`firmy`, `skan_status`, `FIRMA_*`), bo to wartości w bazie i w API JSON; nowy kod skrapera nazywaj po angielsku i tłumacz na granicy magazynu. (Sprawdzone: `Column("domena", key="domain")` działa w wyrażeniach i `insert/update`, ale `dict(row)` zwraca nazwy SQL, więc pełne tłumaczenie wymaga DTO.)
+- Po przeniesieniu pliku sprawdź ścieżki liczone z `__file__` (`grep -rn __file__ src`); tak zepsuł się `build_seed_data.py`.
 - Szerokie `except` tylko na granicy procesu/wątku, z `# noqa: BLE001 — powód` i logiem.
 - Dane ze skanowanych stron są niezaufane: escapuj w UI, czyść znaki sterujące w logach.
 - Zmiany schematu bazy wyłącznie addytywne (kolumny NULL) i z kopią zapasową; poprzednia wersja kodu musi działać na uaktualnionej tabeli.

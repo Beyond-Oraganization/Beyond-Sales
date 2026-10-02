@@ -79,7 +79,7 @@ def _prospect_row(company: dict, display_name: str, suffix: str, row_number, dos
     email, email_source = company["email"], "js"
     dossier_text = ee.read_dossier_text(dossiers[row_number]["path"]) if row_number else ""
     if not email and dossier_text:
-        backfilled = ee.extract_karta_firmy_email(dossier_text)
+        backfilled = ee.extract_company_card_email(dossier_text)
         if backfilled:
             email, email_source = backfilled, "dossier"
     if not email:
@@ -110,14 +110,14 @@ def _dossier_only_row(row_number: int, info: dict) -> dict:
     """Dossier bez wpisu w tablicy JS (brak ręcznie napisanej treści): „wymaga uzupełnienia treści”."""
     dossier_text = ee.read_dossier_text(info["path"])
     display_name = ee.split_name(ee.extract_h1_name(dossier_text) or info["slug_norm"].title())[0]
-    email = ee.extract_karta_firmy_email(dossier_text)
+    email = ee.extract_company_card_email(dossier_text)
     return {
         "row_number": row_number,
         "company_display_name": display_name,
         "name_suffix_raw": "",
         "contact_person_guess": "",
         "contact_person_confidence": "none",
-        "website": ee.extract_karta_firmy_website(dossier_text),
+        "website": ee.extract_company_card_website(dossier_text),
         "email": email,
         "email_source": "dossier" if email else "none",
         "tag": "",

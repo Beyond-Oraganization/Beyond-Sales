@@ -18,10 +18,18 @@ dashboard.py         statyczny podgląd index.html tylko do odczytu — powstaje
 index.html           wynik dashboard.py; nie jest odświeżany po każdej zmianie, bo przy tysiącach firm byłoby to kosztowne
 ```
 
-Układ kodu (`src/perno/`): `domain/` (czysta logika: statusy, kraje, szablony), `db/` (tabela `maile`, połączenie),
-`mailer/` (SMTP, MIME), `services/` (wysyłka, generowanie treści, zmiany zbiorcze, eksport, import firm),
-`scraper/` (skraper), `web/` (serwer, strony panelu i ich pliki JS/CSS), `cli/` (punkty wejścia), `settings.py`.
-Zależności idą tylko „w dół" (`domain` ← `services` ← `web`/`cli`); pilnuje tego `lint-imports` w `scripts/check.sh`.
+Układ kodu (`src/perno/`); zależności idą tylko „w dół", pilnuje tego `lint-imports` w `scripts/check.sh`:
+
+- `domain/` — czysta logika bez bazy i sieci: statusy, reguły wierszy (`mail_rules`), filtr (`rowfilter`), kraje, szablony;
+- `db/` — tabela `maile`: schemat, kodek JSON, migracje (tylko dodawanie kolumn), repozytorium i fasada `Database`;
+- `mailer/` — SMTP i MIME;
+- `scraper/` — skraper: `store/` (magazyn podzielony na role), `crawler` (fasada) z `scheduler`, `company_crawl`,
+  `page_fetch`, `page_pipeline`, a także `fetcher`, `politeness`, `extract`, `contacts`, `urls`, `runner`;
+- `services/` — reguły biznesowe wspólne dla panelu i terminala: wysyłka, generowanie i uzupełnianie treści,
+  zmiany zbiorcze, eksport, import firm, sterowanie skanowaniem, podgląd statyczny;
+- `web/` — serwer: `app` (routing i zabezpieczenia), `context` (zależności stron), `errors` (wyjątki → kody HTTP),
+  `pages/` (strony panelu i ich pliki JS/CSS);
+- `cli/` — punkty wejścia (argumenty i wypisywanie wyniku); `settings.py` — jedyny odczyt `config.env` i zmiennych środowiska.
 
 ## 1. Instalacja
 
@@ -200,6 +208,8 @@ polski mail już poszedł.
    (wzór: `src/perno/web/pages/export.py`; HTML/CSS/JS trzymaj w `src/perno/web/pages/assets/`).
 2. W `src/perno/web/pages/__init__.py` zaimportuj moduł i dopisz `raporty.PAGE` do `PAGES`.
 
+Funkcja `render(ctx)` i handlery `handler(req, ctx)` dostają `AppContext` (`ctx.db`, `ctx.config`, `ctx.undo_log`, …);
+logikę biznesową woła się z `services/`, a wyjątki zamienia na kody HTTP jedna tabela w `web/errors.py`.
 Strona pojawi się w menu; `layout.render_page` dokłada zakładki, wspólny wygląd i `APP` (statusy) dla JS.
 Wszystkie żądania POST z JS wysyłaj przez `api()` (`assets/common.js`) — serwer wymaga `Content-Type: application/json`.
 
