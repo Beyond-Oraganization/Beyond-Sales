@@ -12,6 +12,7 @@ from perno.db import EmptyDatabase, InvalidValue, RowLocked, RowNotFound
 from perno.scraper.settings import SettingsError
 from perno.scraper.store import DomainTaken, FirmaBusy, InvalidFirma, NotFound, RunActive
 from perno.services.bulk import AckRequired
+from perno.services.scan_control import ScanRequestError
 from perno.services.sending import DailyCapReached, NotSendable
 from perno.settings import ConfigError
 from perno.web.http import HttpError, Response, error_response
@@ -20,7 +21,7 @@ from perno.web.http import HttpError, Response, error_response
 STATUS_BY_ERROR: tuple = (
     ((RowNotFound, NotFound), 404),
     ((EmptyDatabase, RunActive, FirmaBusy, DomainTaken), 409),
-    ((InvalidValue, ConfigError, InvalidFirma, SettingsError, NotSendable), 400),
+    ((InvalidValue, ConfigError, InvalidFirma, SettingsError, NotSendable, ScanRequestError), 400),
     ((DailyCapReached,), 429),
 )
 

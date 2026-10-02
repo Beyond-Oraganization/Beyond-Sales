@@ -21,12 +21,12 @@ from urllib.parse import parse_qs, urlsplit
 
 from perno import settings as cfg
 from perno.db import Database, DbError
+from perno.services import scan_control
 from perno.settings import ConfigError, ConfigFile
 from perno.web.app import App
 from perno.web.context import AppContext
 from perno.web.http import MAX_BODY, Request, Response
 from perno.web.pages import PAGES
-from perno.web.pages import scraper as scraper_page
 
 CHUNK = 64 * 1024
 
@@ -97,7 +97,7 @@ def build_app(config_path: str) -> App:
         print("UWAGA: baza jest pusta. Jeśli masz historię w Maile.csv, uruchom najpierw migrate_csv_to_sql.py — "
               "„Odśwież dane” w panelu odmówi generowania do pustej bazy.")
     ctx = AppContext(db=db, pages=PAGES, config=config)
-    scraper_page.prepare(ctx)
+    scan_control.recover_on_start(ctx.scan_store.get)
     return App(ctx)
 
 
@@ -126,7 +126,7 @@ def main() -> None:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nZatrzymano.")
-        hint = scraper_page.shutdown_hint(app.ctx)
+        hint = scan_control.shutdown_hint(app.ctx.scan_store.get)
         if hint:
             print(hint)
 

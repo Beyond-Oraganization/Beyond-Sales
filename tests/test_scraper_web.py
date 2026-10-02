@@ -8,13 +8,14 @@ from unittest import mock
 
 import sqlalchemy as sa
 
+from perno.scraper import runner
 from perno.scraper import statuses as st
 from perno.scraper.contacts import Contact
 from perno.scraper.schema import firmy
 from perno.scraper.store import LinkRecord, PageRecord, Store
 from perno.scraper.urls import url_hash
+from perno.services import scan_control
 from perno.settings import ConfigFile
-from perno.web.pages import scraper as skaper
 from tests.fixtures import put, sample_row
 from tests.test_web import SECRET, WebCase, write_config
 
@@ -42,7 +43,7 @@ class SkaperCase(WebCase):
             self.spawned.append((run_id, config_path))
             return os.getpid(), os.path.join(self.logs, f"skraper_test_{run_id}.log")  # żywy pid: start nie odzyska własnego przebiegu
 
-        patcher = mock.patch.object(skaper.runner, "spawn_detached", side_effect=fake_spawn)
+        patcher = mock.patch.object(runner, "spawn_detached", side_effect=fake_spawn)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.store = self.app.ctx.scan_store.get()
@@ -98,7 +99,7 @@ class PageAndMetaTests(SkaperCase):
         self.assertNotIn("SMTP_PASSWORD", body)
 
     def test_bs4_missing_is_reported(self):
-        with mock.patch.object(skaper, "bs4_available", return_value=False):
+        with mock.patch.object(scan_control, "parser_available", return_value=False):
             self.assertFalse(self.data(self.call("GET", "/api/skaper/meta"))["bs4_ok"])
 
 
@@ -230,7 +231,7 @@ class RunLifecycleTests(SkaperCase):
         self.assertEqual(resp.status, 400)
         self.assertIn("SKRAPER_CONTACT", self.data(resp)["error"])
         self.app.ctx.config = ConfigFile(write_config_with(self.tmp, "SKRAPER_CONTACT=ops@example.com\n"))
-        with mock.patch.object(skaper, "bs4_available", return_value=False):
+        with mock.patch.object(scan_control, "parser_available", return_value=False):
             resp = self.start()
         self.assertEqual(resp.status, 400)
         self.assertIn("beautifulsoup4", self.data(resp)["error"])
@@ -238,12 +239,12 @@ class RunLifecycleTests(SkaperCase):
 
     def test_failed_spawn_releases_the_slot_and_marks_the_run(self):
         self.seed(1)
-        skaper.runner.spawn_detached.side_effect = OSError("brak pliku")
+        runner.spawn_detached.side_effect = OSError("brak pliku")
         resp = self.start()
         self.assertEqual(resp.status, 500)
         self.assertIsNone(self.store.active_run())
         self.assertEqual(self.store.latest_run()["status"], st.RUN_BLAD)
-        skaper.runner.spawn_detached.side_effect = lambda run_id, config: (os.getpid(), os.path.join(self.logs, "x.log"))
+        runner.spawn_detached.side_effect = lambda run_id, config: (os.getpid(), os.path.join(self.logs, "x.log"))
         self.assertEqual(self.start().status, 202)
 
     def test_start_recovers_a_dead_previous_run_first(self):
@@ -344,19 +345,19 @@ class StartupHelpersTests(SkaperCase):
         self.seed(1)
         dead = self.store.start_run({}, pid=2_000_000_000)
         lines = []
-        self.assertEqual(skaper.prepare(self.app.ctx, log=lines.append), [dead])
+        self.assertEqual(scan_control.recover_on_start(self.app.ctx.scan_store.get, log=lines.append), [dead])
         self.assertIn("odzyskano przerwane przebiegi", lines[0])
 
     def test_prepare_swallows_errors_so_the_mailing_panel_still_starts(self):
         lines = []
         with mock.patch.object(Store, "recover_dead_runs", side_effect=RuntimeError("tabela nie istnieje")):
-            self.assertEqual(skaper.prepare(self.app.ctx, log=lines.append), [])
+            self.assertEqual(scan_control.recover_on_start(self.app.ctx.scan_store.get, log=lines.append), [])
         self.assertIn("Panel wysyłki działa normalnie", lines[0])
 
     def test_shutdown_hint(self):
-        self.assertIsNone(skaper.shutdown_hint(self.app.ctx))
+        self.assertIsNone(scan_control.shutdown_hint(self.app.ctx.scan_store.get))
         self.store.start_run({}, pid=os.getpid())
-        self.assertIn("python3 scrape.py stop", skaper.shutdown_hint(self.app.ctx))
+        self.assertIn("python3 scrape.py stop", scan_control.shutdown_hint(self.app.ctx.scan_store.get))
 
 
 class ImportIsolationTests(unittest.TestCase):
