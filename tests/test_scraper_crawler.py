@@ -12,7 +12,7 @@ from unittest import mock
 import sqlalchemy as sa
 from sqlalchemy import exc as sa_exc
 
-from perno.scraper import crawler as crawler_mod
+from perno.scraper import company_crawl, extract, page_pipeline
 from perno.scraper import statuses as st
 from perno.scraper.crawler import Crawler
 from perno.scraper.fetcher import Fetcher
@@ -683,7 +683,7 @@ class LimitTests(CrawlerCase):
     def test_frontier_is_refilled_from_the_database_with_a_tiny_memory_cap(self):
         self.chain_site("a.test", 25)
         firma_id = self.firm("a.test")
-        with mock.patch.object(crawler_mod, "FRONTIER_MEMORY_CAP", 3):
+        with mock.patch.object(company_crawl, "FRONTIER_MEMORY_CAP", 3):
             self.crawl()
         self.assertEqual(self.row(firma_id)["stron_pobranych"], 25)
         self.assertEqual(self.row(firma_id)["skan_status"], st.FIRMA_ZAKONCZONA)
@@ -691,7 +691,8 @@ class LimitTests(CrawlerCase):
     def test_discovery_cap_bounds_the_number_of_known_urls(self):
         self.chain_site("a.test", 40)
         firma_id = self.firm("a.test")
-        with mock.patch.object(crawler_mod, "MAX_DISCOVERED_PER_FIRM", 10):
+        with (mock.patch.object(company_crawl, "MAX_DISCOVERED_PER_FIRM", 10),
+              mock.patch.object(page_pipeline, "MAX_DISCOVERED_PER_FIRM", 10)):  # limit czytają dwa moduły
             self.crawl()
         self.assertLessEqual(len(self.pages(firma_id)), 11)
         self.assertEqual(self.row(firma_id)["skan_status"], st.FIRMA_ZAKONCZONA)
@@ -808,14 +809,14 @@ class ResilienceTests(CrawlerCase):
         make_site(self, "ok.test", 3)
         self.site("bad.test", {"/": Page(html("/x", title="bad"))})
         ids = [self.firm("bad.test"), self.firm("ok.test")]
-        real = crawler_mod.extract.parse_html
+        real = extract.parse_html
 
         def explode(html_text, base):
             if "bad.test" in base:
                 raise RuntimeError("parser padł")
             return real(html_text, base)
 
-        with mock.patch.object(crawler_mod.extract, "parse_html", explode):
+        with mock.patch.object(extract, "parse_html", explode):
             self.crawl(self.settings(concurrency=2))
         bad, good = self.row(ids[0]), self.row(ids[1])
         self.assertEqual(bad["skan_status"], st.FIRMA_BLAD)

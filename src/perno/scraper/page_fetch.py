@@ -1,0 +1,135 @@
+"""Pobranie jednej strony: odstęp hosta → limit na IP → bramka globalna → fetcher, z obsługą przekierowań i odmów.
+
+Wynik to `Got` (rodzaj + odpowiedź); decyzje o losie firmy podejmuje `CompanyCrawler`.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import Optional
+from urllib.parse import urlsplit
+
+from perno.scraper import statuses as st
+from perno.scraper.company import Company
+from perno.scraper.fetcher import FetchError, FetchResult
+from perno.scraper.politeness import detect_bot_wall, looks_like_cdn
+from perno.scraper.run_context import RunContext
+from perno.scraper.settings import MAX_REDIRECTS
+from perno.scraper.urls import host_key, normalize_url, path_query, url_hash
+
+REDIRECT_CODES = (301, 302, 303, 307, 308)
+MAX_RETRIES_PER_URL = 6
+_TAG_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>|<[^>]+>", re.I | re.S)
+
+
+@dataclass
+class Got:
+    kind: str  # ok | stop | interrupted | limit_czasu | foreign | robots_skip | known | bad
+    fetch: Optional[FetchResult] = None
+    url: str = ""
+    hops: list = field(default_factory=list)  # [(url, status)] przeskoki przekierowań
+    reason: str = ""
+    hint: float = 0.0
+    target: str = ""
+    message: str = ""
+
+    @property
+    def response(self) -> FetchResult:
+        """Odpowiedź dla wyniku, który ją ma (kind „ok”/przekierowania); brak to błąd w logice crawlera."""
+        if self.fetch is None:
+            raise RuntimeError(f"wynik pobrania ({self.kind}) nie ma odpowiedzi")
+        return self.fetch
+
+
+def _visible_len(body: bytes) -> int:
+    text = body[:60_000].decode("utf-8", errors="ignore")
+    return len(re.sub(r"\s+", " ", _TAG_RE.sub(" ", text)).strip())
+
+
+class PageFetcher:
+    def __init__(self, rc: RunContext):
+        self.rc = rc
+
+    def get(self, company: Company, url: str, kind: str, is_start: bool) -> Got:
+        current = url
+        visited = {url}
+        hops: list = []
+        retries = 0
+        while True:
+            if self.rc.stop.is_set():
+                return Got("interrupted")
+            if not company.gate.wait_turn(self.rc.stop, company.deadline):
+                return Got("interrupted") if self.rc.stop.is_set() else Got("limit_czasu")
+            parts = urlsplit(current)
+            port = parts.port or (443 if parts.scheme == "https" else 80)
+            ip = ""
+            try:
+                ip = self.rc.fetcher.resolve(parts.hostname or "", port)[0]
+                res = None
+            except FetchError as exc:
+                res = FetchResult(url=current, error=exc.kind)
+            if res is None:
+                budget = max(0.0, company.deadline - self.rc.clock.now())
+                if not self.rc.ip_limiter.acquire(ip, self.rc.stop, timeout=budget):
+                    return Got("interrupted") if self.rc.stop.is_set() else Got("limit_czasu")
+                try:
+                    if not self.rc.global_gate.wait(self.rc.stop):
+                        return Got("interrupted")
+                    res = self.rc.fetcher.fetch_once(current, kind, ip=ip)
+                finally:
+                    self.rc.ip_limiter.release(ip)
+            self.rc.stats.add(zapytania=1)
+            if self.rc.verbose:
+                self.rc.log(f"[{company.domena}] {kind} {current} -> {res.status or res.error} ({res.elapsed:.2f}s)")
+            if ip and looks_like_cdn(res.headers):
+                self.rc.ip_limiter.lift(ip)
+            if res.error == "ssrf":
+                return Got("stop", fetch=res, url=current, reason="ssrf", message=st.PRZYCZYNY["ssrf"], hops=hops)
+            verdict = company.gate.on_response(
+                status=res.status, elapsed=res.elapsed, retry_after=res.headers.get("retry-after"), is_start=is_start,
+                bot_wall=self._bot_wall(res), error=res.error if res.error in ("dns", "timeout", "siec", "tls") else None,
+                retries_used=retries)
+            if verdict.action == "stop":
+                return Got("stop", fetch=res, url=current, reason=verdict.reason, hint=verdict.retry_hint, hops=hops,
+                           message=st.PRZYCZYNY.get(verdict.reason, ""))
+            if verdict.action == "retry":
+                retries += 1
+                self.rc.log(f"[{company.domena}] wycofanie: {res.status or res.error}, ponowię za {verdict.wait:.0f}s")
+                if retries > MAX_RETRIES_PER_URL:
+                    return Got("stop", fetch=res, url=current, reason="siec", hops=hops, message=st.PRZYCZYNY["siec"])
+                continue
+            if res.status in REDIRECT_CODES and res.location:
+                hops.append((current, res.status))
+                if len(hops) > MAX_REDIRECTS:
+                    return Got("bad", fetch=res, url=current, hops=hops, message="za wiele przekierowań")
+                target = normalize_url(res.location, base=current)
+                if target is None:
+                    return Got("bad", fetch=res, url=current, hops=hops, message="nieprawidłowy adres przekierowania")
+                if target in visited:
+                    return Got("bad", fetch=res, url=current, hops=hops, message="pętla przekierowań")
+                visited.add(target)
+                if not company.same_site(target):
+                    return Got("foreign", fetch=res, url=target, hops=hops,
+                               target=host_key(urlsplit(target).hostname or "") or "")
+                if kind == "html":
+                    if company.rules is not None and not company.rules.allowed(path_query(target)):
+                        return Got("robots_skip", fetch=res, url=target, hops=hops)
+                    digest = url_hash(target)
+                    if digest in company.seen:
+                        return Got("known", fetch=res, url=target, hops=hops)
+                    admitted, why = company.trap.admit(target)
+                    if not admitted:
+                        return Got("bad", fetch=res, url=target, hops=hops, message=f"przekierowanie na odrzucony adres ({why})")
+                    company.seen.add(digest)
+                current, retries = target, 0
+                continue
+            return Got("ok", fetch=res, url=current, hops=hops)
+
+    @staticmethod
+    def _bot_wall(res: FetchResult) -> bool:
+        if res.status in (403, 429, 503):
+            return detect_bot_wall(res.status, res.headers, res.body)
+        if res.status == 200 and res.body and len(res.body) < 20_000:
+            return detect_bot_wall(200, res.headers, res.body, _visible_len(res.body))
+        return False

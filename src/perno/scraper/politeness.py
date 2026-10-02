@@ -13,7 +13,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Protocol
 
 from perno.scraper.settings import ScanSettings
 
@@ -35,6 +35,14 @@ BOT_WALL_MARKERS = (
 )
 _CDN_HEADER_NAMES = ("cf-ray", "x-amz-cf-id", "x-vercel-id", "x-azure-ref", "x-wix-request-id", "x-sucuri-id")
 _CDN_SERVER_VALUES = ("cloudflare", "shopify")
+
+
+class Clock(Protocol):
+    """Zegar wstrzykiwany do bramek i crawlera (prawdziwy albo sterowany w testach)."""
+
+    def now(self) -> float: ...
+
+    def sleep(self, seconds: float, stop_event: Optional[threading.Event] = None) -> None: ...
 
 
 class RealClock:

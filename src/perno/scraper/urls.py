@@ -360,6 +360,12 @@ class TrapGuard:
 
 # ---- priorytet ---------------------------------------------------------
 
+def path_query(url: str) -> str:
+    """Ścieżka z zapytaniem — w takiej postaci robots.txt dopasowuje reguły."""
+    parts = urlsplit(url)
+    return (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+
+
 def priority(url: str, depth: int, *, in_nav: bool = False, anchor_text: str = "",
              from_sitemap: bool = False, start_prefix: str = "/") -> int:
     """Mniejsza wartość = wcześniej. Strona startowa ma priorytet 0 nadawany przez crawlera."""

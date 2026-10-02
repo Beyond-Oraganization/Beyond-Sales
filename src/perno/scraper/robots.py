@@ -136,7 +136,7 @@ def interpret(http_status: int, body: bytes = b"", content_type: str = "") -> Ro
 _LOC_RE = re.compile(r"<loc>\s*(?:<!\[CDATA\[)?\s*(.*?)\s*(?:\]\]>)?\s*</loc>", re.I | re.S)
 
 
-def parse_sitemap(text: str, max_urls: int = 2000) -> tuple:
+def parse_sitemap(text: str | bytes, max_urls: int = 2000) -> tuple:
     """(adresy stron, adresy podrzędnych sitemap). Indeks sitemap rozpoznajemy po <sitemapindex>."""
     if isinstance(text, bytes):
         text = text.decode("utf-8", errors="replace")

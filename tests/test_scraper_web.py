@@ -362,7 +362,7 @@ class StartupHelpersTests(SkaperCase):
 class ImportIsolationTests(unittest.TestCase):
     def test_panel_modules_never_import_bs4_or_the_crawler(self):
         code = ("import sys; import perno.cli.server, perno.web.pages, perno.web.pages.scraper; "
-                "bad = [m for m in ('bs4', 'perno.scraper.crawler', 'perno.scraper.extract') if m in sys.modules]; "
+                "bad = [m for m in ('bs4', 'perno.scraper.crawler', 'perno.scraper.extract', 'perno.scraper.scheduler', 'perno.scraper.company_crawl', 'perno.scraper.page_fetch', 'perno.scraper.page_pipeline') if m in sys.modules]; "
                 "assert not bad, bad")
         proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=BASE)
         self.assertEqual(proc.returncode, 0, proc.stderr)
