@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import unittest
 import urllib.robotparser
 
@@ -23,10 +24,11 @@ class MatchingTests(unittest.TestCase):
         text = "User-agent: *\nDisallow: /wp-admin/\nAllow: /wp-admin/admin-ajax.php\n"
         self.assertTrue(allowed(text, "/wp-admin/admin-ajax.php"))
         self.assertFalse(allowed(text, "/wp-admin/options.php"))
-        # regresja: stdlib robotparser myli się w tym przypadku
-        stdlib = urllib.robotparser.RobotFileParser()
-        stdlib.parse(text.splitlines())
-        self.assertFalse(stdlib.can_fetch("PernoContextBot", "/wp-admin/admin-ajax.php"))
+        if sys.version_info < (3, 13):  # Python 3.13 naprawił robotparser (kolejność Allow/Disallow, wildcardy)
+            # regresja: stdlib robotparser myli się w tym przypadku
+            stdlib = urllib.robotparser.RobotFileParser()
+            stdlib.parse(text.splitlines())
+            self.assertFalse(stdlib.can_fetch("PernoContextBot", "/wp-admin/admin-ajax.php"))
 
     def test_wildcards_and_end_anchor(self):
         text = "User-agent: *\nDisallow: /*?replytocom\nDisallow: /*.pdf$\nDisallow: /kat/*/tajne\n"
@@ -35,9 +37,10 @@ class MatchingTests(unittest.TestCase):
         self.assertTrue(allowed(text, "/a/b.pdf?x=1"))
         self.assertFalse(allowed(text, "/kat/xx/tajne/plik"))
         self.assertTrue(allowed(text, "/kat/tajne"))
-        stdlib = urllib.robotparser.RobotFileParser()
-        stdlib.parse(text.splitlines())
-        self.assertTrue(stdlib.can_fetch("PernoContextBot", "/post/?replytocom=5"))  # stdlib ignoruje wildcard
+        if sys.version_info < (3, 13):  # Python 3.13 obsługuje wildcardy w robotparser
+            stdlib = urllib.robotparser.RobotFileParser()
+            stdlib.parse(text.splitlines())
+            self.assertTrue(stdlib.can_fetch("PernoContextBot", "/post/?replytocom=5"))  # stdlib ignoruje wildcard
 
     def test_query_is_part_of_the_matched_target(self):
         text = "User-agent: *\nDisallow: /search?\n"

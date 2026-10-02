@@ -339,6 +339,7 @@ class TlsTests(NoNetworkMixin):
 
     def test_trusted_certificate_works_with_pinned_ip_and_sni_name(self):
         context = ssl.create_default_context(cafile=self.cert)
+        context.verify_flags &= ~ssl.VERIFY_X509_STRICT  # Python 3.13+ domyślnie ścisły; certyfikat testowy jest minimalny
         instance = Fetcher(ScanSettings.for_tests(), resolver=local_resolver, allow_private=True, ssl_context=context)
         result = instance.fetch_once(self.net.url("secure.test", "/"))
         self.assertIsNone(result.error)
@@ -346,6 +347,7 @@ class TlsTests(NoNetworkMixin):
 
     def test_certificate_for_another_name_is_rejected_even_if_chain_is_trusted(self):
         context = ssl.create_default_context(cafile=self.cert)
+        context.verify_flags &= ~ssl.VERIFY_X509_STRICT  # Python 3.13+ domyślnie ścisły; certyfikat testowy jest minimalny
         instance = Fetcher(ScanSettings.for_tests(), resolver=local_resolver, allow_private=True, ssl_context=context)
         self.assertEqual(instance.fetch_once(self.net.url("other.test", "/")).error, "tls")
 

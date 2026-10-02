@@ -94,6 +94,10 @@ def _make_ssl_context() -> ssl.SSLContext:
     cafile = os.environ.get("SSL_CERT_FILE")
     context = ssl.create_default_context(cafile=cafile) if cafile else ssl.create_default_context()
     context.minimum_version = ssl.TLSVersion.TLSv1_2
+    # Python 3.13 włącza domyślnie VERIFY_X509_STRICT (odrzuca certyfikaty niezgodne ze ścisłym RFC 5280, np. bez
+    # Authority Key Identifier). Przeglądarki i Python <= 3.12 ich nie odrzucają, a skraper ma pobierać strony tak jak
+    # one; łańcuch zaufania i nazwa hosta nadal są weryfikowane (wyłączenie weryfikacji jest zabronione, patrz README).
+    context.verify_flags &= ~ssl.VERIFY_X509_STRICT
     return context
 
 
@@ -297,6 +301,11 @@ class Fetcher:
         while True:
             if time.monotonic() >= deadline:
                 raise FetchError("timeout", "przekroczono całkowity czas żądania")
+            if response.isclosed():
+                # http.client zamyka gniazdo po ostatnim bajcie odpowiedzi, a od Pythona 3.13 settimeout() na
+                # zamkniętym gnieździe rzuca EBADF — zamknięta odpowiedź to to samo co EOF (read1 zwróciłoby b"").
+                eof = True
+                break
             sock.settimeout(self._recv_timeout(deadline))
             try:
                 chunk = response.read1(65536)
@@ -396,6 +405,6 @@ def decode_html(body: bytes, content_type_header: str = "") -> tuple:
             name = _usable(best.encoding)
             if name:
                 return body.decode(name, errors="replace"), name
-    except Exception:  # noqa: BLE001 — biblioteka opcjonalna, każdy błąd = przechodzimy dalej
+    except Exception:  # noqa: BLE001, S110 — biblioteka opcjonalna, każdy błąd = przechodzimy dalej
         pass
     return body.decode("cp1250", errors="replace"), "cp1250"
