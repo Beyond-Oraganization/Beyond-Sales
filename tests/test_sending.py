@@ -112,6 +112,34 @@ class SendRowTests(NoRealSmtpMixin, unittest.TestCase):
         self.assertIn("WYSŁANO", logs.output[0])
         self.assertEqual(database.get("eventy-001")["status"], st.STATUS_SENDING)
 
+    def test_bookkeeping_is_retried_three_times_with_a_growing_pause(self):
+        database = make_db()
+        put(database, sample_row(1, email="cel@example.com"))
+        broken = sa_exc.OperationalError("UPDATE", {}, Exception("baza zniknęła"))
+        with mock.patch.object(database, "mark_sent", side_effect=broken) as mark_sent, \
+                mock.patch("time.sleep") as sleep, self.assertLogs("perno.services.sending", level="ERROR"):
+            self.send(database, "eventy-001", FakeSmtp())
+        self.assertEqual(mark_sent.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [0.5, 1.0, 1.5])
+
+    def test_bookkeeping_that_succeeds_on_a_retry_is_a_normal_send(self):
+        database = make_db()
+        put(database, sample_row(1, email="cel@example.com"))
+        broken = sa_exc.OperationalError("UPDATE", {}, Exception("chwilowa awaria"))
+        real_mark_sent, calls = database.mark_sent, []
+
+        def flaky(row_id):
+            calls.append(row_id)
+            if len(calls) == 1:
+                raise broken
+            return real_mark_sent(row_id)
+
+        with mock.patch.object(database, "mark_sent", side_effect=flaky), mock.patch("time.sleep") as sleep:
+            result = self.send(database, "eventy-001", FakeSmtp())
+        self.assertEqual(result.outcome, "sent")
+        self.assertEqual(database.get("eventy-001")["status"], st.STATUS_SENT)
+        self.assertEqual(sleep.call_count, 1)
+
 
 FULL_CONFIG = {"SMTP_HOST": "smtp.invalid", "SMTP_PORT": "465", "SMTP_USER": "demo@example.com",
                "SMTP_PASSWORD": "fake", "SENDER_NAME": "Demo"}

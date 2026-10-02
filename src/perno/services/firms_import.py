@@ -28,6 +28,7 @@ PROFILE_FIELDS = ("country", "city", "address")
 
 
 class FirmsError(DbError):
+    """Błąd importu firm lub pliku z krajami (komunikat jest dla użytkownika)."""
     pass
 
 
@@ -71,6 +72,7 @@ def backup_table(db: Database, directory: str, label: str, now: Optional[datetim
 
 @dataclass
 class ImportResult:
+    """Wynik importu firm: dodane oraz pominięte jako już istniejące albo zdublowane w pliku."""
     segment: str
     dry_run: bool
     new: list = field(default_factory=list)  # [{id, company, website, domain, country, city}]
@@ -173,6 +175,7 @@ def import_firms(db: Database, rows: list, segment: str, *, dry_run: bool = Fals
 
 @dataclass
 class AssignResult:
+    """Wynik przypisania kraju, miasta i adresu: zmiany, wartości zostawione bez zmian i wpisy bez dopasowania."""
     dry_run: bool
     updated: list = field(default_factory=list)  # [(id, {pole: nowa wartość})]
     unchanged: int = 0

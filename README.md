@@ -345,7 +345,10 @@ scripts/check.sh --fast                                # bez wolnych testów: sz
 ```
 
 Testy używają sqlite i atrapy SMTP — nie dotykają prawdziwej bazy ani poczty (prawdziwe `smtplib` jest w testach zablokowane
-w `tests/__init__.py`). Logikę przeglądarki (filtry,
+w `tests/__init__.py`). Czy testy naprawdę pilnują logiki, sprawdza kontrola mutacyjna: zmienia w kopii projektu po jednym
+operatorze i liczy, ile zmian wykryły testy (`.venv/bin/python scripts/mutation_check.py src/perno/domain/mail_rules.py
+tests/test_mail_rules.py tests/test_db.py`). Stan z fazy 3: `mail_rules` 100%, `bulk` 88%, `sending` 89%; przeżywają tylko
+zmiany bez wpływu na zachowanie (stałe limitów, flagi `frozen`) albo widoczne dopiero na MySQL. Logikę przeglądarki (filtry,
 wyszukiwarka, sortowanie, zaznaczanie — `src/perno/web/pages/assets/filters.js`, `selection.js`) sprawdzają testy w JavaScript
 (`tests/js/*.test.js`), które ten sam zestaw uruchamia przez Node.js 18+ (bez Node są pomijane; osobno:
 `node --test tests/js/*.test.js`); `tests/js/skaper_xss.test.js` uruchamia skrypt zakładki Skraper z wrogimi danymi

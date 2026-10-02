@@ -97,11 +97,13 @@ _WIDTHS = {
 
 
 class ExportError(Exception):
+    """Eksport nie może zostać wykonany (komunikat jest dla użytkownika)."""
     pass
 
 
 @dataclass(frozen=True)
 class ExportSpec:
+    """Co i jak eksportować: format, filtr wierszy, kolumny albo treści maili, separator CSV."""
     fmt: str
     flt: RowFilter = ALL_ROWS
     bodies: bool = False
@@ -111,6 +113,7 @@ class ExportSpec:
 
 @dataclass
 class ExportResult:
+    """Gotowy plik eksportu (tymczasowy, do przesłania strumieniem) z nazwą, rozmiarem i liczbą wierszy."""
     stream: BinaryIO
     length: int
     filename: str
@@ -137,6 +140,7 @@ def headers(columns: tuple) -> tuple:
 
 
 def status_label(code: Optional[str]) -> str:
+    """Etykieta statusu po polsku; nieznany kod zostaje bez zmian."""
     meta = st.STATUS_META.get(code or "")
     return meta[0] if meta else (code or "")
 
@@ -273,6 +277,7 @@ def _write_xlsx(db: dbmod.Database, spec: ExportSpec, columns: tuple, out: Binar
 
 
 def build_export(db: dbmod.Database, spec: ExportSpec, now: Optional[datetime] = None) -> ExportResult:
+    """Buduje plik eksportu w pliku tymczasowym, strumieniowo — bez ładowania całej tabeli do pamięci."""
     if spec.fmt not in CONTENT_TYPES:
         raise ExportError(f"Nieznany format: {spec.fmt!r}.")
     columns = resolve_columns(spec)

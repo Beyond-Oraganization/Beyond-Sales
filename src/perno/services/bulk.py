@@ -50,6 +50,7 @@ class AckRequired(DbError):
 
 @dataclass(frozen=True)
 class BulkRequest:
+    """Zwalidowane żądanie zmiany zbiorczej: id firm, nowy status i/lub dane oraz potwierdzone ostrzeżenia."""
     ids: tuple
     status: Optional[str] = None
     data: Mapping = field(default_factory=dict)  # kraj/miasto/adres → nowa wartość (None = wyczyść); tylko pola do zmiany
@@ -120,6 +121,7 @@ def describe(request: BulkRequest, count: int) -> str:
 
 @dataclass
 class RowChange:
+    """Zmiana jednego wiersza: pola przed i po (tylko te, które operacja zmienia) — podstawa podglądu i cofania."""
     id: str
     before: dict  # tylko pola, które operacja zmienia
     after: dict
@@ -127,6 +129,7 @@ class RowChange:
 
 @dataclass
 class Plan:
+    """Wynik analizy zmiany zbiorczej: co się zmieni, co zostaje i co pominięto, plus ostrzeżenia do potwierdzenia."""
     requested: int = 0
     found: int = 0
     changes: list = field(default_factory=list)  # [RowChange]
@@ -219,6 +222,7 @@ def preview(db: Database, request: BulkRequest) -> Plan:
 
 @dataclass
 class Operation:
+    """Zapisana zmiana zbiorcza z dziennika cofania."""
     id: str
     at: datetime
     label: str

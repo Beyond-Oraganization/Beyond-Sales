@@ -123,6 +123,14 @@ class PreviewTests(BulkCase):
         self.assertEqual(plan.unchanged, ["eventy-002"])
         self.assertEqual([c.id for c in plan.changes], ["eventy-006"])
 
+    def test_ready_status_needs_both_email_and_body_not_just_one_of_them(self):
+        put(self.database,
+            sample_row(9, status="pominieto_brak_email", email="x@example.com", body_html="", body_text=""),
+            sample_row(10, status="pominieto_brak_email", email="", body_html="<p>treść</p>"))
+        plan = self.preview(9, 10, status="do_wyslania")
+        self.assertEqual(dict(plan.skipped), {"eventy-009": "not_ready", "eventy-010": "not_ready"})
+        self.assertEqual(plan.changes, [])
+
     def test_statuses_after_contact_keep_the_date_so_nothing_to_warn_about(self):
         plan = self.preview(1, 2, 8, status="odpowiedzial")
         self.assertEqual(plan.needs_ack, [])
@@ -252,6 +260,22 @@ class ApplyTests(BulkCase):
     def test_a_blocked_status_stops_the_send_claim_immediately(self):
         self.apply(2, status="nie_kontaktowac")
         self.assertIsNone(self.database.claim_for_sending("eventy-002"))
+
+
+class LockingTests(unittest.TestCase):
+    """Blokady wierszy (SELECT … FOR UPDATE) mają sens tylko przy zapisie i zawsze w tej samej kolejności; podgląd
+    nie blokuje niczego. Sqlite ignoruje FOR UPDATE, więc pilnujemy samych wywołań (MySQL sprawdza test_mysql_smoke)."""
+
+    def test_preview_reads_without_locks_while_apply_and_undo_lock_the_rows(self):
+        database = make_db(FakeClock())
+        put(database, sample_row(1), sample_row(2))
+        log = bulk.UndoLog()
+        request = req(["eventy-001", "eventy-002"], status="odpowiedzial")
+        with mock.patch.object(database, "load_for_bulk", wraps=database.load_for_bulk) as load:
+            bulk.preview(database, request)
+            bulk.apply(database, request, log)
+            bulk.undo(database, log)
+        self.assertEqual([call.kwargs["lock"] for call in load.call_args_list], [False, True, True])
 
 
 class UndoTests(BulkCase):

@@ -29,6 +29,7 @@ DEFAULT_CONTEXT_CHARS = 9000
 
 @dataclass(frozen=True)
 class PlannedUpdate:
+    """Zwalidowany wpis do zapisu: wiersz, nazwa firmy, język maila i pola do zapisu w tabeli."""
     row_id: str
     company: str
     language: str
@@ -37,6 +38,7 @@ class PlannedUpdate:
 
 @dataclass
 class EnrichmentPlan:
+    """Wynik walidacji pliku z treściami: wpisy gotowe do zapisu i błędy w postaci „id: komunikat”."""
     items: list = field(default_factory=list)  # [PlannedUpdate]
     errors: list = field(default_factory=list)  # ["id: komunikat"]
 

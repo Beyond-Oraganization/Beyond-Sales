@@ -15,6 +15,7 @@ from perno.mailer import mime_builder
 
 
 def load_seed(path: str) -> list:
+    """Wczytuje plik data/*.csv z danymi firm; brak pliku oznacza pustą listę."""
     if not os.path.exists(path):
         return []
     with open(path, newline="", encoding="utf-8") as f:
@@ -22,6 +23,7 @@ def load_seed(path: str) -> list:
 
 
 def render_row(segment: str, seed: dict, template: str, sender_name: str) -> tuple:
+    """Składa temat i treść maila (HTML, tekst, nazwa osadzanego obrazka) z danych firmy i szablonu."""
     f = forms.conjugate(seed["mode"])
     values = {
         "obs": seed["obs"],

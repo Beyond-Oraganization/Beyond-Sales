@@ -7,6 +7,7 @@ TOKEN_RE = re.compile(r"\{\{(\w+)\}\}")
 
 
 class MissingTokenError(ValueError):
+    """W szablonie zostały nierozpoznane tokeny `{{…}}`."""
     pass
 
 

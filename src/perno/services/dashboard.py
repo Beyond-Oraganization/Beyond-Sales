@@ -246,6 +246,7 @@ def write_dashboard(db: Database, output_path: str, *, with_bodies: bool = False
 
 
 def generate_dashboard(rows: list[dict], output_path: str) -> None:
+    """Zapisuje statyczny podgląd (HTML z osadzonymi wierszami) atomowo: najpierw plik tymczasowy, potem podmiana."""
     data_json = json.dumps(rows, ensure_ascii=False).replace("</script", "<\\/script")
     labels_json = json.dumps(STATUS_LABELS, ensure_ascii=False)
     countries_json = json.dumps({code: [name, flag] for code, name, flag in countries.choices()}, ensure_ascii=False)

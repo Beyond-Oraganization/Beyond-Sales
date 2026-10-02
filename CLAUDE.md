@@ -17,6 +17,7 @@ Plan przebudowy (fazy 0-5): `~/.claude/plans/przeanalizuj-dany-projekt-przeczyta
 - Handler strony: parsuje żądanie, woła usługę, zwraca JSON (≤ ~15 linii). Wyjątki mapuje na HTTP jedna tabela w `web/errors.py`; zależności strony bierze z `AppContext`, nigdy z atrybutów doklejanych do aplikacji.
 - `os.environ` i `config.env` czyta wyłącznie `settings.py` (`Environment`, `ConfigFile`, `SmtpSettings`); reszta dostaje wartości jawnie.
 - Zanim dodasz helper, sprawdź istniejące moduły (`domain/`, `services/`); duplikacja to najczęstszy błąd kodu z AI.
+- Po zmianie reguł w `domain/` lub `services/` uruchom `scripts/mutation_check.py` na zmienionym pliku: przeżywający mutant to zwykle brakująca asercja.
 - Funkcje ≤ ~40 linii i ≤ 5 argumentów, typy na publicznym API, bez mutowalnych argumentów domyślnych. Bramki ruff: złożoność ≤ 15, gałęzie ≤ 15, instrukcje ≤ 50, argumenty ≤ 8.
 - Nazwy: identyfikatory po angielsku. Wyjątek: skraper trzyma polskie nazwy tabel, kolumn i kodów statusów (`firmy`, `skan_status`, `FIRMA_*`), bo to wartości w bazie i w API JSON; nowy kod skrapera nazywaj po angielsku i tłumacz na granicy magazynu. (Sprawdzone: `Column("domena", key="domain")` działa w wyrażeniach i `insert/update`, ale `dict(row)` zwraca nazwy SQL, więc pełne tłumaczenie wymaga DTO.)
 - Po przeniesieniu pliku sprawdź ścieżki liczone z `__file__` (`grep -rn __file__ src`); tak zepsuł się `build_seed_data.py`.

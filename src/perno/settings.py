@@ -125,6 +125,8 @@ class ConfigFile:
 
 @dataclass(frozen=True)
 class SmtpSettings:
+    """Dane połączenia SMTP z config.env (hasło nie trafia do `repr`)."""
+
     host: str
     port: int
     user: str
@@ -158,4 +160,5 @@ def require_smtp(config: dict, path: str = DEFAULT_CONFIG) -> dict:
 
 
 def smtp_configured(config: Mapping[str, str]) -> bool:
+    """Czy w konfiguracji są wszystkie klucze SMTP (bez sprawdzania poprawności wartości)."""
     return all(config.get(key) for key in SMTP_KEYS)

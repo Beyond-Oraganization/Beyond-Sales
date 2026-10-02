@@ -53,7 +53,7 @@ target-version = "py312"
 extend-exclude = ["backup", "logs", "data"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM", "BLE", "S", "C90", "PLR0912", "PLR0913", "PLR0915", "T20", "RUF"]
+select = ["E", "F", "I", "B", "UP", "SIM", "BLE", "S", "C90", "PLR0912", "PLR0913", "PLR0915", "T20", "RUF", "D101", "D103"]
 ignore = [
     "E501",    # 255x przy 120; brak formatera, długie komentarze po polsku — nie egzekwujemy
     "UP035", "UP037", "UP045", "UP017", "UP041", "UP012",  # ~175x; modernizacja typów (Optional[X] -> X | None) po fazie 1
@@ -66,8 +66,11 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Skrypty CLI drukują wynik dla człowieka; biblioteka przechodzi na logging w fazie 3.4.
 "src/perno/cli/**" = ["T201"]
+"scripts/**" = ["T201", "S603"]                # narzędzia deweloperskie: drukują wynik i uruchamiają pytest
 "src/perno/scraper/runner.py" = ["T201"]        # RunLogger drukuje linie logu (faza 4.11)
-"tests/**" = ["S104", "S105", "S106", "S107", "S603", "RUF012", "PLR0912", "PLR0913", "PLR0915", "C901"]
+"tests/**" = ["S104", "S105", "S106", "S107", "S603", "RUF012", "PLR0912", "PLR0913", "PLR0915", "C901", "D101", "D103"]
+# Docstringi publicznych klas i funkcji wymagamy w domain/ i services/ (reguły biznesowe); reszta ma bazę do uzupełnienia.
+"src/perno/{scraper,web,cli,db,mailer}/**" = ["D101", "D103"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15    # ratchet: 26 -> 15 (faza 2.6) -> 10; dziś największa funkcja ma 14

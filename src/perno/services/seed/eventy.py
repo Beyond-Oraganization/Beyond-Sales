@@ -148,6 +148,7 @@ def match_dossier(company_name: str, dossiers: dict) -> int | None:
 
 
 def read_dossier_text(path: str) -> str:
+    """Treść pliku dossier (UTF-8)."""
     with open(path, encoding="utf-8") as f:
         return f.read()
 
@@ -169,6 +170,7 @@ def extract_company_card_email(dossier_text: str) -> str:
 
 
 def extract_company_card_website(dossier_text: str) -> str:
+    """Adres strony z wiersza „Strona” w tabeli Karta firmy (pusty, gdy go brak)."""
     section = KARTA_RE.search(dossier_text)
     if not section:
         return ""
@@ -181,5 +183,6 @@ def extract_company_card_website(dossier_text: str) -> str:
 
 
 def extract_h1_name(dossier_text: str) -> str:
+    """Nazwa firmy z nagłówka dossier („# N. Nazwa — analiza firmy”)."""
     m = H1_RE.search(dossier_text)
     return m.group(1).strip() if m else ""

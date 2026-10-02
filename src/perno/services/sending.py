@@ -35,6 +35,7 @@ class DailyCapReached(Exception):
 
 @dataclass(frozen=True)
 class Sender:
+    """Nadawca: adres (SMTP_USER) i nazwa wyświetlana (SENDER_NAME)."""
     address: str  # SMTP_USER
     name: str = ""  # SENDER_NAME — podpis w treści i nazwa nadawcy
 
@@ -48,12 +49,14 @@ class Mailer:
 
 @dataclass
 class SendResult:
+    """Wynik wysyłki jednego wiersza: rezultat, aktualny wiersz i komunikat."""
     outcome: str  # "sent" | "error" | "skipped" | "sent_unrecorded"
     row: Optional[dict]
     message: str = ""
 
 
 def smtp_factory_from_config(config: Mapping, env: Optional[Environment] = None) -> Callable:
+    """Fabryka klienta SMTP z konfiguracji; odmawia, gdy baza jest testowa (PERNO_DB_URL) bez jawnego odblokowania."""
     if not (env if env is not None else Environment.from_environ()).real_smtp_allowed:
         raise ConfigError(
             "Ustawiono PERNO_DB_URL (baza testowa/demo), więc prawdziwa wysyłka SMTP jest zablokowana. "
@@ -76,10 +79,12 @@ def build_mailer(config: Mapping, config_path: str = cfg.DEFAULT_CONFIG, *,
 
 
 def get_inline_image() -> tuple:
+    """Obraz osadzany w treści maila (przeskalowany, z cache)."""
     return image_prep.prepare_inline_image(cfg.INLINE_IMAGE_SRC, cfg.INLINE_IMAGE_CACHE_BASE)
 
 
 def build_message_for_row(row: Mapping, to_addr: str, sender: Sender) -> EmailMessage:
+    """Buduje wiadomość MIME z wiersza; obraz jest osadzany tylko wtedy, gdy treść go używa."""
     cid = mime_builder.INLINE_IMAGE_CID
     inline_images = []
     if f"cid:{cid}" in row["body_html"]:
@@ -95,6 +100,7 @@ def build_message_for_row(row: Mapping, to_addr: str, sender: Sender) -> EmailMe
 def send_row(
     db: Database, row_id: str, mailer: Mailer, *, allowed_from: tuple = (st.STATUS_PENDING, st.STATUS_ERROR),
 ) -> SendResult:
+    """Wysyła jeden wiersz: zajmuje go w bazie, wysyła i zapisuje wynik; błąd SMTP kończy się statusem „Błąd” z komunikatem."""
     claimed = db.claim_for_sending(row_id, allowed_from)
     if claimed is None:
         return SendResult("skipped", db.get(row_id),

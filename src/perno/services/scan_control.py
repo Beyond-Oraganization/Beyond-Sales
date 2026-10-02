@@ -25,19 +25,23 @@ class ScanRequestError(Exception):
 
 
 class ParserMissing(ScanRequestError):
+    """Brak pakietu parsera HTML (beautifulsoup4), bez którego skraper nie wystartuje."""
     pass
 
 
 class UnknownFirms(ScanRequestError):
+    """Wskazano firmy, których nie ma w bazie skrapera."""
     pass
 
 
 class NothingToScan(ScanRequestError):
+    """Żadna firma nie kwalifikuje się do skanu przy tych ustawieniach."""
     pass
 
 
 @dataclass(frozen=True)
 class StartedScan:
+    """Uruchomiony przebieg: jego id i liczba firm w kolejce."""
     run_id: int
     queued: int
 
@@ -48,6 +52,7 @@ def parser_available() -> bool:
 
 
 def ensure_parser_available() -> None:
+    """Rzuca `ParserMissing`, gdy brakuje beautifulsoup4 (sprawdzane bez importu pakietu)."""
     if not parser_available():
         raise ParserMissing("Brak pakietu beautifulsoup4. Uruchom: uv sync")
 

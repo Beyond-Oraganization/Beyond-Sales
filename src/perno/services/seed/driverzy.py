@@ -41,12 +41,14 @@ def _clean(s: str) -> str:
 
 
 def read_driverzy_csv(path: str) -> list[list[str]]:
+    """Wiersze arkusza Driverzy bez nagłówka."""
     with open(path, newline="", encoding="utf-8") as f:
         rows = list(csv.reader(f))
     return rows[1:]  # bez nagłówka
 
 
 def classify_icp(uwagi: str) -> str:
+    """Segment ICP z kolumny uwag („ICP3”, „ICP4” albo UNKNOWN)."""
     if "ICP 3" in uwagi:
         return "ICP3"
     if "ICP 4" in uwagi:
@@ -89,11 +91,13 @@ def generate_pitch(booking_channel: str, pay_online: str) -> tuple[str, str, str
 
 
 def find_dossier(dossiers_dir: str, row_number: int) -> str:
+    """Ścieżka dossier firmy o danym numerze wiersza (pusta, gdy go nie ma)."""
     matches = glob.glob(os.path.join(dossiers_dir, f"{row_number:03d}_*.md"))
     return matches[0] if matches else ""
 
 
 def build_icp3_records(csv_path: str, dossiers_dir: str) -> list[dict]:
+    """Rekordy segmentu ICP3 z arkusza: dane firmy i mechanicznie wygenerowana treść."""
     records = []
     for row_number, row in enumerate(read_driverzy_csv(csv_path), start=1):
         if classify_icp(row[COL_UWAGI]) != "ICP3":

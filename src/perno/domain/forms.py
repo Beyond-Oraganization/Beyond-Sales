@@ -25,4 +25,5 @@ SIGNATURE_TOKEN = "[Imię i nazwisko]"  # noqa: S105 — tekst zastępczy podpis
 
 
 def conjugate(mode: str) -> dict:
+    """Formy grzecznościowe dla trybu zwrotu (Pan, Pani, Państwo); nieznany tryb daje „Państwo”."""
     return FORMS.get(mode, FORMS["Panstwo"])

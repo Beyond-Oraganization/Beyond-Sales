@@ -29,6 +29,7 @@ def language_for(country: Optional[str]) -> Optional[str]:
 
 
 def template_path(segment: str, language: str) -> str:
+    """Ścieżka szablonu segmentu w danym języku (`segment.html` dla polskiego, `segment.xx.html` dla pozostałych)."""
     name = f"{segment}.html" if language == "pl" else f"{segment}.{language}.html"
     return os.path.join(cfg.BASE_DIR, "templates", name)
 
