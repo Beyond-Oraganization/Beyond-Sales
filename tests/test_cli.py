@@ -77,7 +77,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertGreater(self.database.count_rows(), 90)
         self.assertEqual(FakeClient.sent, [])
-        self.assertTrue(os.path.exists(cfg.INDEX_HTML))
+        self.assertFalse(os.path.exists(cfg.INDEX_HTML))  # podgląd powstaje tylko na żądanie (dashboard.py)
         self.assertIn("nic nie wysłano", out)
 
     def test_sends_selected_row_and_records_status(self):

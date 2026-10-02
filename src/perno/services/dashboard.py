@@ -3,6 +3,9 @@
 To tylko podgląd do odczytu: dane są wklejone bezpośrednio do pliku HTML, więc
 działa po zwykłym dwukliku, bez serwera i bez problemów CORS przy file://.
 Interaktywny panel (edycja, wysyłka, eksport) to `python3 server.py`.
+
+Plik powstaje na żądanie (`python3 dashboard.py`), a nie po każdym zapisie: wklejanie całej tabeli do HTML-a
+kosztuje tyle, ile ma wierszy, więc przy dziesiątkach tysięcy firm nie może towarzyszyć każdej zmianie.
 """
 
 from __future__ import annotations
@@ -10,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 
+from perno.db import Database
 from perno.domain import countries
 from perno.domain.statuses import STATUS_META as STATUS_LABELS
 
@@ -161,12 +165,13 @@ function renderSummary(){
   }).join('');
 }
 
-function renderDetail(row){
-  const tr = document.createElement('tr');
-  tr.className = 'detail-row';
-  const td = document.createElement('td');
-  td.colSpan = 8;
-  td.innerHTML = `
+function renderBodies(row){
+  if (!('body_html' in row)) {
+    return `<div class="muted" style="font-size:12.5px;">Ten podgląd jest bez treści maili${row.has_body ? '' : ' (ten wiersz i tak jej nie ma)'}.
+      Przeczytasz ją w panelu (<code>python3 server.py</code>) albo w podglądzie z treściami:
+      <code>python3 dashboard.py --with-bodies</code>.</div>`;
+  }
+  return `
     <div class="detail-grid">
       <div>
         <h4>Treść (HTML)</h4>
@@ -176,7 +181,16 @@ function renderDetail(row){
         <h4>Treść (plain text)</h4>
         <div class="body-text">${escapeHtml(row.body_text || '(brak)')}</div>
       </div>
-    </div>
+    </div>`;
+}
+
+function renderDetail(row){
+  const tr = document.createElement('tr');
+  tr.className = 'detail-row';
+  const td = document.createElement('td');
+  td.colSpan = 8;
+  td.innerHTML = `
+    ${renderBodies(row)}
     ${row.error ? `<div class="error-box"><strong>Błąd:</strong> ${escapeHtml(row.error)}</div>` : ''}
     ${row.attachments ? `<div class="muted" style="margin-top:8px;font-size:12px;">Załączniki/obrazy: ${escapeHtml(row.attachments)} ${escapeHtml(row.inline_images||'')}</div>` : ''}
   `;
@@ -222,6 +236,13 @@ render();
 </body>
 </html>
 """
+
+
+def write_dashboard(db: Database, output_path: str, *, with_bodies: bool = False) -> int:
+    """Zapisuje podgląd z bazy i zwraca liczbę wierszy. Domyślnie bez treści maili (to większość rozmiaru pliku)."""
+    rows = db.fetch_all(light=not with_bodies)
+    generate_dashboard(rows, output_path)
+    return len(rows)
 
 
 def generate_dashboard(rows: list[dict], output_path: str) -> None:

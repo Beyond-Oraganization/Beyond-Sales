@@ -14,7 +14,8 @@ scrape.py            skraper stron firm (kontekst i kontakty) — z terminala; t
 firmy.py             nowe firmy z CSV do bazy oraz przypisanie im kraju, miasta i adresu      → perno.cli.firms
 wypelnij.py          uzupełnianie maili treścią z zakończonych skanów                          → perno.cli.enrich
 build_seed_data.py   buduje data/*.csv (dane firm) ze źródeł                                  → perno.cli.seed
-index.html           statyczny podgląd tylko do odczytu (odświeżany z bazy)
+dashboard.py         statyczny podgląd index.html tylko do odczytu — powstaje na żądanie (bez treści maili; --with-bodies) → perno.cli.dashboard
+index.html           wynik dashboard.py; nie jest odświeżany po każdej zmianie, bo przy tysiącach firm byłoby to kosztowne
 ```
 
 Układ kodu (`src/perno/`): `domain/` (czysta logika: statusy, kraje, szablony), `db/` (tabela `maile`, połączenie),

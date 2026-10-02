@@ -32,7 +32,6 @@ from perno.domain import localize, templating
 from perno.domain import statuses as st
 from perno.scraper import statuses as sst
 from perno.scraper.schema import firmy, firmy_maile, kontakty, strony, strony_tresc
-from perno.services import dashboard
 from perno.services import firms_import as firms
 from perno.services.generation import render_row
 from perno.settings import load_config
@@ -198,10 +197,6 @@ def cmd_zapisz(args) -> int:
             result = conn.execute(sa.update(maile).where(maile.c.id == entry["id"], maile.c.status.in_(allowed)).values(**values))
             written += result.rowcount
     print(f"Zapisano {written} z {len(plan)} wierszy (status „Do wysłania”).")
-    try:
-        dashboard.generate_dashboard(db.fetch_all(), cfg.INDEX_HTML)
-    except OSError as exc:
-        print(f"Nie udało się odświeżyć index.html: {exc}", file=sys.stderr)
     return 0
 
 

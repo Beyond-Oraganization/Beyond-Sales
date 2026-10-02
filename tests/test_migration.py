@@ -122,7 +122,7 @@ class MigrationTests(MigrationCase):
         self.assertEqual(len(backups), 1)
         self.assertEqual(migrate.sha256_of(backups[0]), self.original_hash)
         self.assertEqual(len(glob.glob(os.path.join(cfg.BACKUP_DIR, "MIGRACJA_*.txt"))), 1)
-        self.assertTrue(os.path.exists(cfg.INDEX_HTML))
+        self.assertFalse(os.path.exists(cfg.INDEX_HTML))  # podgląd powstaje tylko na żądanie (dashboard.py)
 
     def test_row_order_in_the_csv_does_not_matter(self):
         legacy_csv.write_rows(self.csv_path, list(reversed(synthetic_rows())))

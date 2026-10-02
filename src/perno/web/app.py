@@ -78,13 +78,11 @@ def error_response(status: int, message: str, **extra) -> Response:
 
 class App:
     def __init__(self, db: dbmod.Database, pages: list, *, config_path: str = cfg.DEFAULT_CONFIG,
-                 smtp_factory: Optional[Callable] = None, index_html: Optional[str] = cfg.INDEX_HTML,
-                 allowed_hosts: Optional[set] = None):
+                 smtp_factory: Optional[Callable] = None, allowed_hosts: Optional[set] = None):
         self.db = db
         self.pages = pages
         self.config_path = config_path
         self.smtp_factory = smtp_factory
-        self.index_html = index_html
         self.allowed_hosts = allowed_hosts or set()
         self.routes = self._build_routes(pages)
 
@@ -109,15 +107,6 @@ class App:
 
     def set_port(self, port: int) -> None:
         self.allowed_hosts = {f"localhost:{port}", f"127.0.0.1:{port}"}
-
-    def refresh_dashboard(self) -> None:
-        if not self.index_html:
-            return
-        from perno.services import dashboard
-        try:
-            dashboard.generate_dashboard(self.db.fetch_all(), self.index_html)
-        except OSError as exc:
-            print(f"Nie udało się odświeżyć index.html: {exc}", file=sys.stderr)
 
     def dispatch(self, req: Request) -> Response:
         try:

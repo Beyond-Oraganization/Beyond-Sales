@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import unittest
-from unittest import mock
 
 from perno import db as dbmod
 from tests.fixtures import put, sample_row
@@ -21,7 +20,6 @@ class BulkWebCase(WebCase):
             sample_row(3, status="wysylanie"),
             sample_row(4, status="nie_kontaktowac", email="", body_html="", body_text=""),
             sample_row(5, segment="driverzy", status="blad", error="SMTP"))
-        self.app.refresh_dashboard = mock.Mock()
 
     def update(self, ids, changes, **extra):
         return self.call("POST", "/api/bulk-update", {"ids": ids, "changes": changes, **extra})
@@ -40,9 +38,8 @@ class BulkUpdateTests(BulkWebCase):
         self.assertEqual(data["skipped_by_reason"], {"locked": 1, "not_found": 1})
         self.assertNotIn("operation", data)
         self.assertEqual((self.status_of("eventy-001"), self.status_of("eventy-002")), ("wyslano", "do_wyslania"))
-        self.app.refresh_dashboard.assert_not_called()
 
-    def test_real_run_changes_rows_records_the_operation_and_refreshes_the_dashboard(self):
+    def test_real_run_changes_rows_and_records_the_operation(self):
         resp = self.update(["eventy-001", "eventy-002"], {"status": "zainteresowany", "city": "Leeds"})
         data = self.data(resp)
         self.assertEqual(resp.status, 200)
@@ -51,7 +48,6 @@ class BulkUpdateTests(BulkWebCase):
         self.assertEqual(data["operation"]["label"], "status „Zainteresowany”, miasto „Leeds” (2)")
         self.assertEqual((self.status_of("eventy-001"), self.status_of("eventy-002")), ("zainteresowany",) * 2)
         self.assertEqual(self.database.get("eventy-001")["sent_at"], SENT_AT)  # historia wysyłki przeżyła
-        self.app.refresh_dashboard.assert_called_once()
 
     def test_unconfirmed_warnings_give_409_with_details_and_change_nothing(self):
         resp = self.update(["eventy-001"], {"status": "do_wyslania"})
@@ -61,7 +57,6 @@ class BulkUpdateTests(BulkWebCase):
         self.assertEqual(data["warnings"][0]["count"], 1)
         self.assertIn("error", data)
         self.assertEqual(self.status_of("eventy-001"), "wyslano")
-        self.app.refresh_dashboard.assert_not_called()
 
     def test_dry_run_of_the_same_request_lists_the_warnings_without_failing(self):
         data = self.data(self.update(["eventy-001"], {"status": "do_wyslania"}, dry_run=True))
@@ -119,7 +114,6 @@ class UndoWebTests(BulkWebCase):
         self.assertEqual(self.status_of("eventy-002"), "odpowiedzial")  # starsza operacja czeka na swoją kolej
         self.assertEqual(self.call("POST", "/api/bulk-undo", {"operation": first["id"]}).status, 200)
         self.assertEqual(self.status_of("eventy-002"), "do_wyslania")
-        self.assertEqual(self.app.refresh_dashboard.call_count, 4)  # 2 zmiany + 2 cofnięcia
 
     def test_undo_without_anything_to_undo_is_404(self):
         resp = self.call("POST", "/api/bulk-undo", {})

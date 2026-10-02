@@ -23,7 +23,6 @@ from perno import settings as cfg
 from perno.db import Database, DbError
 from perno.domain import countries
 from perno.domain import statuses as st
-from perno.services import dashboard
 from perno.services import firms_import as firms
 from perno.settings import ConfigError, load_config
 
@@ -69,14 +68,6 @@ def prepare_writes(db: Database, args, label: str) -> None:
         print(f"Dodano do tabeli maile kolumny: {', '.join(added)}.")
 
 
-def refresh_dashboard(db: Database) -> None:
-    """Statyczny podgląd index.html (jak w send_emails.py); jego brak nie jest błędem importu."""
-    try:
-        dashboard.generate_dashboard(db.fetch_all(), cfg.INDEX_HTML)
-    except OSError as exc:
-        print(f"Nie udało się odświeżyć index.html: {exc}", file=sys.stderr)
-
-
 def require_profile_columns(db: Database) -> None:
     if db.missing_columns():
         raise DbError("Baza nie ma jeszcze kolumn z danymi o firmie (kraj, miasto, adres, opis). "
@@ -107,10 +98,8 @@ def cmd_import(args) -> int:
         print(f"Identyfikatory: {result.new[0]['id']} … {result.new[-1]['id']}")
     if args.dry_run:
         print("--dry-run: nic nie zapisano.")
-    else:
-        refresh_dashboard(db)
-        if result.new:
-            print("Następny krok: przypisz kraje — python3 firmy.py kraje data/kraje_firm.csv")
+    elif result.new:
+        print("Następny krok: przypisz kraje — python3 firmy.py kraje data/kraje_firm.csv")
     return 0
 
 
@@ -133,8 +122,6 @@ def cmd_kraje(args) -> int:
     show("Firmy w bazie, których nie ma w pliku", result.rows_without_entry, lambda x: x)
     if args.dry_run:
         print("--dry-run: nic nie zapisano.")
-    else:
-        refresh_dashboard(db)
     return 0
 
 

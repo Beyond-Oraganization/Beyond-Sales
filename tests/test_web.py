@@ -40,7 +40,7 @@ class WebCase(unittest.TestCase):
         self.database = make_db()
         self.smtp = FakeSmtp()
         self.app = App(self.database, PAGES, config_path=write_config(self.tmp),
-                       smtp_factory=lambda: self.smtp, index_html=None, allowed_hosts=set(HOSTS))
+                       smtp_factory=lambda: self.smtp, allowed_hosts=set(HOSTS))
 
     def call(self, method, path, payload=None, headers=None, raw=None, query=None, content_length=None):
         base = {"host": f"localhost:{PORT}", "content-type": "application/json"}
@@ -74,7 +74,7 @@ class PageTests(WebCase):
         page = Page(key="raporty", label="Raporty", path="/raporty", render=render, order=50,
                     routes={("GET", "/api/raporty"): lambda req, app: json_response({"ok": True})})
         self.app = App(self.database, [*PAGES, page], config_path=self.app.config_path,
-                       index_html=None, allowed_hosts=set(HOSTS))
+                       allowed_hosts=set(HOSTS))
         html = self.call("GET", "/raporty").body.decode("utf-8")
         self.assertIn('href="/raporty" aria-current="page">Raporty</a>', html)
         self.assertIn('href="/">Wysyłka</a>', self.call("GET", "/raporty").body.decode("utf-8"))
@@ -142,7 +142,7 @@ class SecurityTests(WebCase):
 
         page = Page(key="t", label="T", path="/t", render=lambda app: "",
                     routes={("GET", "/boom"): boom, ("GET", "/down"): db_down})
-        self.app = App(self.database, [page], index_html=None, allowed_hosts=set(HOSTS))
+        self.app = App(self.database, [page], allowed_hosts=set(HOSTS))
         with unittest.mock.patch("traceback.print_exc"):
             resp = self.call("GET", "/boom")
             down = self.call("GET", "/down")
@@ -232,7 +232,7 @@ class SocketTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         database = make_db()
         put(database, sample_row(1))
-        self.app = App(database, PAGES, config_path=write_config(tmp.name), index_html=None)
+        self.app = App(database, PAGES, config_path=write_config(tmp.name))
         server.Handler.app = self.app
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         self.port = self.httpd.server_address[1]

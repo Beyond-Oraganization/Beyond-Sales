@@ -32,7 +32,6 @@ from perno import db as dbmod
 from perno import settings as cfg
 from perno.db import legacy_csv
 from perno.domain import statuses as st
-from perno.services import dashboard
 from perno.settings import ConfigError, load_config
 
 
@@ -232,10 +231,6 @@ def cmd_migrate(args) -> int:
         f.write(f"Migracja Maile.csv → {db.describe()}\nData: {datetime.now():%Y-%m-%d %H:%M:%S}\n"
                 f"Wierszy: {len(rows)}\nsha256 CSV: {original_hash}\nKopia: {backup_path}\n"
                 f"Statusy: {dict(Counter(r['status'] for r in rows))}\n")
-    try:
-        dashboard.generate_dashboard(db.fetch_all(), cfg.INDEX_HTML)
-    except OSError as exc:
-        print(f"Nie udało się odświeżyć index.html: {exc}")
     print(f"\nGotowe. Stary plik: {backup_path}\nRaport: {report_path}\n"
           f"Powrót do starej aplikacji: python3 migrate_csv_to_sql.py --export-legacy Maile.csv")
     return 0

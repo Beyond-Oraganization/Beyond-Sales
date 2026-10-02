@@ -384,16 +384,10 @@ class CliTests(TempCase):
         self.assertEqual(self.database.count_rows(), 4)
         self.assertEqual(self.database.get("eventy-n002")["description"], "Opis B")
 
-    def test_dashboard_is_refreshed_after_changes_but_not_after_a_dry_run(self):
-        self.cli("import", self.new_csv, "--segment", "eventy", "--dry-run")
-        self.assertFalse(os.path.exists(self.index_html))
+    def test_commands_leave_the_static_dashboard_alone(self):
         self.cli("import", self.new_csv, "--segment", "eventy")
-        with open(self.index_html, encoding="utf-8") as handle:
-            html = handle.read()
-        self.assertIn("Nowa A", html)
         self.cli("kraje", self.countries_csv)
-        with open(self.index_html, encoding="utf-8") as handle:
-            self.assertIn('"country": "DE"', handle.read())
+        self.assertFalse(os.path.exists(self.index_html))  # podgląd powstaje tylko na żądanie (dashboard.py)
 
     def test_second_import_adds_nothing(self):
         self.cli("import", self.new_csv, "--segment", "eventy")

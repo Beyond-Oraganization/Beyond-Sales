@@ -103,7 +103,6 @@ def api_send_one(req: Request, app: App) -> Response:
         sender_name=config.get("SENDER_NAME", ""),
         allowed_from=(st.STATUS_PENDING, st.STATUS_ERROR),
     )
-    app.refresh_dashboard()
     if result.outcome == "skipped":
         raise HttpError(409, result.message, row=result.row)
     return json_response({"row": result.row, "outcome": result.outcome, "message": result.message})
@@ -112,7 +111,6 @@ def api_send_one(req: Request, app: App) -> Response:
 def api_regenerate(req: Request, app: App) -> Response:
     sender_name = app.load_config().get("SENDER_NAME", "")
     result = generation.refresh_segments(app.db, ("eventy", "driverzy"), sender_name)
-    app.refresh_dashboard()
     return json_response({**result, "rows": app.db.fetch_all(light=req.json.get("light") is True)})
 
 
@@ -126,7 +124,6 @@ def api_bulk_update(req: Request, app: App) -> Response:
         result = bulk.apply(app.db, request, get_undo_log(app))
     except bulk.AckRequired as exc:
         raise HttpError(409, str(exc), **exc.plan.to_json()) from None
-    app.refresh_dashboard()
     return json_response({"dry_run": False, **result})
 
 
@@ -135,7 +132,6 @@ def api_bulk_undo(req: Request, app: App) -> Response:
     if operation is not None and not isinstance(operation, str):
         raise HttpError(400, "Pole operation musi być tekstem.")
     result = bulk.undo(app.db, get_undo_log(app), operation)
-    app.refresh_dashboard()
     return json_response(result)
 
 

@@ -29,7 +29,7 @@ from perno import settings as cfg
 from perno.db import NO_COUNTRY, Database, DbError, RowFilter
 from perno.domain import countries
 from perno.domain import statuses as st
-from perno.services import dashboard, generation, sending
+from perno.services import generation, sending
 from perno.settings import ConfigError, load_config, require_smtp
 
 
@@ -39,10 +39,6 @@ def write_log(lines: list) -> str:
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     return path
-
-
-def refresh_dashboard(db: Database) -> None:
-    dashboard.generate_dashboard(db.fetch_all(), cfg.INDEX_HTML)
 
 
 def parse_countries(value: str) -> tuple:
@@ -115,7 +111,6 @@ def run(args: argparse.Namespace) -> int:
         db, segments, sender_name, args.regenerate_pending, allow_empty=args.allow_empty_db)
     for segment, stats in result.items():
         print(f"{segment}: {stats['created']} nowych, {stats['regenerated']} przeliczonych.")
-    refresh_dashboard(db)
 
     if args.dry_run:
         if args.country:
@@ -124,7 +119,7 @@ def run(args: argparse.Namespace) -> int:
         else:
             pending, scope = db.status_counts().get(st.STATUS_PENDING, 0), ""
         print(f"\n--dry-run: nic nie wysłano. {pending} maili{scope} ma status 'do_wyslania'. "
-              "Otwórz index.html albo panel (python3 server.py), żeby je przejrzeć.")
+              "Otwórz panel (python3 server.py), żeby je przejrzeć.")
         return 0
 
     smtp_factory = sending.smtp_factory_from_config(config)
@@ -186,10 +181,8 @@ def run(args: argparse.Namespace) -> int:
                     time.sleep(random.uniform(args.delay_min, args.delay_max))
     except KeyboardInterrupt:
         print("\nPrzerwano (Ctrl+C). Wiersz, który był wysyłany, oznaczono jako błąd — sprawdź folder Wysłane.")
-        refresh_dashboard(db)
         return 130
 
-    refresh_dashboard(db)
     log_path = write_log(log_lines)
     ok_count = sum(1 for line in log_lines if line.startswith("OK"))
     print(f"\nGotowe: {ok_count}/{len(to_send)} wysłanych. Log: {log_path}")

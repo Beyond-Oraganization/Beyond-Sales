@@ -24,6 +24,7 @@ perno-firms = "perno.cli.firms:main"
 perno-enrich = "perno.cli.enrich:main"
 perno-migrate = "perno.cli.migrate:main"
 perno-seed = "perno.cli.seed:main"
+perno-dashboard = "perno.cli.dashboard:main"
 
 [dependency-groups]
 dev = [
