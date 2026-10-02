@@ -30,7 +30,9 @@ from perno.scraper.settings import ScanSettings, SettingsError
 from perno.scraper.store import InvalidFirma, RunActive, Store
 from perno.settings import ConfigError, load_config
 
-SETTING_FLAGS = (("concurrency", "--concurrency", int, "Ile domen naraz (1–100)."),
+SETTING_FLAGS = (("profile", "--profile", str, "Profil budżetu na firmę: kontekst (ok. 25 stron) albo zbalansowany "
+                                               "(do 500 stron, domyślny). Poniższe liczby nadpisują profil."),
+                 ("concurrency", "--concurrency", int, "Ile domen naraz (1–100)."),
                  ("delay", "--delay", float, "Odstęp między żądaniami do jednej domeny w s (min. 1)."),
                  ("depth", "--depth", int, "Maksymalna głębokość linków (1–20)."),
                  ("max_pages", "--pages", int, "Limit stron na firmę (łącznie, także po wznowieniach)."),

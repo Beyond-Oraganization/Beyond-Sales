@@ -12,7 +12,6 @@ from perno.scraper import statuses as st
 from perno.scraper.company import Company
 from perno.scraper.fetcher import FetchResult, decode_html
 from perno.scraper.run_context import RunContext
-from perno.scraper.settings import MAX_DISCOVERED_PER_FIRM
 from perno.scraper.store import LinkRecord, PageRecord, compress_html
 from perno.scraper.urls import normalize_url, page_class, priority, url_hash
 
@@ -98,7 +97,7 @@ class PagePipeline:
             digest = url_hash(url)
             if digest in company.seen:
                 continue
-            if len(company.seen) >= MAX_DISCOVERED_PER_FIRM:
+            if len(company.seen) >= self.rc.settings.max_discovered:
                 break
             admitted, _ = company.trap.admit(url)
             if not admitted:

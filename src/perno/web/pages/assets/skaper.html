@@ -13,6 +13,7 @@
   <details class="settings" id="settingsBox">
     <summary>Ustawienia przebiegu</summary>
     <div class="settings-grid">
+      <label class="wide">Profil budżetu na firmę <select id="s_profile"></select></label>
       <label>Domen naraz <input type="number" id="s_concurrency" min="1" max="100"></label>
       <label>Odstęp na domenę (s) <input type="number" id="s_delay" min="1" step="0.5"></label>
       <label>Głębokość <input type="number" id="s_depth" min="1" max="20"></label>
@@ -20,6 +21,7 @@
       <label>MB na firmę <input type="number" id="s_max_mb" min="1" max="500"></label>
       <label>Minut na firmę <input type="number" id="s_max_minutes" min="1" max="240"></label>
     </div>
+    <p class="muted small" id="profileNote"></p>
     <p class="muted" id="estimate"></p>
     <p class="muted small">Zasady uprzejmości (nie do wyłączenia): robots.txt zawsze respektowany, na jedną domenę najwyżej jedno żądanie naraz z odstępem ≥ 1 s, równoległość tylko między różnymi domenami, odmowa serwera (403/429/blokada dla botów) zatrzymuje firmę. Bot przedstawia się jawnie.</p>
   </details>

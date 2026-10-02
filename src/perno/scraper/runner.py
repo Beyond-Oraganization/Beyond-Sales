@@ -182,7 +182,8 @@ def plan_summary(settings: ScanSettings, firms: int) -> list:
     per_host_rate = 1.0 / cycle
     parallel = max(1, min(settings.concurrency, firms)) if firms else 0
     throughput = min(parallel * per_host_rate, settings.max_rps)
-    firm_seconds = min(TYPICAL_PAGES_PER_FIRM * cycle, settings.max_minutes * 60.0)
+    typical_pages = min(TYPICAL_PAGES_PER_FIRM, settings.max_pages)
+    firm_seconds = min(typical_pages * cycle, settings.max_minutes * 60.0)
     worst_seconds = settings.max_minutes * 60.0
     waves = math.ceil(firms / parallel) if parallel else 0
     return [
@@ -190,8 +191,9 @@ def plan_summary(settings: ScanSettings, firms: int) -> list:
         f"Na jedną domenę: najwyżej 1 żądanie naraz, odstęp co najmniej {base:g} s + jitter (≈{cycle:.1f} s na cykl, "
         f"≈{per_host_rate:.2f} żądań/s na domenę).",
         f"Łącznie: ≈{throughput:.1f} żądań/s (bramka globalna {settings.max_rps:g}/s, limit na adres IP {settings.ip_cap}).",
-        f"Limity na firmę: {settings.max_pages} stron, {settings.max_mb} MB, {settings.max_minutes} min, głębokość {settings.depth}.",
-        f"Szacunek czasu: typowo ≈{waves * firm_seconds / 60:.0f} min (≈{TYPICAL_PAGES_PER_FIRM} stron na firmę), "
+        f"Profil „{settings.profile}”; limity na firmę: {settings.max_pages} stron, {settings.max_mb} MB, "
+        f"{settings.max_minutes} min, głębokość {settings.depth}.",
+        f"Szacunek czasu: typowo ≈{waves * firm_seconds / 60:.0f} min (≈{typical_pages} stron na firmę), "
         f"najwyżej ≈{waves * worst_seconds / 60:.0f} min.",
         "robots.txt jest zawsze respektowany (w tym Crawl-delay); odmowa serwera (403/429/blokada dla botów) zatrzymuje firmę.",
     ]

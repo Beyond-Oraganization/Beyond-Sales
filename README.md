@@ -244,9 +244,27 @@ python3 scrape.py purge --older-than 90         # usuń dane skanu firm zakończ
 ```
 
 Ustawienia domyślne (`SKRAPER_*` w config.env, komentarze w `config.example.env`) są przycinane do bezpiecznych
-zakresów; flagi `run` (`--concurrency --delay --depth --pages --mb --minutes`) mają pierwszeństwo. **Przed
+zakresów; flagi `run` (`--profile --concurrency --delay --depth --pages --mb --minutes`) mają pierwszeństwo. **Przed
 pierwszym uruchomieniem ustaw `SKRAPER_CONTACT`** (e-mail albo URL — właściciele stron zobaczą go w nagłówkach).
 Bez niego użyty zostanie `SMTP_USER` z ostrzeżeniem.
+
+**Profil budżetu na firmę** (`SKRAPER_PROFILE`, `--profile`, lista „Profil” w ustawieniach przebiegu) wybiera, ile skraper
+bierze z jednej firmy; uprzejmość wobec hostów (odstęp, robots.txt, limity na IP) od profilu nie zależy:
+
+| Profil | Stron | Głębokość | MB | Minut | Zapamiętane adresy | Kiedy |
+|---|---|---|---|---|---|---|
+| `zbalansowany` (domyślny) | 500 | 10 | 50 | 30 | 20 000 | pełniejszy obraz firmy; dotychczasowe zachowanie |
+| `kontekst` | 25 | 4 | 15 | 10 | 500 | adres kontaktowy i kontekst do maila; kilka razy mniej ruchu i danych |
+
+Kolejka jest ułożona priorytetami (strona główna, kontakt, o nas, regulamin, oferta), więc 25 stron to te najcenniejsze.
+W danych z pierwszych skanów (394 firmy) pierwszy adres e-mail leżał w ≤10 pobranych stronach u 99,7% firm, w których w ogóle
+go znaleziono, a w 25 stronach mieściło się ok. 72% wszystkich znalezionych adresów — profil `kontekst` zamienia resztę na
+kilkukrotnie mniejszy ruch i bazę (szacunek proporcjonalny do liczby stron: przy 50 tys. firm rzędu 20 GB zamiast ok. 66 GB).
+Firmę można później przeskanować głębiej: wybierz ją w panelu
+i uruchom z profilem `zbalansowany` (limity są kumulatywne, a skan kontynuuje od zapisanej kolejki; w profilu `kontekst` jest ona
+obcięta do 500 najważniejszych adresów). Liczby ustawione
+osobno (`SKRAPER_MAX_PAGES` itd., pola w panelu, `--pages`) nadpisują profil; profil wskazany w panelu albo flagą
+wygrywa z liczbami z config.env.
 
 **Przebieg.** Skanowanie działa w osobnym, odłączonym procesie (`scrape.py run --run-id N`, log w `logs/skraper_*.log`),
 więc przeżywa zamknięcie karty i restart serwera. Naraz działa co najwyżej jeden przebieg. Postęp jest zapisywany

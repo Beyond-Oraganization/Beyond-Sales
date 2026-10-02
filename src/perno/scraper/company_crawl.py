@@ -19,7 +19,7 @@ from perno.scraper.company import Company
 from perno.scraper.page_fetch import Got, PageFetcher
 from perno.scraper.page_pipeline import PagePipeline
 from perno.scraper.run_context import RunContext
-from perno.scraper.settings import FRONTIER_MEMORY_CAP, MAX_DISCOVERED_PER_FIRM
+from perno.scraper.settings import FRONTIER_MEMORY_CAP
 from perno.scraper.store import LeaseLost, LinkRecord, PageRecord
 from perno.scraper.urls import normalize_url, path_query, priority, url_hash
 
@@ -188,7 +188,7 @@ class CompanyCrawler:
             url = normalize_url(raw)
             if not url or not company.same_site(url) or url_hash(url) in company.seen:
                 continue
-            if len(company.seen) >= MAX_DISCOVERED_PER_FIRM:
+            if len(company.seen) >= self.rc.settings.max_discovered:
                 break
             ok, _ = company.trap.admit(url)
             if not ok:

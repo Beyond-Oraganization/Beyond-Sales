@@ -8,7 +8,17 @@ from sqlalchemy.schema import CreateIndex, CreateTable
 
 from perno import db as dbmod
 from perno.scraper import schema, statuses
-from perno.scraper.settings import HARD_DELAY_FLOOR, LIMITS, STORE_HTML_MODES, ScanSettings, SettingsError
+from perno.scraper.settings import (
+    BUDGET_KEYS,
+    DEFAULT_PROFILE,
+    HARD_DELAY_FLOOR,
+    LIMITS,
+    PROFILE_LABELS,
+    PROFILES,
+    STORE_HTML_MODES,
+    ScanSettings,
+    SettingsError,
+)
 from perno.scraper.store import Store
 from tests.fixtures import make_db
 
@@ -64,6 +74,60 @@ class SettingsTests(unittest.TestCase):
         none = ScanSettings.from_params()
         self.assertEqual((none.contact, none.contact_source), ("", ""))
         self.assertEqual(none.user_agent(), "PernoContextBot/1.0")
+
+    def budget(self, settings):
+        return {name: getattr(settings, name) for name in (*BUDGET_KEYS, "max_discovered")}
+
+    def test_default_profile_is_the_dataclass_default_and_every_preset_is_within_limits(self):
+        self.assertEqual(DEFAULT_PROFILE, "zbalansowany")
+        self.assertEqual(self.budget(ScanSettings()), PROFILES[DEFAULT_PROFILE])
+        self.assertEqual(set(PROFILES), set(PROFILE_LABELS))
+        for name, preset in PROFILES.items():
+            self.assertEqual(set(preset), {*BUDGET_KEYS, "max_discovered"}, name)
+            for key in BUDGET_KEYS:
+                low, high = LIMITS[key]
+                self.assertTrue(low <= preset[key] <= high, f"{name}.{key} poza zakresem, zostałby po cichu przycięty")
+
+    def test_context_profile_sets_only_the_per_firm_budget_never_the_politeness(self):
+        context = ScanSettings.from_params({"profile": "kontekst"})
+        self.assertEqual(context.profile, "kontekst")
+        self.assertEqual(self.budget(context), PROFILES["kontekst"])
+        self.assertEqual((context.max_pages, context.depth, context.max_discovered), (25, 4, 500))
+        default = ScanSettings.from_params()
+        for name in PROFILES:
+            profile = ScanSettings.from_params({"profile": name})
+            self.assertEqual((profile.delay, profile.floor, profile.ip_cap, profile.max_rps, profile.concurrency),
+                             (default.delay, HARD_DELAY_FLOOR, default.ip_cap, default.max_rps, default.concurrency), name)
+
+    def test_profile_layering_params_beat_config_beat_profile(self):
+        config = {"SKRAPER_PROFILE": "kontekst", "SKRAPER_MAX_PAGES": "40", "SKRAPER_CONCURRENCY": "10"}
+        from_config = ScanSettings.from_params(None, config)
+        self.assertEqual((from_config.profile, from_config.max_pages, from_config.depth, from_config.concurrency),
+                         ("kontekst", 40, 4, 10))
+        self.assertEqual(ScanSettings.from_params({"max_pages": 60}, config).max_pages, 60)
+        # profil wskazany jawnie (UI/CLI) wygrywa z liczbami budżetu z config.env, ale nie z innymi ustawieniami
+        explicit = ScanSettings.from_params({"profile": "kontekst"}, {"SKRAPER_MAX_PAGES": "500", "SKRAPER_CONCURRENCY": "10"})
+        self.assertEqual((explicit.max_pages, explicit.concurrency), (25, 10))
+        both = ScanSettings.from_params({"profile": "kontekst", "max_pages": 60}, {"SKRAPER_MAX_PAGES": "500"})
+        self.assertEqual((both.profile, both.max_pages, both.depth), ("kontekst", 60, 4))
+        back = ScanSettings.from_params({"profile": "zbalansowany"}, {"SKRAPER_PROFILE": "kontekst"})
+        self.assertEqual((back.profile, back.max_pages), ("zbalansowany", 500))
+
+    def test_invalid_profile_is_rejected_and_blank_means_default(self):
+        for bad in ("pelny", "KONTEKST", 5, True, ["kontekst"]):
+            with self.assertRaises(SettingsError, msg=repr(bad)):
+                ScanSettings.from_params({"profile": bad})
+        with self.assertRaises(SettingsError):
+            ScanSettings.from_params(None, {"SKRAPER_PROFILE": "szybki"})
+        self.assertEqual(ScanSettings.from_params({"profile": ""}).profile, DEFAULT_PROFILE)
+        self.assertEqual(ScanSettings.from_params({"profil": "kontekst"}).profile, "kontekst")
+
+    def test_stored_settings_rebuild_to_the_same_values(self):
+        """Odłączony proces odtwarza ustawienia z `to_dict()` zapisanego przy starcie przebiegu."""
+        for name in PROFILES:
+            original = ScanSettings.from_params({"profile": name, "max_pages": 33, "contact": "a@b.pl"}, {"SKRAPER_MAX_MB": "7"})
+            rebuilt = ScanSettings.from_params(original.to_dict(), {"SKRAPER_MAX_PAGES": "999"})
+            self.assertEqual(rebuilt, original, name)
 
     def test_for_tests_is_the_only_way_below_the_floor(self):
         s = ScanSettings.for_tests(delay=0.01, concurrency=3)

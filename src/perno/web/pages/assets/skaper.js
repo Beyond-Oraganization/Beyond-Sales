@@ -1,8 +1,9 @@
 const el = (id) => document.getElementById(id);
 const PAGE_SIZE = 50;
 const SETTING_KEYS = ['concurrency', 'delay', 'depth', 'max_pages', 'max_mb', 'max_minutes'];
+const BUDGET_KEYS = ['depth', 'max_pages', 'max_mb', 'max_minutes'];  // ustawiane przez profil
 
-let META = {statuses: [], defaults: {}, limits: {}, contact: {}, reasons: {}, retryable: [], default_statuses: []};
+let META = {statuses: [], defaults: {}, limits: {}, contact: {}, reasons: {}, retryable: [], default_statuses: [], profiles: [], profile: ''};
 let ROWS = [];
 let TOTAL = 0;
 let offset = 0;
@@ -71,8 +72,33 @@ function readSettings(){
     const value = el('s_' + key).value;
     if (value !== '') out[key] = Number(value);
   });
+  const profile = el('s_profile').value;
+  if (profile) out.profile = profile;
   return out;
 }
+
+function profileInfo(code){ return (META.profiles || []).find(p => p.code === code); }
+
+function renderProfiles(){
+  const select = el('s_profile');
+  select.innerHTML = (META.profiles || []).map(p => `<option value="${escapeHtml(p.code)}">${escapeHtml(p.label)}</option>`).join('');
+  select.value = META.profile || '';
+}
+
+// Profil ustawia budżet na firmę (strony, głębokość, MB, minuty); liczby można potem poprawić ręcznie.
+function applyProfile(){
+  const info = profileInfo(el('s_profile').value);
+  if (info) BUDGET_KEYS.forEach(key => { if (info.values[key] != null) el('s_' + key).value = info.values[key]; });
+  onSettingsInput();
+}
+
+function renderProfileNote(){
+  const info = profileInfo(el('s_profile').value);
+  const differs = info && BUDGET_KEYS.some(key => Number(el('s_' + key).value) !== info.values[key]);
+  el('profileNote').textContent = differs ? 'Liczby różnią się od wybranego profilu (ustawione ręcznie albo w config.env).' : '';
+}
+
+function onSettingsInput(){ renderProfileNote(); renderEstimate(); }
 
 function renderEstimate(){
   const s = readSettings();
@@ -81,7 +107,7 @@ function renderEstimate(){
   const firms = selected.size || ((META.statuses.filter(x => META.default_statuses.includes(x.code))).reduce((n, x) => n + x.count, 0));
   const parallel = Math.max(1, Math.min(s.concurrency || 1, firms || 1));
   const waves = Math.ceil((firms || 0) / parallel);
-  const typical = Math.min(60 * cycle, (s.max_minutes || 30) * 60);
+  const typical = Math.min(Math.min(60, s.max_pages || 60) * cycle, (s.max_minutes || 30) * 60);
   const worst = (s.max_minutes || 30) * 60;
   el('estimate').textContent = firms
     ? `Szacunek dla ${firms} firm: typowo ≈ ${Math.max(1, Math.round(waves * typical / 60))} min, najwyżej ≈ ${Math.round(waves * worst / 60)} min (≈ ${(1 / cycle).toFixed(2)} żądań/s na domenę).`
@@ -360,16 +386,18 @@ statusFilter.addEventListener('change', () => { offset = 0; renderChips(); loadR
 el('search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { offset = 0; loadRows(); }, 250); });
 el('prevBtn').addEventListener('click', () => { offset = Math.max(0, offset - PAGE_SIZE); loadRows(); });
 el('nextBtn').addEventListener('click', () => { offset += PAGE_SIZE; loadRows(); });
-SETTING_KEYS.forEach(key => el('s_' + key).addEventListener('input', renderEstimate));
+SETTING_KEYS.forEach(key => el('s_' + key).addEventListener('input', onSettingsInput));
+el('s_profile').addEventListener('change', applyProfile);
 
 (async function init(){
   if (await loadMeta()){
+    renderProfiles();
     SETTING_KEYS.forEach(key => { if (META.defaults[key] != null) el('s_' + key).value = META.defaults[key]; });
     const delay = el('s_delay');
     delay.min = String(META.floor || 1);
     await Promise.all([loadRows(), loadStatus()]);
     if (!META.contact.ok || !META.bs4_ok) el('startBtn').disabled = true;
-    renderEstimate();
+    onSettingsInput();
   }
   schedulePoll();
 })();

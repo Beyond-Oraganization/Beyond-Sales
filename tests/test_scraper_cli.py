@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -118,6 +119,19 @@ class DryRunAndValidationTests(CliCase):
         self.cli("dodaj", "a.pl")
         out = self.cli("run", "--dry-run", "--delay", "0.01")[1]
         self.assertIn("odstęp co najmniej 1 s", out)
+
+    def test_profile_flag_selects_the_per_firm_budget_and_numbers_override_it(self):
+        self.cli("dodaj", "a.pl")
+        default = self.cli("run", "--dry-run")[1]
+        self.assertIn("Profil „zbalansowany”; limity na firmę: 500 stron, 50 MB, 30 min, głębokość 10.", default)
+        context = self.cli("run", "--dry-run", "--profile", "kontekst")[1]
+        self.assertIn("Profil „kontekst”; limity na firmę: 25 stron, 15 MB, 10 min, głębokość 4.", context)
+        self.assertIn("odstęp co najmniej 2.5 s", context)  # uprzejmość nie zależy od profilu
+        tweaked = self.cli("run", "--dry-run", "--profile", "kontekst", "--pages", "40")[1]
+        self.assertIn("limity na firmę: 40 stron, 15 MB, 10 min, głębokość 4.", tweaked)
+        code, _, err = self.cli("run", "--dry-run", "--profile", "pelny")
+        self.assertNotEqual(code, 0)
+        self.assertIn("Profil musi być jednym z", err)
 
     def test_dry_run_with_specific_firm_and_unknown_firm(self):
         self.cli("dodaj", "a.pl")
@@ -315,6 +329,15 @@ class RunnerHelperTests(unittest.TestCase):
         self.assertIn("bramka globalna 15/s", lines)
         self.assertIn("najwyżej", lines)
         self.assertIn("Firm do przetworzenia: 0; równolegle: 0", "\n".join(runner.plan_summary(ScanSettings.from_params(), 0)))
+
+    def test_plan_summary_scales_the_typical_time_with_the_page_budget(self):
+        def minutes(profile):
+            text = "\n".join(runner.plan_summary(ScanSettings.from_params({"profile": profile, "concurrency": 10}), 100))
+            return text, int(re.search(r"typowo ≈(\d+) min \(≈(\d+) stron", text).group(1))
+        balanced, context = minutes("zbalansowany"), minutes("kontekst")
+        self.assertIn("(≈60 stron na firmę)", balanced[0])
+        self.assertIn("(≈25 stron na firmę)", context[0])
+        self.assertLess(context[1], balanced[1])
 
     def test_raise_nofile_limit_returns_a_usable_number(self):
         self.assertGreaterEqual(runner.raise_nofile_limit(), 256)

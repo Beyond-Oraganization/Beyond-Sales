@@ -13,7 +13,16 @@ from typing import Callable, Mapping, Optional, Sequence
 
 from perno.scraper import runner
 from perno.scraper import statuses as st
-from perno.scraper.settings import HARD_DELAY_FLOOR, LIMITS, STALE_AFTER, ScanSettings, SettingsError
+from perno.scraper.settings import (
+    BUDGET_KEYS,
+    HARD_DELAY_FLOOR,
+    LIMITS,
+    PROFILE_LABELS,
+    PROFILES,
+    STALE_AFTER,
+    ScanSettings,
+    SettingsError,
+)
 from perno.scraper.store import Store
 
 _RUN_TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
@@ -127,6 +136,9 @@ def meta_report(store: Store, config: Mapping, maile_count: int) -> dict:
         "statuses": [{"code": code, "label": label, "color": color, "count": overview["firmy_wg_statusu"].get(code, 0)}
                      for code, (label, color) in st.FIRMA_META.items()],
         "defaults": {k: v for k, v in defaults.to_dict().items() if k in _DEFAULT_FIELDS},
+        "profile": defaults.profile,
+        "profiles": [{"code": code, "label": PROFILE_LABELS[code], "values": {key: preset[key] for key in BUDGET_KEYS}}
+                     for code, preset in PROFILES.items()],
         "limits": {k: list(v) for k, v in LIMITS.items()},
         "floor": HARD_DELAY_FLOOR,
         "contact": {"ok": bool(defaults.contact), "value": defaults.contact, "source": defaults.contact_source},

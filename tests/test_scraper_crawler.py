@@ -12,7 +12,7 @@ from unittest import mock
 import sqlalchemy as sa
 from sqlalchemy import exc as sa_exc
 
-from perno.scraper import company_crawl, extract, page_pipeline
+from perno.scraper import company_crawl, extract
 from perno.scraper import statuses as st
 from perno.scraper.crawler import Crawler
 from perno.scraper.fetcher import Fetcher
@@ -676,6 +676,29 @@ class LimitTests(CrawlerCase):
         self.assertEqual(paths.count("/robots.txt"), 1)
         self.assertEqual(self.row(firma_id)["stron_pobranych"], 20)
 
+    def test_deepening_a_capped_scan_continues_from_the_stored_queue(self):
+        """Profil „kontekst” zapamiętuje najwyżej `max_discovered` adresów; późniejszy skan z większym budżetem
+        kontynuuje od tej kolejki, pobiera jej resztę z podstronami i niczego nie pobiera drugi raz."""
+        pages = {"/": Page(html(*[f"/a{i}" for i in range(1, 9)], title="start"))}
+        for i in range(1, 9):
+            pages[f"/a{i}"] = Page(html(*[f"/b{i}_{j}" for j in range(1, 4)], title=f"a{i}"))
+            pages.update({f"/b{i}_{j}": Page(html(title=f"b{i}_{j}")) for j in range(1, 4)})
+        self.site("a.test", pages)
+        firma_id = self.firm("a.test")
+        self.crawl(self.settings(max_pages=4, max_discovered=10))
+        self.assertEqual((self.row(firma_id)["skan_status"], self.row(firma_id)["stron_pobranych"]), (st.FIRMA_LIMIT, 4))
+        self.assertEqual(len(self.pages(firma_id)), 10)
+        fetched_first = {path for path, page in self.by_path(firma_id).items() if page["status"] == "pobrano"}
+        self.store.requeue([firma_id])
+        self.crawl(self.settings(max_pages=100), enqueue=False)  # domyślny max_discovered: 20 000
+        hits = self.hit_paths("a.test")
+        self.assertEqual(max(hits.count(path) for path in set(hits)), 1)  # nic dwa razy (z robots.txt włącznie)
+        self.assertEqual(self.row(firma_id)["skan_status"], st.FIRMA_ZAKONCZONA)
+        for i in range(1, 9):
+            self.assertIn(f"/a{i}", hits)
+            if f"/a{i}" not in fetched_first:  # podstrony stron pobranych dopiero teraz zostały odkryte
+                self.assertTrue(all(f"/b{i}_{j}" in hits for j in range(1, 4)), i)
+
     def test_byte_limit(self):
         self.chain_site("a.test", 20, size=8000)
         firma_id = self.firm("a.test")
@@ -705,9 +728,7 @@ class LimitTests(CrawlerCase):
     def test_discovery_cap_bounds_the_number_of_known_urls(self):
         self.chain_site("a.test", 40)
         firma_id = self.firm("a.test")
-        with (mock.patch.object(company_crawl, "MAX_DISCOVERED_PER_FIRM", 10),
-              mock.patch.object(page_pipeline, "MAX_DISCOVERED_PER_FIRM", 10)):  # limit czytają dwa moduły
-            self.crawl()
+        self.crawl(self.settings(max_discovered=10))
         self.assertLessEqual(len(self.pages(firma_id)), 11)
         self.assertEqual(self.row(firma_id)["skan_status"], st.FIRMA_ZAKONCZONA)
 

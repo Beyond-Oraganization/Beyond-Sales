@@ -23,6 +23,8 @@ const META = {
   defaults: {}, limits: {}, floor: 1, contact: {ok: true, value: 'ops@example.com', source: 'config'},
   settings_error: EVIL.script, bs4_ok: true, maile_count: 1, firmy_count: 1,
   default_statuses: [], retryable: ['blad'], reasons: {},
+  profile: EVIL.attr,
+  profiles: [{code: EVIL.attr, label: EVIL.script, values: {depth: 1, max_pages: 1, max_mb: 1, max_minutes: 1}}],
 };
 const ROW = {
   id: 1, domena: EVIL.img, website: EVIL.js, nazwa: EVIL.script, skan_status: 'zakonczona', skan_przyczyna: EVIL.attr,
@@ -127,6 +129,8 @@ test('wrogie dane nie stają się znacznikami ani atrybutami', async () => {
   const html = await renderHostilePage();
   assert.ok(html.includes('&lt;script&gt;'), 'dane w ogóle się wyrenderowały (zeskapowane)');
   assert.ok(html.includes('&lt;img src=x'), 'znaczniki z danych są zeskapowane');
+  assert.ok(html.includes('<option value="&quot; onmouseover=&quot;window.PWNED=1&quot; x=&quot;">&lt;script&gt;'),
+    'profil w liście wyboru jest zeskapowany');
   assert.ok(!/<script/i.test(html), 'surowy <script> w HTML');
   assert.ok(!/<img/i.test(html), 'surowy <img> w HTML');
   assert.deepEqual(attributeNames(html).filter((name) => /^on/i.test(name)), [], 'atrybut zdarzenia (onerror, onmouseover…)');

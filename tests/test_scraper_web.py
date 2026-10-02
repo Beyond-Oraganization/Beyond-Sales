@@ -80,6 +80,11 @@ class PageAndMetaTests(SkaperCase):
         self.assertEqual(data["defaults"]["concurrency"], 30)
         self.assertEqual(data["defaults"]["delay"], 2.5)
         self.assertEqual(data["limits"]["delay"], [1.0, 60.0])
+        self.assertEqual(data["profile"], "zbalansowany")
+        profiles = {p["code"]: p for p in data["profiles"]}
+        self.assertEqual(set(profiles), {"zbalansowany", "kontekst"})
+        self.assertEqual(profiles["kontekst"]["values"], {"depth": 4, "max_pages": 25, "max_mb": 15, "max_minutes": 10})
+        self.assertEqual({k: data["defaults"][k] for k in profiles["zbalansowany"]["values"]}, profiles["zbalansowany"]["values"])
         counts = {s["code"]: s["count"] for s in data["statuses"]}
         self.assertEqual(counts[st.FIRMA_NIESKANOWANA], 2)
         self.assertIn("robots_disallow", data["reasons"])
@@ -175,6 +180,22 @@ class RunLifecycleTests(SkaperCase):
         stored = run["parametry"]["ustawienia"]
         self.assertEqual((stored["concurrency"], stored["delay"], stored["max_pages"], stored["contact"]), (5, 3.0, 40, "ops@example.com"))
         self.assertEqual({r["skan_status"] for r in self.data(self.call("GET", "/api/skaper/firmy"))["rows"]}, {st.FIRMA_W_KOLEJCE})
+
+    def test_start_with_the_context_profile_stores_its_budget(self):
+        self.seed(1)
+        run_id = self.data(self.start(ustawienia={"profile": "kontekst", "concurrency": 5}))["run_id"]
+        stored = self.store.get_run(run_id)["parametry"]["ustawienia"]
+        self.assertEqual((stored["profile"], stored["max_pages"], stored["depth"], stored["max_discovered"], stored["concurrency"]),
+                         ("kontekst", 25, 4, 500, 5))
+        self.assertEqual((stored["delay"], stored["floor"]), (2.5, 1.0))  # profil nie dotyka uprzejmości
+
+    def test_unknown_profile_is_rejected_without_blocking_the_slot(self):
+        self.seed(1)
+        resp = self.start(ustawienia={"profile": "pelny"})
+        self.assertEqual(resp.status, 400)
+        self.assertIn("Profil musi być jednym z", self.data(resp)["error"])
+        self.assertIsNone(self.store.active_run())
+        self.assertEqual(self.start().status, 202)
 
     def test_ui_cannot_lower_the_delay_floor_or_exceed_limits(self):
         self.seed(1)
