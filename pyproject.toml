@@ -101,7 +101,6 @@ warn_redundant_casts = true
 module = [
     "perno.scraper.schema",       # 36
     "perno.scraper.crawler",      # 21
-    "perno.scraper.store",        # 8
     "perno.mailer.smtp_client",   # 5
     "perno.scraper.robots",       # 5
     "perno.scraper.fetcher",      # 5

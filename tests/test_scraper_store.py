@@ -7,6 +7,7 @@ import threading
 import types
 import unittest
 from datetime import timedelta
+from unittest import mock
 
 import sqlalchemy as sa
 from sqlalchemy import exc as sa_exc
@@ -28,6 +29,7 @@ from perno.scraper.store import (
     ascii_or_none,
     clean_text,
     compress_html,
+    core,
     pid_alive,
 )
 from perno.scraper.urls import url_hash
@@ -706,13 +708,8 @@ class RetryTests(StoreCase):
                 raise self.op_error(1213)
             return "ok"
 
-        import perno.scraper.store as module
-        original = module.time.sleep
-        module.time.sleep = lambda s: None
-        try:
+        with mock.patch.object(core.time, "sleep"):
             self.assertEqual(self.store._run(flaky), "ok")
-        finally:
-            module.time.sleep = original
         self.assertEqual(len(calls), 3)
 
     def test_non_retryable_and_exhausted_errors_propagate(self):
@@ -732,14 +729,8 @@ class RetryTests(StoreCase):
             calls.append(1)
             raise self.op_error(1205)
 
-        import perno.scraper.store as module
-        original = module.time.sleep
-        module.time.sleep = lambda s: None
-        try:
-            with self.assertRaises(sa_exc.OperationalError):
-                self.store._run(always_deadlock, retries=2)
-        finally:
-            module.time.sleep = original
+        with mock.patch.object(core.time, "sleep"), self.assertRaises(sa_exc.OperationalError):
+            self.store._run(always_deadlock, retries=2)
         self.assertEqual(len(calls), 3)
 
     def test_lease_lost_is_never_retried(self):
