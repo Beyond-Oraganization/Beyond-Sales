@@ -1,4 +1,4 @@
-"""Odczyty dla panelu i CLI: przegląd statusów, lista firm i szczegóły jednej firmy."""
+"""Odczyty dla panelu i CLI: przegląd statusów, lista firm, szczegóły firmy oraz dane do uzupełniania maili."""
 
 from __future__ import annotations
 
@@ -6,8 +6,9 @@ from typing import Optional
 
 import sqlalchemy as sa
 
+from perno.db import maile
 from perno.scraper import statuses as st
-from perno.scraper.schema import firmy, kontakty, strony
+from perno.scraper.schema import firmy, firmy_maile, kontakty, strony, strony_tresc
 from perno.scraper.store.core import StoreCore, iso
 
 ROBOTS_VIEW_CHARS = 4096
@@ -69,3 +70,45 @@ class ReadModels(StoreCore):
                 sa.select(kontakty).where(kontakty.c.firma_id == firma_id)
                 .order_by(kontakty.c.typ, kontakty.c.liczba_stron.desc(), kontakty.c.id)).mappings()]
         return {"firma": firm, "strony": pages, "strony_razem": total, "kontakty": people}
+
+    # ---- dane do uzupełniania maili (services.enrichment) -----------------------------------
+    def enrichment_candidates(self, mail_statuses: tuple, scan_statuses: tuple, min_pages: int = 0) -> list:
+        """Wiersze `maile` w podanych statusach, których firma ma skan w jednym z `scan_statuses` i pobrane
+        co najmniej `min_pages` stron — razem z danymi firmy ze skanera (`firma_id`, `skan_status`, `stron_pobranych`)."""
+        with self._read() as conn:
+            rows = conn.execute(
+                sa.select(maile.c.id, maile.c.segment, maile.c.company, maile.c.website, maile.c.country, maile.c.city,
+                          maile.c.address, maile.c.description, maile.c.email, maile.c.status,
+                          firmy.c.id.label("firma_id"), firmy.c.skan_status, firmy.c.stron_pobranych)
+                .select_from(maile.join(firmy_maile, firmy_maile.c.maile_id == maile.c.id)
+                             .join(firmy, firmy.c.id == firmy_maile.c.firma_id))
+                .where(firmy.c.skan_status.in_(scan_statuses), maile.c.status.in_(mail_statuses),
+                       firmy.c.stron_pobranych >= min_pages)
+                .order_by(maile.c.id)
+            ).mappings().all()
+        return [dict(r) for r in rows]
+
+    def scraped_emails(self, firma_id: int) -> list:
+        """E-maile znalezione na stronach firmy: w domenie firmy pierwsze, potem wg liczby stron, na których wystąpiły."""
+        with self._read() as conn:
+            return [dict(r) for r in conn.execute(
+                sa.select(kontakty.c.wartosc, kontakty.c.w_domenie, kontakty.c.rola, kontakty.c.zrodlo_url)
+                .where(kontakty.c.firma_id == firma_id, kontakty.c.typ == "email")
+                .order_by(kontakty.c.w_domenie.desc(), kontakty.c.liczba_stron.desc())
+            ).mappings()]
+
+    def contact_values(self, firma_id: int, kind: str, limit: int = 8) -> list:
+        """Wartości kontaktów danego typu (np. „telefon”, „formularz”) — najwyżej `limit`."""
+        with self._read() as conn:
+            return [row[0] for row in conn.execute(sa.select(kontakty.c.wartosc).where(
+                kontakty.c.firma_id == firma_id, kontakty.c.typ == kind).limit(limit))]
+
+    def fetched_pages(self, firma_id: int) -> list:
+        """[(url, tytuł, opis, tekst)] pobranych stron firmy: najpłytsze pierwsze (tekst bywa pusty)."""
+        with self._read() as conn:
+            return [tuple(row) for row in conn.execute(
+                sa.select(strony.c.url, strony.c.tytul, strony.c.opis, strony_tresc.c.tekst)
+                .select_from(strony.outerjoin(strony_tresc, strony_tresc.c.strona_id == strony.c.id))
+                .where(strony.c.firma_id == firma_id, strony.c.status == st.STRONA_POBRANO)
+                .order_by(strony.c.glebokosc, strony.c.id)
+            ).all()]

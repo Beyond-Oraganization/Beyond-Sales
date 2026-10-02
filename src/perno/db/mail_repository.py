@@ -222,6 +222,21 @@ class MailRepository:
                 stats["updated" if result.rowcount else "skipped"] += 1
         return stats
 
+    def apply_enrichment(self, updates: Iterable[tuple], allowed_statuses: tuple) -> int:
+        """Zapisuje treść przygotowaną z danych skanu: `[(id, {pole: wartość})]`. Wiersz dostaje status „Do wysłania”
+        i świeżą datę wygenerowania, ale tylko wtedy, gdy nadal jest w jednym z `allowed_statuses` (w międzyczasie
+        mógł zostać wysłany albo zmieniony ręcznie — wtedy go nie ruszamy). Zwraca liczbę zapisanych wierszy."""
+        now = self.now()
+        written = 0
+        with self.engine.begin() as conn:
+            for row_id, values in updates:
+                values = {**values, "status": st.STATUS_PENDING, "generated_at": now, "updated_at": now,
+                          "error": None, "sent_at": None}
+                result = conn.execute(sa.update(maile).where(
+                    maile.c.id == row_id, maile.c.status.in_(allowed_statuses)).values(**values))
+                written += result.rowcount
+        return written
+
     def apply_edit(self, row_id: str, changes: Mapping) -> dict:
         explicit_status = "status" in changes
         editable = {k: changes[k] for k in EDITABLE if k in changes}
