@@ -1,0 +1,2551 @@
+{
+ "_comment": "Wektory listy firm: wiersze, stany filtrów (taki obiekt wysyła przeglądarka) i wyniki policzone przez dawną implementację w przeglądarce (filters.js) przed przeniesieniem listy na serwer. `ids` to kolejność po filtrze i sortowaniu; `facets` to liczniki z odjętym własnym filtrem; `presets` to szybkie widoki z liczbą wierszy. Wiersze są w kolejności domyślnej panelu (segment, numer wiersza). Różnica świadomie poza wektorami: sortowanie tekstu porównuje cyfry znak po znaku (jak MySQL), nie jako liczby (jak przeglądarka).",
+ "today": "2026-09-30",
+ "rows": [
+  {
+   "id": "eventy-001",
+   "company": "Alfa Konferencje",
+   "contact_person": "Anna Łukasik",
+   "email": "a01@x.pl",
+   "website": "https://alfa.example.pl",
+   "status": "wyslano",
+   "country": "PL",
+   "city": "Łódź",
+   "address": "ul. Piotrkowska 10",
+   "description": "Organizacja konferencji i eventów firmowych",
+   "generated_at": "2026-09-28T10:00:00",
+   "sent_at": "2026-09-29T00:00:00",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 1,
+   "subject": "Temat Alfa Konferencje"
+  },
+  {
+   "id": "eventy-002",
+   "company": "Beta Events",
+   "contact_person": "",
+   "email": "a02@x.pl",
+   "website": "https://beta-events.example.co.uk",
+   "status": "do_wyslania",
+   "country": "GB",
+   "city": "London",
+   "address": "",
+   "description": "Corporate events and galas",
+   "generated_at": "2026-09-28T10:00:00",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 2,
+   "subject": "Temat Beta Events"
+  },
+  {
+   "id": "eventy-003",
+   "company": "Gamma Weddings",
+   "contact_person": "Mary Smith",
+   "email": "a03@x.pl",
+   "website": "https://gamma.example.co.uk",
+   "status": "do_wyslania",
+   "country": "GB",
+   "city": "Leeds",
+   "address": "5 High Street",
+   "description": "Wedding planner",
+   "generated_at": "2026-09-28T11:00:00",
+   "sent_at": "",
+   "has_body": false,
+   "segment": "eventy",
+   "row_number": 3,
+   "subject": "Temat Gamma Weddings"
+  },
+  {
+   "id": "eventy-004",
+   "company": "Delta Veranstaltungen",
+   "contact_person": "Hans Müller",
+   "email": "",
+   "website": "https://delta.example.de",
+   "status": "pominieto_brak_email",
+   "country": "DE",
+   "city": "München",
+   "address": "Hauptstraße 5",
+   "description": "Straße Events GmbH",
+   "generated_at": "2026-09-28T12:00:00",
+   "sent_at": "",
+   "has_body": false,
+   "segment": "eventy",
+   "row_number": 4,
+   "subject": "Temat Delta Veranstaltungen"
+  },
+  {
+   "id": "eventy-005",
+   "company": "Ærø Øl Festival",
+   "contact_person": "",
+   "email": "a05@x.pl",
+   "website": "https://aero.example.dk",
+   "status": "wyslano",
+   "country": "DK",
+   "city": "Ærøskøbing",
+   "address": "Vestergade 2",
+   "description": "Beer festival",
+   "generated_at": "2026-09-28T13:00:00",
+   "sent_at": "2026-09-30T08:15:00",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 5,
+   "subject": "Temat Ærø Øl Festival"
+  },
+  {
+   "id": "eventy-006",
+   "company": "Żuraw Śląski",
+   "contact_person": "Jan Żółć",
+   "email": "a06@x.pl",
+   "website": "https://zuraw.example.pl",
+   "status": "blad",
+   "country": "PL",
+   "city": "Katowice",
+   "address": "ul. Śląska 1",
+   "description": "Agencja eventowa Śląsk",
+   "generated_at": "2026-09-28T14:00:00",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 6,
+   "subject": "Temat Żuraw Śląski"
+  },
+  {
+   "id": "eventy-007",
+   "company": "żuraw śląski sp. z o.o.",
+   "contact_person": "",
+   "email": "a07@x.pl",
+   "website": "",
+   "status": "odpowiedzial",
+   "country": "PL",
+   "city": "Katowice",
+   "address": "",
+   "description": "",
+   "generated_at": "2026-09-28T15:00:00",
+   "sent_at": "2026-09-25T12:00:00",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 7,
+   "subject": "Temat żuraw śląski sp. z o.o."
+  },
+  {
+   "id": "eventy-008",
+   "company": "Ćma Studio",
+   "contact_person": "",
+   "email": "   ",
+   "website": "https://cma.example.pl",
+   "status": "do_wyslania",
+   "country": "PL",
+   "city": "Gdańsk",
+   "address": "",
+   "description": "Studio wydarzeń",
+   "generated_at": "2026-09-29T09:00:00",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 8,
+   "subject": "Temat Ćma Studio"
+  },
+  {
+   "id": "eventy-009",
+   "company": "Theta Messen",
+   "contact_person": "",
+   "email": "a09@x.pl",
+   "website": "https://theta.example.de",
+   "status": "wyslano",
+   "country": "DE",
+   "city": "Berlin",
+   "address": "Alexanderplatz 1",
+   "description": "Messe services",
+   "generated_at": "2026-09-29T10:00:00",
+   "sent_at": "2026-10-01T08:00:00",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 9,
+   "subject": "Temat Theta Messen"
+  },
+  {
+   "id": "eventy-010",
+   "company": "Iota Klient",
+   "contact_person": "",
+   "email": "",
+   "website": "",
+   "status": "pominieto_klient",
+   "country": "PL",
+   "city": "Poznań",
+   "address": "",
+   "description": "",
+   "generated_at": "2026-09-29T11:00:00",
+   "sent_at": "",
+   "has_body": false,
+   "segment": "eventy",
+   "row_number": 10,
+   "subject": "Temat Iota Klient"
+  },
+  {
+   "id": "eventy-011",
+   "company": "Kappa Studio",
+   "contact_person": "",
+   "email": "",
+   "website": "",
+   "status": "oczekuje_na_tresc",
+   "country": "",
+   "city": "",
+   "address": "",
+   "description": "",
+   "generated_at": "2026-09-29T12:00:00",
+   "sent_at": "",
+   "has_body": false,
+   "segment": "eventy",
+   "row_number": 11,
+   "subject": "Temat Kappa Studio"
+  },
+  {
+   "id": "eventy-012",
+   "company": "Lambda Prague",
+   "contact_person": "",
+   "email": "a12@x.cz",
+   "website": "https://lambda.example.cz",
+   "status": "zainteresowany",
+   "country": "CZ",
+   "city": "Praha",
+   "address": "Václavské náměstí 1",
+   "description": "Event agency",
+   "generated_at": "2026-09-29T13:00:00",
+   "sent_at": "2026-09-29T23:59:59",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 12,
+   "subject": "Temat Lambda Prague"
+  },
+  {
+   "id": "eventy-n001",
+   "company": "Import Alfa",
+   "contact_person": "",
+   "email": "i01@x.pl",
+   "website": "https://import-alfa.example.pl",
+   "status": "do_wyslania",
+   "country": "PL",
+   "city": "",
+   "address": "",
+   "description": "",
+   "generated_at": "",
+   "sent_at": "",
+   "has_body": false,
+   "segment": "eventy",
+   "row_number": 13,
+   "subject": "Temat Import Alfa"
+  },
+  {
+   "id": "eventy-n002",
+   "company": "Import Beta",
+   "contact_person": "",
+   "email": "i02@x.pl",
+   "website": "",
+   "status": "do_wyslania",
+   "country": "",
+   "city": "",
+   "address": "",
+   "description": "",
+   "generated_at": "",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 14,
+   "subject": "Temat Import Beta"
+  },
+  {
+   "id": "eventy-014",
+   "company": "Mu Messebau",
+   "contact_person": "",
+   "email": "a14@x.pl",
+   "website": "https://mu.example.de",
+   "status": "wyslano",
+   "country": "DE",
+   "city": "Köln",
+   "address": "",
+   "description": "",
+   "generated_at": "2026-09-30T09:00:00",
+   "sent_at": "2026-09-20T09:00:00",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 15,
+   "subject": "Temat Mu Messebau"
+  },
+  {
+   "id": "eventy-015",
+   "company": "Nu Events España",
+   "contact_person": "Carlos Peña",
+   "email": "a15@x.es",
+   "website": "https://nu.example.es",
+   "status": "do_wyslania",
+   "country": "ES",
+   "city": "Madrid",
+   "address": "Calle Mayor 3",
+   "description": "Eventos",
+   "generated_at": "2026-09-30T10:00:00",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 16,
+   "subject": "Temat Nu Events España"
+  },
+  {
+   "id": "eventy-016",
+   "company": "Xi Événements",
+   "contact_person": "",
+   "email": "a16@x.fr",
+   "website": "https://xi.example.fr",
+   "status": "nie_kontaktowac",
+   "country": "FR",
+   "city": "Paris",
+   "address": "",
+   "description": "Événements corporate",
+   "generated_at": "2026-09-30T11:00:00",
+   "sent_at": "2026-09-27T10:00:00",
+   "has_body": true,
+   "segment": "eventy",
+   "row_number": 17,
+   "subject": "Temat Xi Événements"
+  },
+  {
+   "id": "driverzy-017",
+   "company": "Taxi Berlin PL",
+   "contact_person": "",
+   "email": "a17@x.pl",
+   "website": "https://taxi-berlin.example.pl",
+   "status": "blad",
+   "country": "",
+   "city": "",
+   "address": "",
+   "description": "",
+   "generated_at": "2026-09-28T10:00:00",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "driverzy",
+   "row_number": 18,
+   "subject": "Temat Taxi Berlin PL"
+  },
+  {
+   "id": "driverzy-018",
+   "company": "Epsilon Transfer",
+   "contact_person": "Piotr Kowal",
+   "email": "a18@x.pl",
+   "website": "https://epsilon.example.pl",
+   "status": "odpowiedzial",
+   "country": "PL",
+   "city": "Kraków",
+   "address": "ul. Floriańska 3",
+   "description": "Transfery VIP",
+   "generated_at": "2026-09-28T10:00:00",
+   "sent_at": "2026-09-29T23:59:59",
+   "has_body": true,
+   "segment": "driverzy",
+   "row_number": 19,
+   "subject": "Temat Epsilon Transfer"
+  },
+  {
+   "id": "driverzy-019",
+   "company": "Zeta Chauffeur",
+   "contact_person": "",
+   "email": "a19@x.ie",
+   "website": "https://zeta.example.ie",
+   "status": "zainteresowany",
+   "country": "IE",
+   "city": "Dublin",
+   "address": "",
+   "description": "Chauffeur service",
+   "generated_at": "2026-09-28T10:00:00",
+   "sent_at": "2026-09-30T00:00:00",
+   "has_body": true,
+   "segment": "driverzy",
+   "row_number": 20,
+   "subject": "Temat Zeta Chauffeur"
+  },
+  {
+   "id": "driverzy-020",
+   "company": "Eta Taxi",
+   "contact_person": "",
+   "email": "a20@x.pl",
+   "website": "https://eta.example.pl",
+   "status": "nie_kontaktowac",
+   "country": "PL",
+   "city": "Gdańsk",
+   "address": "",
+   "description": "",
+   "generated_at": "2026-09-29T10:00:00",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "driverzy",
+   "row_number": 21,
+   "subject": "Temat Eta Taxi"
+  },
+  {
+   "id": "driverzy-021",
+   "company": "Lambda Przewozy",
+   "contact_person": "",
+   "email": "   ",
+   "website": "https://lambda-p.example.pl",
+   "status": "do_wyslania",
+   "country": "PL",
+   "city": "Łódź",
+   "address": "ul. Narutowicza 4",
+   "description": "Przewozy osób",
+   "generated_at": "2026-09-30T10:00:00",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "driverzy",
+   "row_number": 22,
+   "subject": "Temat Lambda Przewozy"
+  },
+  {
+   "id": "driverzy-022",
+   "company": "Omicron Limo",
+   "contact_person": "",
+   "email": "a22@x.pl",
+   "website": "https://omicron.example.pl",
+   "status": "do_wyslania",
+   "country": "PL",
+   "city": "Wrocław",
+   "address": "",
+   "description": "Limuzyny",
+   "generated_at": "2026-09-30T09:00:00",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "driverzy",
+   "row_number": 23,
+   "subject": "Temat Omicron Limo"
+  },
+  {
+   "id": "driverzy-023",
+   "company": "Pi Transport",
+   "contact_person": "",
+   "email": "a23@x.de",
+   "website": "",
+   "status": "do_wyslania",
+   "country": "DE",
+   "city": "Hamburg",
+   "address": "",
+   "description": "",
+   "generated_at": "",
+   "sent_at": "",
+   "has_body": false,
+   "segment": "driverzy",
+   "row_number": 24,
+   "subject": "Temat Pi Transport"
+  },
+  {
+   "id": "driverzy-n003",
+   "company": "Import Gamma",
+   "contact_person": "",
+   "email": "i03@x.pl",
+   "website": "",
+   "status": "blad",
+   "country": "PL",
+   "city": "Szczecin",
+   "address": "",
+   "description": "",
+   "generated_at": "",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "driverzy",
+   "row_number": 25,
+   "subject": "Temat Import Gamma"
+  },
+  {
+   "id": "driverzy-024",
+   "company": "rho Taxi 50% off",
+   "contact_person": "",
+   "email": "a24@x.pl",
+   "website": "https://rho.example.pl",
+   "status": "do_wyslania",
+   "country": "PL",
+   "city": "Lublin",
+   "address": "",
+   "description": "Taxi _ special 100%",
+   "generated_at": "2026-09-30T09:30:00",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "driverzy",
+   "row_number": 26,
+   "subject": "Temat rho Taxi 50% off"
+  },
+  {
+   "id": "driverzy-025",
+   "company": "Œuvre Transport",
+   "contact_person": "",
+   "email": "a25@x.fr",
+   "website": "https://oeuvre.example.fr",
+   "status": "do_wyslania",
+   "country": "FR",
+   "city": "Lyon",
+   "address": "",
+   "description": "Þór Taxi",
+   "generated_at": "2026-09-30T09:45:00",
+   "sent_at": "",
+   "has_body": true,
+   "segment": "driverzy",
+   "row_number": 27,
+   "subject": "Temat Œuvre Transport"
+  },
+  {
+   "id": "driverzy-026",
+   "company": "Sigma Cars",
+   "contact_person": "",
+   "email": "a26@x.pl",
+   "website": "https://sigma.example.pl",
+   "status": "pominieto_klient",
+   "country": "GB",
+   "city": "Bristol",
+   "address": "",
+   "description": "Cars",
+   "generated_at": "2026-09-26T09:45:00",
+   "sent_at": "",
+   "has_body": false,
+   "segment": "driverzy",
+   "row_number": 28,
+   "subject": "Temat Sigma Cars"
+  }
+ ],
+ "cases": [
+  {
+   "name": "lodz po polsku",
+   "state": {
+    "q": "lodz"
+   },
+   "ids": [
+    "eventy-001",
+    "driverzy-021"
+   ]
+  },
+  {
+   "name": "dwa słowa",
+   "state": {
+    "q": "taxi berlin"
+   },
+   "ids": [
+    "driverzy-017"
+   ]
+  },
+  {
+   "name": "fraza",
+   "state": {
+    "q": "\"taxi berlin\""
+   },
+   "ids": [
+    "driverzy-017"
+   ]
+  },
+  {
+   "name": "fraza w złej kolejności",
+   "state": {
+    "q": "\"berlin taxi\""
+   },
+   "ids": []
+  },
+  {
+   "name": "wykluczenie",
+   "state": {
+    "q": "berlin -taxi"
+   },
+   "ids": [
+    "eventy-009"
+   ]
+  },
+  {
+   "name": "niedomknięty cudzysłów",
+   "state": {
+    "q": "\"taxi ber"
+   },
+   "ids": [
+    "driverzy-017"
+   ]
+  },
+  {
+   "name": "same wykluczenia",
+   "state": {
+    "q": "-taxi"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "po identyfikatorze",
+   "state": {
+    "q": "DRIVERZY-018"
+   },
+   "ids": [
+    "driverzy-018"
+   ]
+  },
+  {
+   "name": "same spacje",
+   "state": {
+    "q": "   "
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "brak wyników",
+   "state": {
+    "q": "zzz"
+   },
+   "ids": []
+  },
+  {
+   "name": "nazwa kraju",
+   "state": {
+    "q": "niemcy"
+   },
+   "ids": [
+    "eventy-004",
+    "eventy-009",
+    "eventy-014",
+    "driverzy-023"
+   ]
+  },
+  {
+   "name": "nazwa kraju z dwóch słów",
+   "state": {
+    "q": "wielka brytania"
+   },
+   "ids": [
+    "eventy-002",
+    "eventy-003",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "irlandia",
+   "state": {
+    "q": "irlandia"
+   },
+   "ids": [
+    "driverzy-019"
+   ]
+  },
+  {
+   "name": "pole firma",
+   "state": {
+    "q": "zuraw",
+    "qFields": "company"
+   },
+   "ids": [
+    "eventy-006",
+    "eventy-007"
+   ]
+  },
+  {
+   "name": "pole firma: osoba kontaktowa",
+   "state": {
+    "q": "zolc",
+    "qFields": "company"
+   },
+   "ids": [
+    "eventy-006"
+   ]
+  },
+  {
+   "name": "pole e-mail",
+   "state": {
+    "q": "x.cz",
+    "qFields": "email"
+   },
+   "ids": [
+    "eventy-012"
+   ]
+  },
+  {
+   "name": "pole strona",
+   "state": {
+    "q": "example.dk",
+    "qFields": "website"
+   },
+   "ids": [
+    "eventy-005"
+   ]
+  },
+  {
+   "name": "pole miejsce: nazwa+miasto",
+   "state": {
+    "q": "\"polska katowice\"",
+    "qFields": "place"
+   },
+   "ids": [
+    "eventy-006",
+    "eventy-007"
+   ]
+  },
+  {
+   "name": "pole miejsce: kod+nazwa",
+   "state": {
+    "q": "\"pl polska\"",
+    "qFields": "place"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-010",
+    "eventy-n001",
+    "driverzy-018",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-n003",
+    "driverzy-024"
+   ]
+  },
+  {
+   "name": "pole opis: ß",
+   "state": {
+    "q": "strasse",
+    "qFields": "description"
+   },
+   "ids": [
+    "eventy-004"
+   ]
+  },
+  {
+   "name": "ß w adresie (wszędzie)",
+   "state": {
+    "q": "strasse"
+   },
+   "ids": [
+    "eventy-004"
+   ]
+  },
+  {
+   "name": "Œ",
+   "state": {
+    "q": "oeuvre"
+   },
+   "ids": [
+    "driverzy-025"
+   ]
+  },
+  {
+   "name": "Þ",
+   "state": {
+    "q": "thor"
+   },
+   "ids": [
+    "driverzy-025"
+   ]
+  },
+  {
+   "name": "Æ i Ø",
+   "state": {
+    "q": "aero ol"
+   },
+   "ids": [
+    "eventy-005"
+   ]
+  },
+  {
+   "name": "znak procenta",
+   "state": {
+    "q": "50%"
+   },
+   "ids": [
+    "driverzy-024"
+   ]
+  },
+  {
+   "name": "podkreślenie",
+   "state": {
+    "q": "taxi _"
+   },
+   "ids": [
+    "driverzy-024"
+   ]
+  },
+  {
+   "name": "osoba kontaktowa",
+   "state": {
+    "q": "kowal"
+   },
+   "ids": [
+    "driverzy-018"
+   ]
+  },
+  {
+   "name": "kilka wykluczeń",
+   "state": {
+    "q": "pl -katowice -gdansk"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-009",
+    "eventy-010",
+    "eventy-012",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "duże litery",
+   "state": {
+    "q": "ŁÓDŹ"
+   },
+   "ids": [
+    "eventy-001",
+    "driverzy-021"
+   ]
+  },
+  {
+   "name": "pole opis, brak wyniku w innych",
+   "state": {
+    "q": "wesele",
+    "qFields": "description"
+   },
+   "ids": []
+  },
+  {
+   "name": "pole miejsce: adres",
+   "state": {
+    "q": "floriańska",
+    "qFields": "place"
+   },
+   "ids": [
+    "driverzy-018"
+   ]
+  },
+  {
+   "name": "e-mail ze spacjami",
+   "state": {
+    "q": "   ",
+    "qFields": "email"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "miasto jest",
+   "state": {
+    "city": "yes"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-012",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "miasto brak",
+   "state": {
+    "city": "no"
+   },
+   "ids": [
+    "eventy-011",
+    "eventy-n001",
+    "eventy-n002",
+    "driverzy-017"
+   ]
+  },
+  {
+   "name": "adres jest",
+   "state": {
+    "address": "yes"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-009",
+    "eventy-012",
+    "eventy-015",
+    "driverzy-018",
+    "driverzy-021"
+   ]
+  },
+  {
+   "name": "adres brak",
+   "state": {
+    "address": "no"
+   },
+   "ids": [
+    "eventy-002",
+    "eventy-007",
+    "eventy-008",
+    "eventy-010",
+    "eventy-011",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-014",
+    "eventy-016",
+    "driverzy-017",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "wysłano tak",
+   "state": {
+    "sent": "yes"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-005",
+    "eventy-007",
+    "eventy-009",
+    "eventy-012",
+    "eventy-014",
+    "eventy-016",
+    "driverzy-018",
+    "driverzy-019"
+   ]
+  },
+  {
+   "name": "wysłano nie",
+   "state": {
+    "sent": "no"
+   },
+   "ids": [
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-006",
+    "eventy-008",
+    "eventy-010",
+    "eventy-011",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-015",
+    "driverzy-017",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "import",
+   "state": {
+    "origin": "import"
+   },
+   "ids": [
+    "eventy-n001",
+    "eventy-n002",
+    "driverzy-n003"
+   ]
+  },
+  {
+   "name": "dossier",
+   "state": {
+    "origin": "dossier"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "wygenerowano w zakresie",
+   "state": {
+    "generatedFrom": "2026-09-29",
+    "generatedTo": "2026-09-29"
+   },
+   "ids": [
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "driverzy-020"
+   ]
+  },
+  {
+   "name": "wygenerowano od",
+   "state": {
+    "generatedFrom": "2026-09-30"
+   },
+   "ids": [
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-024",
+    "driverzy-025"
+   ]
+  },
+  {
+   "name": "wygenerowano do",
+   "state": {
+    "generatedTo": "2026-09-28"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "zakres wysłania i wygenerowania",
+   "state": {
+    "sentFrom": "2026-09-25",
+    "sentTo": "2026-09-30",
+    "generatedFrom": "2026-09-28"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-005",
+    "eventy-007",
+    "eventy-012",
+    "eventy-016",
+    "driverzy-018",
+    "driverzy-019"
+   ]
+  },
+  {
+   "name": "spoza Polski",
+   "state": {
+    "countries": [
+     "_foreign"
+    ]
+   },
+   "ids": [
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-009",
+    "eventy-012",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-019",
+    "driverzy-023",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "spoza Polski albo bez kraju",
+   "state": {
+    "countries": [
+     "_foreign",
+     "_none"
+    ]
+   },
+   "ids": [
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-009",
+    "eventy-011",
+    "eventy-012",
+    "eventy-n002",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-017",
+    "driverzy-019",
+    "driverzy-023",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "spoza Polski i PL",
+   "state": {
+    "countries": [
+     "_foreign",
+     "PL"
+    ]
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-012",
+    "eventy-n001",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "kraj + spoza Polski",
+   "state": {
+    "countries": [
+     "DE",
+     "_foreign"
+    ]
+   },
+   "ids": [
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-009",
+    "eventy-012",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-019",
+    "driverzy-023",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "bez kraju",
+   "state": {
+    "countries": [
+     "_none"
+    ]
+   },
+   "ids": [
+    "eventy-011",
+    "eventy-n002",
+    "driverzy-017"
+   ]
+  },
+  {
+   "name": "status + segment + kraj",
+   "state": {
+    "statuses": [
+     "do_wyslania",
+     "blad"
+    ],
+    "segments": [
+     "eventy"
+    ],
+    "countries": [
+     "PL"
+    ]
+   },
+   "ids": [
+    "eventy-006",
+    "eventy-008",
+    "eventy-n001"
+   ]
+  },
+  {
+   "name": "szukaj + filtr",
+   "state": {
+    "q": "studio",
+    "statuses": [
+     "do_wyslania",
+     "oczekuje_na_tresc"
+    ]
+   },
+   "ids": [
+    "eventy-008",
+    "eventy-011"
+   ]
+  },
+  {
+   "name": "szukaj + data + sort",
+   "state": {
+    "q": "events",
+    "sentFrom": "2026-09-01",
+    "sort": "company"
+   },
+   "ids": []
+  },
+  {
+   "name": "brak e-maila i treści",
+   "state": {
+    "email": "no",
+    "body": "no"
+   },
+   "ids": [
+    "eventy-004",
+    "eventy-010",
+    "eventy-011"
+   ]
+  },
+  {
+   "name": "wszystko naraz",
+   "state": {
+    "q": "taxi",
+    "statuses": [
+     "blad"
+    ],
+    "email": "yes",
+    "body": "yes",
+    "city": "no",
+    "origin": "dossier"
+   },
+   "ids": [
+    "driverzy-017"
+   ]
+  },
+  {
+   "name": "sort: firma",
+   "state": {
+    "sort": "company"
+   },
+   "ids": [
+    "eventy-005",
+    "eventy-001",
+    "eventy-002",
+    "eventy-008",
+    "eventy-004",
+    "driverzy-018",
+    "driverzy-020",
+    "eventy-003",
+    "eventy-n001",
+    "eventy-n002",
+    "driverzy-n003",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "driverzy-021",
+    "eventy-014",
+    "eventy-015",
+    "driverzy-025",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-024",
+    "driverzy-026",
+    "driverzy-017",
+    "eventy-009",
+    "eventy-016",
+    "driverzy-019",
+    "eventy-006",
+    "eventy-007"
+   ]
+  },
+  {
+   "name": "sort: -firma",
+   "state": {
+    "sort": "-company"
+   },
+   "ids": [
+    "eventy-007",
+    "eventy-006",
+    "driverzy-019",
+    "eventy-016",
+    "eventy-009",
+    "driverzy-017",
+    "driverzy-026",
+    "driverzy-024",
+    "driverzy-023",
+    "driverzy-022",
+    "driverzy-025",
+    "eventy-015",
+    "eventy-014",
+    "driverzy-021",
+    "eventy-012",
+    "eventy-011",
+    "eventy-010",
+    "driverzy-n003",
+    "eventy-n002",
+    "eventy-n001",
+    "eventy-003",
+    "driverzy-020",
+    "driverzy-018",
+    "eventy-004",
+    "eventy-008",
+    "eventy-002",
+    "eventy-001",
+    "eventy-005"
+   ]
+  },
+  {
+   "name": "sort: miasto",
+   "state": {
+    "sort": "city"
+   },
+   "ids": [
+    "eventy-005",
+    "eventy-009",
+    "driverzy-026",
+    "driverzy-019",
+    "eventy-008",
+    "driverzy-020",
+    "driverzy-023",
+    "eventy-006",
+    "eventy-007",
+    "eventy-014",
+    "driverzy-018",
+    "eventy-003",
+    "eventy-002",
+    "driverzy-024",
+    "driverzy-025",
+    "eventy-001",
+    "driverzy-021",
+    "eventy-015",
+    "eventy-004",
+    "eventy-016",
+    "eventy-010",
+    "eventy-012",
+    "driverzy-n003",
+    "driverzy-022",
+    "eventy-011",
+    "eventy-n001",
+    "eventy-n002",
+    "driverzy-017"
+   ]
+  },
+  {
+   "name": "sort: -miasto",
+   "state": {
+    "sort": "-city"
+   },
+   "ids": [
+    "driverzy-022",
+    "driverzy-n003",
+    "eventy-012",
+    "eventy-010",
+    "eventy-016",
+    "eventy-004",
+    "eventy-015",
+    "eventy-001",
+    "driverzy-021",
+    "driverzy-025",
+    "driverzy-024",
+    "eventy-002",
+    "eventy-003",
+    "driverzy-018",
+    "eventy-014",
+    "eventy-006",
+    "eventy-007",
+    "driverzy-023",
+    "eventy-008",
+    "driverzy-020",
+    "driverzy-019",
+    "driverzy-026",
+    "eventy-009",
+    "eventy-005",
+    "eventy-011",
+    "eventy-n001",
+    "eventy-n002",
+    "driverzy-017"
+   ]
+  },
+  {
+   "name": "sort: e-mail",
+   "state": {
+    "sort": "email"
+   },
+   "ids": [
+    "eventy-008",
+    "driverzy-021",
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-009",
+    "eventy-012",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026",
+    "eventy-n001",
+    "eventy-n002",
+    "driverzy-n003",
+    "eventy-004",
+    "eventy-010",
+    "eventy-011"
+   ]
+  },
+  {
+   "name": "sort: -e-mail",
+   "state": {
+    "sort": "-email"
+   },
+   "ids": [
+    "driverzy-n003",
+    "eventy-n002",
+    "eventy-n001",
+    "driverzy-026",
+    "driverzy-025",
+    "driverzy-024",
+    "driverzy-023",
+    "driverzy-022",
+    "driverzy-020",
+    "driverzy-019",
+    "driverzy-018",
+    "driverzy-017",
+    "eventy-016",
+    "eventy-015",
+    "eventy-014",
+    "eventy-012",
+    "eventy-009",
+    "eventy-007",
+    "eventy-006",
+    "eventy-005",
+    "eventy-003",
+    "eventy-002",
+    "eventy-001",
+    "eventy-008",
+    "driverzy-021",
+    "eventy-004",
+    "eventy-010",
+    "eventy-011"
+   ]
+  },
+  {
+   "name": "sort: segment",
+   "state": {
+    "sort": "segment"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "sort: -segment",
+   "state": {
+    "sort": "-segment"
+   },
+   "ids": [
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026",
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016"
+   ]
+  },
+  {
+   "name": "sort: status",
+   "state": {
+    "sort": "status"
+   },
+   "ids": [
+    "eventy-002",
+    "eventy-003",
+    "eventy-008",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-015",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-024",
+    "driverzy-025",
+    "eventy-001",
+    "eventy-005",
+    "eventy-009",
+    "eventy-014",
+    "eventy-007",
+    "driverzy-018",
+    "eventy-012",
+    "driverzy-019",
+    "eventy-006",
+    "driverzy-017",
+    "driverzy-n003",
+    "eventy-004",
+    "eventy-010",
+    "driverzy-026",
+    "eventy-011",
+    "eventy-016",
+    "driverzy-020"
+   ]
+  },
+  {
+   "name": "sort: -status",
+   "state": {
+    "sort": "-status"
+   },
+   "ids": [
+    "eventy-016",
+    "driverzy-020",
+    "eventy-011",
+    "eventy-010",
+    "driverzy-026",
+    "eventy-004",
+    "eventy-006",
+    "driverzy-017",
+    "driverzy-n003",
+    "eventy-012",
+    "driverzy-019",
+    "eventy-007",
+    "driverzy-018",
+    "eventy-001",
+    "eventy-005",
+    "eventy-009",
+    "eventy-014",
+    "eventy-002",
+    "eventy-003",
+    "eventy-008",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-015",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-024",
+    "driverzy-025"
+   ]
+  },
+  {
+   "name": "sort: kraj",
+   "state": {
+    "sort": "country"
+   },
+   "ids": [
+    "eventy-012",
+    "eventy-005",
+    "eventy-016",
+    "driverzy-025",
+    "eventy-015",
+    "driverzy-019",
+    "eventy-004",
+    "eventy-009",
+    "eventy-014",
+    "driverzy-023",
+    "eventy-001",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-010",
+    "eventy-n001",
+    "driverzy-018",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-n003",
+    "driverzy-024",
+    "eventy-002",
+    "eventy-003",
+    "driverzy-026",
+    "eventy-011",
+    "eventy-n002",
+    "driverzy-017"
+   ]
+  },
+  {
+   "name": "sort: -kraj",
+   "state": {
+    "sort": "-country"
+   },
+   "ids": [
+    "eventy-002",
+    "eventy-003",
+    "driverzy-026",
+    "eventy-001",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-010",
+    "eventy-n001",
+    "driverzy-018",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-n003",
+    "driverzy-024",
+    "eventy-004",
+    "eventy-009",
+    "eventy-014",
+    "driverzy-023",
+    "driverzy-019",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-025",
+    "eventy-005",
+    "eventy-012",
+    "eventy-011",
+    "eventy-n002",
+    "driverzy-017"
+   ]
+  },
+  {
+   "name": "sort: wygenerowano",
+   "state": {
+    "sort": "generated_at"
+   },
+   "ids": [
+    "driverzy-026",
+    "eventy-001",
+    "eventy-002",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "driverzy-020",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "eventy-014",
+    "driverzy-022",
+    "driverzy-024",
+    "driverzy-025",
+    "eventy-015",
+    "driverzy-021",
+    "eventy-016",
+    "eventy-n001",
+    "eventy-n002",
+    "driverzy-023",
+    "driverzy-n003"
+   ]
+  },
+  {
+   "name": "sort: -wygenerowano",
+   "state": {
+    "sort": "-generated_at"
+   },
+   "ids": [
+    "eventy-016",
+    "eventy-015",
+    "driverzy-021",
+    "driverzy-025",
+    "driverzy-024",
+    "eventy-014",
+    "driverzy-022",
+    "eventy-012",
+    "eventy-011",
+    "eventy-010",
+    "eventy-009",
+    "driverzy-020",
+    "eventy-008",
+    "eventy-007",
+    "eventy-006",
+    "eventy-005",
+    "eventy-004",
+    "eventy-003",
+    "eventy-001",
+    "eventy-002",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-026",
+    "eventy-n001",
+    "eventy-n002",
+    "driverzy-023",
+    "driverzy-n003"
+   ]
+  },
+  {
+   "name": "sort: wysłano",
+   "state": {
+    "sort": "sent_at"
+   },
+   "ids": [
+    "eventy-014",
+    "eventy-007",
+    "eventy-016",
+    "eventy-001",
+    "eventy-012",
+    "driverzy-018",
+    "driverzy-019",
+    "eventy-005",
+    "eventy-009",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-006",
+    "eventy-008",
+    "eventy-010",
+    "eventy-011",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-015",
+    "driverzy-017",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "sort: -wysłano",
+   "state": {
+    "sort": "-sent_at"
+   },
+   "ids": [
+    "eventy-009",
+    "eventy-005",
+    "driverzy-019",
+    "eventy-012",
+    "driverzy-018",
+    "eventy-001",
+    "eventy-016",
+    "eventy-007",
+    "eventy-014",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-006",
+    "eventy-008",
+    "eventy-010",
+    "eventy-011",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-015",
+    "driverzy-017",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "sort z filtrem",
+   "state": {
+    "statuses": [
+     "wyslano",
+     "do_wyslania"
+    ],
+    "sort": "-sent_at"
+   },
+   "ids": [
+    "eventy-009",
+    "eventy-005",
+    "eventy-001",
+    "eventy-014",
+    "eventy-002",
+    "eventy-003",
+    "eventy-008",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-015",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-024",
+    "driverzy-025"
+   ]
+  },
+  {
+   "name": "sort nieznany",
+   "state": {
+    "sort": "nie_ma"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "sort domyślny",
+   "state": {
+    "sort": "default"
+   },
+   "ids": [
+    "eventy-001",
+    "eventy-002",
+    "eventy-003",
+    "eventy-004",
+    "eventy-005",
+    "eventy-006",
+    "eventy-007",
+    "eventy-008",
+    "eventy-009",
+    "eventy-010",
+    "eventy-011",
+    "eventy-012",
+    "eventy-n001",
+    "eventy-n002",
+    "eventy-014",
+    "eventy-015",
+    "eventy-016",
+    "driverzy-017",
+    "driverzy-018",
+    "driverzy-019",
+    "driverzy-020",
+    "driverzy-021",
+    "driverzy-022",
+    "driverzy-023",
+    "driverzy-n003",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-026"
+   ]
+  },
+  {
+   "name": "sort + wyszukiwarka",
+   "state": {
+    "q": "taxi",
+    "sort": "-company"
+   },
+   "ids": [
+    "driverzy-017",
+    "driverzy-024",
+    "driverzy-025",
+    "driverzy-020"
+   ]
+  }
+ ],
+ "facets": [
+  {
+   "state": {},
+   "facets": {
+    "statuses": {
+     "wyslano": 4,
+     "do_wyslania": 11,
+     "pominieto_brak_email": 1,
+     "blad": 3,
+     "odpowiedzial": 2,
+     "pominieto_klient": 2,
+     "oczekuje_na_tresc": 1,
+     "zainteresowany": 2,
+     "nie_kontaktowac": 2
+    },
+    "segments": {
+     "eventy": 17,
+     "driverzy": 11
+    },
+    "countries": {
+     "PL": 12,
+     "GB": 3,
+     "DE": 4,
+     "DK": 1,
+     "_none": 3,
+     "CZ": 1,
+     "ES": 1,
+     "FR": 2,
+     "IE": 1,
+     "_foreign": 13
+    }
+   }
+  },
+  {
+   "state": {
+    "q": "taxi"
+   },
+   "facets": {
+    "statuses": {
+     "blad": 1,
+     "nie_kontaktowac": 1,
+     "do_wyslania": 2
+    },
+    "segments": {
+     "driverzy": 4
+    },
+    "countries": {
+     "_none": 1,
+     "PL": 2,
+     "FR": 1,
+     "_foreign": 1
+    }
+   }
+  },
+  {
+   "state": {
+    "statuses": [
+     "do_wyslania"
+    ]
+   },
+   "facets": {
+    "statuses": {
+     "wyslano": 4,
+     "do_wyslania": 11,
+     "pominieto_brak_email": 1,
+     "blad": 3,
+     "odpowiedzial": 2,
+     "pominieto_klient": 2,
+     "oczekuje_na_tresc": 1,
+     "zainteresowany": 2,
+     "nie_kontaktowac": 2
+    },
+    "segments": {
+     "eventy": 6,
+     "driverzy": 5
+    },
+    "countries": {
+     "GB": 2,
+     "PL": 5,
+     "_none": 1,
+     "ES": 1,
+     "DE": 1,
+     "FR": 1,
+     "_foreign": 5
+    }
+   }
+  },
+  {
+   "state": {
+    "countries": [
+     "PL"
+    ]
+   },
+   "facets": {
+    "statuses": {
+     "wyslano": 1,
+     "blad": 2,
+     "odpowiedzial": 2,
+     "do_wyslania": 5,
+     "pominieto_klient": 1,
+     "nie_kontaktowac": 1
+    },
+    "segments": {
+     "eventy": 6,
+     "driverzy": 6
+    },
+    "countries": {
+     "PL": 12,
+     "GB": 3,
+     "DE": 4,
+     "DK": 1,
+     "_none": 3,
+     "CZ": 1,
+     "ES": 1,
+     "FR": 2,
+     "IE": 1,
+     "_foreign": 13
+    }
+   }
+  },
+  {
+   "state": {
+    "segments": [
+     "driverzy"
+    ],
+    "email": "yes"
+   },
+   "facets": {
+    "statuses": {
+     "blad": 2,
+     "odpowiedzial": 1,
+     "zainteresowany": 1,
+     "nie_kontaktowac": 1,
+     "do_wyslania": 4,
+     "pominieto_klient": 1
+    },
+    "segments": {
+     "eventy": 13,
+     "driverzy": 10
+    },
+    "countries": {
+     "_none": 1,
+     "PL": 5,
+     "IE": 1,
+     "DE": 1,
+     "FR": 1,
+     "GB": 1,
+     "_foreign": 4
+    }
+   }
+  },
+  {
+   "state": {
+    "statuses": [
+     "wyslano",
+     "blad"
+    ],
+    "countries": [
+     "DE",
+     "_none"
+    ]
+   },
+   "facets": {
+    "statuses": {
+     "pominieto_brak_email": 1,
+     "wyslano": 2,
+     "oczekuje_na_tresc": 1,
+     "do_wyslania": 2,
+     "blad": 1
+    },
+    "segments": {
+     "eventy": 2,
+     "driverzy": 1
+    },
+    "countries": {
+     "PL": 3,
+     "DK": 1,
+     "DE": 2,
+     "_none": 1,
+     "_foreign": 3
+    }
+   }
+  },
+  {
+   "state": {
+    "city": "no"
+   },
+   "facets": {
+    "statuses": {
+     "oczekuje_na_tresc": 1,
+     "do_wyslania": 2,
+     "blad": 1
+    },
+    "segments": {
+     "eventy": 3,
+     "driverzy": 1
+    },
+    "countries": {
+     "_none": 3,
+     "PL": 1,
+     "_foreign": 0
+    }
+   }
+  },
+  {
+   "state": {
+    "origin": "import"
+   },
+   "facets": {
+    "statuses": {
+     "do_wyslania": 2,
+     "blad": 1
+    },
+    "segments": {
+     "eventy": 2,
+     "driverzy": 1
+    },
+    "countries": {
+     "PL": 2,
+     "_none": 1,
+     "_foreign": 0
+    }
+   }
+  }
+ ],
+ "presets": [
+  {
+   "key": "all",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [],
+    "segments": [],
+    "countries": [],
+    "email": "",
+    "body": "",
+    "city": "",
+    "address": "",
+    "sent": "",
+    "origin": "",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 28
+  },
+  {
+   "key": "ready",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [
+     "do_wyslania",
+     "blad"
+    ],
+    "segments": [],
+    "countries": [],
+    "email": "yes",
+    "body": "yes",
+    "city": "",
+    "address": "",
+    "sent": "",
+    "origin": "",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 9
+  },
+  {
+   "key": "errors",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [
+     "blad"
+    ],
+    "segments": [],
+    "countries": [],
+    "email": "",
+    "body": "",
+    "city": "",
+    "address": "",
+    "sent": "",
+    "origin": "",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 3
+  },
+  {
+   "key": "no_email",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [],
+    "segments": [],
+    "countries": [],
+    "email": "no",
+    "body": "",
+    "city": "",
+    "address": "",
+    "sent": "",
+    "origin": "",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 5
+  },
+  {
+   "key": "email_no_body",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [],
+    "segments": [],
+    "countries": [],
+    "email": "yes",
+    "body": "no",
+    "city": "",
+    "address": "",
+    "sent": "",
+    "origin": "",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 4
+  },
+  {
+   "key": "sent_today",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [],
+    "segments": [],
+    "countries": [],
+    "email": "",
+    "body": "",
+    "city": "",
+    "address": "",
+    "sent": "",
+    "origin": "",
+    "sentFrom": "2026-09-30",
+    "sentTo": "2026-09-30",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 2
+  },
+  {
+   "key": "sent_abroad",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [],
+    "segments": [],
+    "countries": [
+     "_foreign"
+    ],
+    "email": "",
+    "body": "",
+    "city": "",
+    "address": "",
+    "sent": "yes",
+    "origin": "",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 6
+  },
+  {
+   "key": "replies",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [
+     "odpowiedzial",
+     "zainteresowany"
+    ],
+    "segments": [],
+    "countries": [],
+    "email": "",
+    "body": "",
+    "city": "",
+    "address": "",
+    "sent": "",
+    "origin": "",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 4
+  },
+  {
+   "key": "do_not_contact",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [
+     "nie_kontaktowac"
+    ],
+    "segments": [],
+    "countries": [],
+    "email": "",
+    "body": "",
+    "city": "",
+    "address": "",
+    "sent": "",
+    "origin": "",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 2
+  },
+  {
+   "key": "imported",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [],
+    "segments": [],
+    "countries": [],
+    "email": "",
+    "body": "",
+    "city": "",
+    "address": "",
+    "sent": "",
+    "origin": "import",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 3
+  },
+  {
+   "key": "no_country",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [],
+    "segments": [],
+    "countries": [
+     "_none"
+    ],
+    "email": "",
+    "body": "",
+    "city": "",
+    "address": "",
+    "sent": "",
+    "origin": "",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 3
+  },
+  {
+   "key": "no_city",
+   "state": {
+    "q": "",
+    "qFields": "all",
+    "statuses": [],
+    "segments": [],
+    "countries": [],
+    "email": "",
+    "body": "",
+    "city": "no",
+    "address": "",
+    "sent": "",
+    "origin": "",
+    "sentFrom": "",
+    "sentTo": "",
+    "generatedFrom": "",
+    "generatedTo": "",
+    "sort": "default"
+   },
+   "count": 4
+  }
+ ]
+}

@@ -8,6 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy.engine import URL, Engine
 from sqlalchemy.pool import StaticPool
 
+from perno.db import sqlite_functions
 from perno.settings import ConfigError, Environment
 
 
@@ -36,7 +37,9 @@ def make_engine(url: URL) -> Engine:
         kwargs: dict[str, Any] = {"connect_args": {"check_same_thread": False}}
         if url.database in (None, "", ":memory:"):
             kwargs["poolclass"] = StaticPool
-        return sa.create_engine(url, **kwargs)
+        engine = sa.create_engine(url, **kwargs)
+        sa.event.listen(engine, "connect", sqlite_functions.register)  # perno_fold i kolacja polska dla listy w panelu
+        return engine
     return sa.create_engine(
         url, pool_pre_ping=True, pool_recycle=1800,
         connect_args={"connect_timeout": 5, "read_timeout": 60, "write_timeout": 60},

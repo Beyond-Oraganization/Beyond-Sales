@@ -9,15 +9,16 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Any, Callable, Iterable, Iterator, Mapping, Optional
+from typing import Callable, Iterable, Iterator, Mapping, Optional
 
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
-from perno.db.codec import format_value, from_api, to_api
+from perno.db.codec import from_api, to_api
 from perno.db.errors import InvalidValue, RowLocked, RowNotFound
+from perno.db.listing_queries import ListingQueries, has_body_expression, light_columns, to_light_row
 from perno.db.queries import ID_CHUNK, filter_clauses, id_chunks, ordering
-from perno.db.schema import COLUMNS, LIGHT_COLUMNS, maile
+from perno.db.schema import COLUMNS, maile
 from perno.domain import mail_rules
 from perno.domain import statuses as st
 from perno.domain.rowfilter import ALL_ROWS, RowFilter
@@ -37,7 +38,7 @@ def _default_clock() -> datetime:
     return datetime.now()
 
 
-class MailRepository:
+class MailRepository(ListingQueries):
     def __init__(self, engine: Engine, clock: Optional[Callable[[], datetime]] = None):
         self.engine = engine
         self._clock = clock or _default_clock
@@ -54,14 +55,8 @@ class MailRepository:
             with self.engine.connect() as own:
                 return self.fetch_all(own, light)
         if light:
-            has_body = sa.case((sa.and_(maile.c.body_html.is_not(None), maile.c.body_html != ""), 1), else_=0)
-            stmt = sa.select(*[maile.c[name] for name in LIGHT_COLUMNS], has_body.label("has_body")).order_by(*ordering())
-            rows = []
-            for r in conn.execute(stmt).mappings():
-                row: dict[str, Any] = {name: format_value(r[name]) for name in LIGHT_COLUMNS}
-                row["has_body"] = bool(r["has_body"])
-                rows.append(row)
-            return rows
+            stmt = sa.select(*light_columns()).order_by(*ordering())
+            return [to_light_row(r) for r in conn.execute(stmt).mappings()]
         stmt = sa.select(maile).order_by(*ordering())
         return [to_api(r) for r in conn.execute(stmt).mappings()]
 
@@ -158,7 +153,7 @@ class MailRepository:
         """Wiersze o podanych id (tylko pola potrzebne do analizy zmiany zbiorczej — bez treści maili, za to z
         `has_body`), czytane partiami w kolejności id. Przy `lock` zakładają blokady wierszy (SELECT … FOR UPDATE)
         zawsze w tej samej kolejności, więc dwie jednoczesne operacje nie zakleszczą się nawzajem."""
-        has_body = sa.case((sa.and_(maile.c.body_html.is_not(None), maile.c.body_html != ""), 1), else_=0).label("has_body")
+        has_body = has_body_expression().label("has_body")
         columns = [maile.c.id, maile.c.status, maile.c.sent_at, maile.c.email, maile.c.country, maile.c.city,
                    maile.c.address, has_body]
         found = {}

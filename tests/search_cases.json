@@ -1,0 +1,363 @@
+{
+ "_comment": "Wektory składania liter i rozbijania zapytania wygenerowane z dawnej implementacji w przeglądarce (filters.js); perno.domain.search musi dawać te same wyniki.",
+ "fold": [
+  {
+   "input": "Zażółć gęślą jaźń",
+   "expect": "zazolc gesla jazn"
+  },
+  {
+   "input": "ŁÓDŹ",
+   "expect": "lodz"
+  },
+  {
+   "input": "Müller  Straße\tKöln",
+   "expect": "muller strasse koln"
+  },
+  {
+   "input": "  Ærø   Øl ",
+   "expect": "aero ol"
+  },
+  {
+   "input": null,
+   "expect": ""
+  },
+  {
+   "input": 12,
+   "expect": "12"
+  },
+  {
+   "input": "",
+   "expect": ""
+  },
+  {
+   "input": "ŁÓDŹ ŻÓŁW",
+   "expect": "lodz zolw"
+  },
+  {
+   "input": "Ørsted",
+   "expect": "orsted"
+  },
+  {
+   "input": "Œuvre",
+   "expect": "oeuvre"
+  },
+  {
+   "input": "Þór",
+   "expect": "thor"
+  },
+  {
+   "input": "Ðor",
+   "expect": "dor"
+  },
+  {
+   "input": "Đorđe",
+   "expect": "dorde"
+  },
+  {
+   "input": "ınır",
+   "expect": "inir"
+  },
+  {
+   "input": "İstanbul",
+   "expect": "istanbul"
+  },
+  {
+   "input": "Crème brûlée",
+   "expect": "creme brulee"
+  },
+  {
+   "input": "Ñandú",
+   "expect": "nandu"
+  },
+  {
+   "input": "Česká Třebová",
+   "expect": "ceska trebova"
+  },
+  {
+   "input": "Straße",
+   "expect": "strasse"
+  },
+  {
+   "input": "ǅ",
+   "expect": "ǆ"
+  },
+  {
+   "input": "Ω",
+   "expect": "ω"
+  },
+  {
+   "input": "ΑΣ",
+   "expect": "ας"
+  },
+  {
+   "input": "a b",
+   "expect": "a b"
+  },
+  {
+   "input": "tab\tnew\nline",
+   "expect": "tab new line"
+  },
+  {
+   "input": "é",
+   "expect": "e"
+  },
+  {
+   "input": "ä",
+   "expect": "a"
+  },
+  {
+   "input": "ﬁ",
+   "expect": "ﬁ"
+  },
+  {
+   "input": "Ⅷ",
+   "expect": "ⅷ"
+  },
+  {
+   "input": "ŁĄKA",
+   "expect": "laka"
+  },
+  {
+   "input": "ul. Piotrkowska 10/12",
+   "expect": "ul. piotrkowska 10/12"
+  },
+  {
+   "input": "Taxi-Berlin",
+   "expect": "taxi-berlin"
+  },
+  {
+   "input": "50%_off",
+   "expect": "50%_off"
+  },
+  {
+   "input": "'quote'",
+   "expect": "'quote'"
+  },
+  {
+   "input": "\"dq\"",
+   "expect": "\"dq\""
+  },
+  {
+   "input": "xxxxx",
+   "expect": "xxxxx"
+  }
+ ],
+ "query": [
+  {
+   "input": "",
+   "expect": {
+    "include": [],
+    "exclude": []
+   }
+  },
+  {
+   "input": "   ",
+   "expect": {
+    "include": [],
+    "exclude": []
+   }
+  },
+  {
+   "input": "Taxi  Berlin",
+   "expect": {
+    "include": [
+     "taxi",
+     "berlin"
+    ],
+    "exclude": []
+   }
+  },
+  {
+   "input": "\"Taxi Berlin\" -pies -\"stary kot\"",
+   "expect": {
+    "include": [
+     "taxi berlin"
+    ],
+    "exclude": [
+     "pies",
+     "stary kot"
+    ]
+   }
+  },
+  {
+   "input": "\"taxi ber",
+   "expect": {
+    "include": [
+     "taxi ber"
+    ],
+    "exclude": []
+   }
+  },
+  {
+   "input": "- taxi-berlin -",
+   "expect": {
+    "include": [
+     "taxi-berlin"
+    ],
+    "exclude": []
+   }
+  },
+  {
+   "input": "ŁÓDŹ -Ząb",
+   "expect": {
+    "include": [
+     "lodz"
+    ],
+    "exclude": [
+     "zab"
+    ]
+   }
+  },
+  {
+   "input": "\"\"  -\"\"",
+   "expect": {
+    "include": [],
+    "exclude": []
+   }
+  },
+  {
+   "input": "-",
+   "expect": {
+    "include": [],
+    "exclude": []
+   }
+  },
+  {
+   "input": "--x",
+   "expect": {
+    "include": [],
+    "exclude": [
+     "-x"
+    ]
+   }
+  },
+  {
+   "input": "a -b -c",
+   "expect": {
+    "include": [
+     "a"
+    ],
+    "exclude": [
+     "b",
+     "c"
+    ]
+   }
+  },
+  {
+   "input": "-\"x y\" z",
+   "expect": {
+    "include": [
+     "z"
+    ],
+    "exclude": [
+     "x y"
+    ]
+   }
+  },
+  {
+   "input": "one \"two three\" -four",
+   "expect": {
+    "include": [
+     "one",
+     "two three"
+    ],
+    "exclude": [
+     "four"
+    ]
+   }
+  },
+  {
+   "input": "ß -straße",
+   "expect": {
+    "include": [
+     "ss"
+    ],
+    "exclude": [
+     "strasse"
+    ]
+   }
+  },
+  {
+   "input": "\"unclosed -x",
+   "expect": {
+    "include": [
+     "unclosed -x"
+    ],
+    "exclude": []
+   }
+  },
+  {
+   "input": "a\"b\"c",
+   "expect": {
+    "include": [
+     "a",
+     "b",
+     "c"
+    ],
+    "exclude": []
+   }
+  },
+  {
+   "input": "-\"\"",
+   "expect": {
+    "include": [],
+    "exclude": []
+   }
+  },
+  {
+   "input": "  -  ",
+   "expect": {
+    "include": [],
+    "exclude": []
+   }
+  },
+  {
+   "input": "Ærø -Øl",
+   "expect": {
+    "include": [
+     "aero"
+    ],
+    "exclude": [
+     "ol"
+    ]
+   }
+  },
+  {
+   "input": "50% _x",
+   "expect": {
+    "include": [
+     "50%",
+     "_x"
+    ],
+    "exclude": []
+   }
+  },
+  {
+   "input": "a\tb\nc",
+   "expect": {
+    "include": [
+     "a",
+     "b",
+     "c"
+    ],
+    "exclude": []
+   }
+  },
+  {
+   "input": null,
+   "expect": {
+    "include": [],
+    "exclude": []
+   }
+  },
+  {
+   "input": 12,
+   "expect": {
+    "include": [
+     "12"
+    ],
+    "exclude": []
+   }
+  }
+ ]
+}
