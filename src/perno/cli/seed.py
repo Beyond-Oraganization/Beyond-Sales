@@ -16,19 +16,18 @@ from __future__ import annotations
 import csv
 import os
 
+from perno import settings as cfg
 from perno.services.seed import driverzy as de
 from perno.services.seed import eventy as ee
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PERNO_DIR = os.path.dirname(BASE_DIR)
+# Źródła leżą obok katalogu projektu (w ~/Desktop/Perno), wyniki w data/ projektu.
+EVENTY_HTML = os.path.join(cfg.PERNO_DIR, "Maile_GTM_Eventy", "index.html")
+EVENTY_DOSSIERS_DIR = os.path.join(cfg.PERNO_DIR, "Firmy", "Eventy")
+DRIVERZY_CSV = os.path.join(cfg.PERNO_DIR, "PERNO - GTM - Driverzy .csv")
+DRIVERZY_DOSSIERS_DIR = os.path.join(cfg.PERNO_DIR, "Firmy", "Driverzy")
 
-EVENTY_HTML = os.path.join(PERNO_DIR, "Maile_GTM_Eventy", "index.html")
-EVENTY_DOSSIERS_DIR = os.path.join(PERNO_DIR, "Firmy", "Eventy")
-DRIVERZY_CSV = os.path.join(PERNO_DIR, "PERNO - GTM - Driverzy .csv")
-DRIVERZY_DOSSIERS_DIR = os.path.join(PERNO_DIR, "Firmy", "Driverzy")
-
-EVENTY_OUT = os.path.join(BASE_DIR, "data", "eventy.csv")
-DRIVERZY_OUT = os.path.join(BASE_DIR, "data", "driverzy.csv")
+EVENTY_OUT = cfg.EVENTY_SEED
+DRIVERZY_OUT = cfg.DRIVERZY_SEED
 
 EVENTY_COLUMNS = [
     "row_number", "company_display_name", "name_suffix_raw",
