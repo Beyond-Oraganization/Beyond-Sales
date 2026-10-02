@@ -7,17 +7,17 @@ import tempfile
 import threading
 import unittest
 import unittest.mock
-from http.server import ThreadingHTTPServer
 
 import sqlalchemy.exc as sa_exc
 
 from perno.cli import server
+from perno.settings import ConfigFile
 from perno.web import app as appmod
 from perno.web import layout
-from perno.web.app import MAX_BODY, App, Request, json_response
+from perno.web.app import MAX_BODY, Request, json_response
+from perno.web.page import Page
 from perno.web.pages import PAGES
-from perno.web.pages.base import Page
-from tests.fixtures import FakeSmtp, make_db, put, sample_row
+from tests.fixtures import FakeSmtp, make_app, make_db, put, sample_row
 
 PORT = 8799
 HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
@@ -39,8 +39,8 @@ class WebCase(unittest.TestCase):
         self.tmp = tmp.name
         self.database = make_db()
         self.smtp = FakeSmtp()
-        self.app = App(self.database, PAGES, config_path=write_config(self.tmp),
-                       smtp_factory=lambda: self.smtp, allowed_hosts=set(HOSTS))
+        self.app = make_app(self.database, config_path=write_config(self.tmp),
+                            smtp_factory=lambda: self.smtp, allowed_hosts=set(HOSTS))
 
     def call(self, method, path, payload=None, headers=None, raw=None, query=None, content_length=None):
         base = {"host": f"localhost:{PORT}", "content-type": "application/json"}
@@ -68,13 +68,13 @@ class PageTests(WebCase):
                 self.assertIn(name, resp.headers)
 
     def test_new_page_appears_in_menu_and_serves_its_routes(self):
-        def render(app):
-            return layout.render_page(app, title="Raporty", active_key="raporty", body="<main>raport</main>")
+        def render(ctx):
+            return layout.render_page(ctx, title="Raporty", active_key="raporty", body="<main>raport</main>")
 
         page = Page(key="raporty", label="Raporty", path="/raporty", render=render, order=50,
-                    routes={("GET", "/api/raporty"): lambda req, app: json_response({"ok": True})})
-        self.app = App(self.database, [*PAGES, page], config_path=self.app.config_path,
-                       allowed_hosts=set(HOSTS))
+                    routes={("GET", "/api/raporty"): lambda req, ctx: json_response({"ok": True})})
+        self.app = make_app(self.database, [*PAGES, page], config_path=self.app.ctx.config.path,
+                            allowed_hosts=set(HOSTS))
         html = self.call("GET", "/raporty").body.decode("utf-8")
         self.assertIn('href="/raporty" aria-current="page">Raporty</a>', html)
         self.assertIn('href="/">Wysyłka</a>', self.call("GET", "/raporty").body.decode("utf-8"))
@@ -84,13 +84,13 @@ class PageTests(WebCase):
     def test_registry_rejects_duplicates(self):
         page = PAGES[0]
         with self.assertRaises(ValueError):
-            App(self.database, [page, page])
-        clash = Page(key="inna", label="Inna", path="/inna", render=lambda app: "",
-                     routes={("GET", "/api/maile"): lambda req, app: json_response({})})
+            make_app(self.database, [page, page])
+        clash = Page(key="inna", label="Inna", path="/inna", render=lambda ctx: "",
+                     routes={("GET", "/api/maile"): lambda req, ctx: json_response({})})
         with self.assertRaises(ValueError):
-            App(self.database, [page, clash])
+            make_app(self.database, [page, clash])
         with self.assertRaises(ValueError):
-            App(self.database, [Page(key="zla", label="Zła", path="zla", render=lambda app: "")])
+            make_app(self.database, [Page(key="zla", label="Zła", path="zla", render=lambda ctx: "")])
 
 
 class SecurityTests(WebCase):
@@ -134,15 +134,15 @@ class SecurityTests(WebCase):
         self.assertEqual((data["sent_today"], data["row_count"]), (0, 0))
 
     def test_internal_errors_do_not_leak_details(self):
-        def boom(req, app):
+        def boom(req, ctx):
             raise RuntimeError("tajny stack trace")
 
-        def db_down(req, app):
+        def db_down(req, ctx):
             raise sa_exc.OperationalError("SELECT", {}, Exception("connection refused"))
 
-        page = Page(key="t", label="T", path="/t", render=lambda app: "",
+        page = Page(key="t", label="T", path="/t", render=lambda ctx: "",
                     routes={("GET", "/boom"): boom, ("GET", "/down"): db_down})
-        self.app = App(self.database, [page], allowed_hosts=set(HOSTS))
+        self.app = make_app(self.database, [page], allowed_hosts=set(HOSTS))
         with unittest.mock.patch("traceback.print_exc"):
             resp = self.call("GET", "/boom")
             down = self.call("GET", "/down")
@@ -200,7 +200,7 @@ class SendOneTests(WebCase):
 
     def test_missing_smtp_password_gives_clear_error_before_claiming(self):
         put(self.database, sample_row(1))
-        self.app.config_path = write_config(self.tmp, password="")
+        self.app.ctx.config = ConfigFile(write_config(self.tmp, password=""))
         resp = self.call("POST", "/api/send-one", {"id": "eventy-001"})
         self.assertEqual(resp.status, 400)
         self.assertIn("SMTP_PASSWORD", self.data(resp)["error"])
@@ -232,9 +232,8 @@ class SocketTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         database = make_db()
         put(database, sample_row(1))
-        self.app = App(database, PAGES, config_path=write_config(tmp.name))
-        server.Handler.app = self.app
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        self.app = make_app(database, config_path=write_config(tmp.name))
+        self.httpd = server.AppServer(("127.0.0.1", 0), self.app)
         self.port = self.httpd.server_address[1]
         self.app.set_port(self.port)
         thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)

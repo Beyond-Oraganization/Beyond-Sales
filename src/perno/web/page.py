@@ -11,7 +11,7 @@ class Page:
     key: str
     label: str
     path: str
-    render: Callable  # (app) -> str: pełny dokument HTML (przez layout.render_page)
-    routes: Mapping = field(default_factory=dict)  # {("GET"|"POST", "/api/...") : handler(req, app) -> Response}
+    render: Callable  # (ctx) -> str: pełny dokument HTML (przez layout.render_page)
+    routes: Mapping = field(default_factory=dict)  # {("GET"|"POST", "/api/...") : handler(req, ctx) -> Response}
     order: int = 100
     in_nav: bool = True

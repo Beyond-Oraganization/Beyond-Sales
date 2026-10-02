@@ -11,11 +11,12 @@ import json
 import sys
 import traceback
 from dataclasses import dataclass, field
-from typing import BinaryIO, Callable, Optional
+from typing import BinaryIO, Callable, Optional, Sequence
 
 from perno import db as dbmod
-from perno import settings as cfg
-from perno.settings import ConfigError, load_config
+from perno.settings import ConfigError
+from perno.web.context import AppContext
+from perno.web.page import Page
 
 MAX_BODY = 2 * 1024 * 1024
 
@@ -77,17 +78,15 @@ def error_response(status: int, message: str, **extra) -> Response:
 
 
 class App:
-    def __init__(self, db: dbmod.Database, pages: list, *, config_path: str = cfg.DEFAULT_CONFIG,
-                 smtp_factory: Optional[Callable] = None, allowed_hosts: Optional[set] = None):
-        self.db = db
-        self.pages = pages
-        self.config_path = config_path
-        self.smtp_factory = smtp_factory
+    """Routing i zabezpieczenia; zależności stron (baza, konfiguracja…) leżą w `ctx` i trafiają do handlerów."""
+
+    def __init__(self, ctx: AppContext, *, allowed_hosts: Optional[set] = None):
+        self.ctx = ctx
         self.allowed_hosts = allowed_hosts or set()
-        self.routes = self._build_routes(pages)
+        self.routes = self._build_routes(ctx.pages)
 
     @staticmethod
-    def _build_routes(pages: list) -> dict:
+    def _build_routes(pages: Sequence[Page]) -> dict:
         routes, keys = {}, set()
         for page in pages:
             if page.key in keys:
@@ -101,9 +100,6 @@ class App:
                     raise ValueError(f"Zduplikowana trasa: {route[0]} {route[1]}")
                 routes[route] = handler
         return routes
-
-    def load_config(self) -> dict:
-        return load_config(self.config_path)
 
     def set_port(self, port: int) -> None:
         self.allowed_hosts = {f"localhost:{port}", f"127.0.0.1:{port}"}
@@ -160,10 +156,10 @@ class App:
         handler = self.routes.get((req.method, req.path.rstrip("/") or "/"))
         if handler is None:
             raise HttpError(404, "Nie znaleziono.")
-        return handler(req, self)
+        return handler(req, self.ctx)
 
 
 def _page_handler(page) -> Callable:
-    def handler(req: Request, app: App) -> Response:
-        return html_response(page.render(app))
+    def handler(req: Request, ctx: AppContext) -> Response:
+        return html_response(page.render(ctx))
     return handler

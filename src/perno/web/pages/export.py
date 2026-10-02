@@ -10,15 +10,16 @@ from perno.domain import countries
 from perno.domain import statuses as st
 from perno.services import export as exporter
 from perno.web import layout
-from perno.web.app import App, HttpError, Request, Response, json_response
-from perno.web.pages.base import Page
+from perno.web.app import HttpError, Request, Response, json_response
+from perno.web.context import AppContext
+from perno.web.page import Page
 
 MAX_EXPORT_IDS = 20_000  # ≈0,5 MB JSON — mieści się w limicie żądania (2 MB)
 
 
-def render(app: App) -> str:
+def render(ctx: AppContext) -> str:
     return layout.render_page(
-        app, title="Eksport", active_key="eksport",
+        ctx, title="Eksport", active_key="eksport",
         body=layout.read_asset("eksport.html"),
         css=layout.read_asset("eksport.css"), js=layout.read_asset("eksport.js"), kit=True,
     )
@@ -43,8 +44,8 @@ def _day(req: Request, name: str) -> Optional[date]:
         raise HttpError(400, f"Parametr {name}: oczekiwano daty RRRR-MM-DD, jest {value[:20]!r}.") from None
 
 
-def _filter(req: Request, app: App) -> RowFilter:
-    known_segments = set(st.SEGMENT_ORDER) | set(app.db.distinct_segments())
+def _filter(req: Request, ctx: AppContext) -> RowFilter:
+    known_segments = set(st.SEGMENT_ORDER) | set(ctx.db.distinct_segments())
     segments = tuple(dict.fromkeys(s for s in req.args("segment") if s))
     statuses = tuple(dict.fromkeys(s for s in req.args("status") if s))
     country_codes = tuple(dict.fromkeys(c for c in req.args("country") if c))
@@ -64,10 +65,10 @@ def _filter(req: Request, app: App) -> RowFilter:
     )
 
 
-def api_meta(req: Request, app: App) -> Response:
-    counts = app.db.status_counts()
+def api_meta(req: Request, ctx: AppContext) -> Response:
+    counts = ctx.db.status_counts()
     return json_response({
-        "segments": app.db.distinct_segments(),
+        "segments": ctx.db.distinct_segments(),
         "statuses": [
             {"code": code, "label": label, "color": color, "count": counts.get(code, 0)}
             for code, (label, color) in st.STATUS_META.items()
@@ -85,8 +86,8 @@ def api_meta(req: Request, app: App) -> Response:
     })
 
 
-def api_count(req: Request, app: App) -> Response:
-    return json_response({"count": app.db.count_rows(_filter(req, app)), "total": app.db.count_rows()})
+def api_count(req: Request, ctx: AppContext) -> Response:
+    return json_response({"count": ctx.db.count_rows(_filter(req, ctx)), "total": ctx.db.count_rows()})
 
 
 def _choice(value, allowed: dict, message: str):
@@ -95,9 +96,9 @@ def _choice(value, allowed: dict, message: str):
     return value
 
 
-def _file_response(app: App, spec: exporter.ExportSpec) -> Response:
+def _file_response(ctx: AppContext, spec: exporter.ExportSpec) -> Response:
     try:
-        result = exporter.build_export(app.db, spec)
+        result = exporter.build_export(ctx.db, spec)
     except exporter.ExportError as exc:
         raise HttpError(400, str(exc)) from None
     return Response(
@@ -107,7 +108,7 @@ def _file_response(app: App, spec: exporter.ExportSpec) -> Response:
     )
 
 
-def api_export(req: Request, app: App) -> Response:
+def api_export(req: Request, ctx: AppContext) -> Response:
     fmt = req.arg("format")
     if fmt not in exporter.CONTENT_TYPES:
         raise HttpError(400, "Wymagany parametr format=csv lub format=xlsx.")
@@ -115,13 +116,13 @@ def api_export(req: Request, app: App) -> Response:
     if delimiter not in exporter.DELIMITERS:
         raise HttpError(400, "Parametr delimiter musi mieć wartość semicolon lub comma.")
     spec = exporter.ExportSpec(
-        fmt=fmt, flt=_filter(req, app), bodies=req.arg("bodies") == "1",
+        fmt=fmt, flt=_filter(req, ctx), bodies=req.arg("bodies") == "1",
         delimiter=exporter.DELIMITERS[delimiter],
     )
-    return _file_response(app, spec)
+    return _file_response(ctx, spec)
 
 
-def api_export_selected(req: Request, app: App) -> Response:
+def api_export_selected(req: Request, ctx: AppContext) -> Response:
     """Eksport wskazanych wierszy: `{format, delimiter, ids, columns | bodies}`. Wiersze trafiają do pliku
     w kolejności `ids` (tak, jak je widać na ekranie), kolumny — w kolejności kanonicznej."""
     body = req.json
@@ -142,7 +143,7 @@ def api_export_selected(req: Request, app: App) -> Response:
         fmt=fmt, flt=RowFilter(ids=tuple(ids)), bodies=body.get("bodies") is True,
         delimiter=exporter.DELIMITERS[delimiter], columns=None if columns is None else tuple(columns),
     )
-    return _file_response(app, spec)
+    return _file_response(ctx, spec)
 
 
 PAGE = Page(

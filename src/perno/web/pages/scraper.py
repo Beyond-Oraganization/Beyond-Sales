@@ -8,15 +8,15 @@ from __future__ import annotations
 
 import functools
 import importlib.util
-import threading
 
 from perno.scraper import runner
 from perno.scraper import statuses as st
 from perno.scraper.settings import HARD_DELAY_FLOOR, LIMITS, STALE_AFTER, ScanSettings, SettingsError
-from perno.scraper.store import DomainTaken, FirmaBusy, InvalidFirma, NotFound, RunActive, Store
+from perno.scraper.store import DomainTaken, FirmaBusy, InvalidFirma, NotFound, RunActive
 from perno.web import layout
-from perno.web.app import App, HttpError, Request, Response, json_response
-from perno.web.pages.base import Page
+from perno.web.app import HttpError, Request, Response, json_response
+from perno.web.context import AppContext
+from perno.web.page import Page
 
 MAX_START_IDS = 500
 
@@ -25,27 +25,11 @@ def bs4_available() -> bool:
     """Bez importu `bs4` (i bez ładowania modułu extract): brak pakietu nie może zablokować panelu."""
     return importlib.util.find_spec("bs4") is not None
 
-_STORE_LOCK = threading.Lock()
-
-
-def get_store(app: App) -> Store:
-    """Jeden `Store` na aplikację (jego blokada serializuje sqlite); schemat zakładamy przy pierwszym użyciu."""
-    store = getattr(app, "skraper_store", None)
-    if store is None:
-        with _STORE_LOCK:
-            store = getattr(app, "skraper_store", None)
-            if store is None:
-                store = Store(app.db)
-                store.ensure_schema()
-                app.skraper_store = store
-    return store
-
-
-def prepare(app: App, log=print) -> list:
+def prepare(ctx: AppContext, log=print) -> list:
     """Wywoływane przy starcie serwera: schemat + odzyskanie przerwanych przebiegów. Zwraca id odzyskanych.
     Awaria skrapera nie może zablokować panelu wysyłki — błędy trafiają tylko do logu."""
     try:
-        recovered = get_store(app).recover_dead_runs()
+        recovered = ctx.scan_store.get().recover_dead_runs()
     except Exception as exc:  # noqa: BLE001
         log(f"UWAGA: skraper niedostępny ({type(exc).__name__}: {exc}). Panel wysyłki działa normalnie.")
         return []
@@ -54,10 +38,10 @@ def prepare(app: App, log=print) -> list:
     return recovered
 
 
-def shutdown_hint(app: App):
+def shutdown_hint(ctx: AppContext):
     """Skraper jest odłączony od serwera — przy zamykaniu przypominamy, że może nadal działać."""
     try:
-        run = get_store(app).active_run()
+        run = ctx.scan_store.get().active_run()
     except Exception:  # noqa: BLE001
         return None
     if run is None:
@@ -69,9 +53,9 @@ def shutdown_hint(app: App):
 def guarded(handler):
     """Tłumaczy błędy magazynu na kody HTTP (bez zmian w src/perno/web/app.py)."""
     @functools.wraps(handler)
-    def wrapper(req: Request, app: App) -> Response:
+    def wrapper(req: Request, ctx: AppContext) -> Response:
         try:
-            return handler(req, app)
+            return handler(req, ctx)
         except (RunActive, FirmaBusy, DomainTaken) as exc:
             raise HttpError(409, str(exc)) from None
         except NotFound as exc:
@@ -81,9 +65,9 @@ def guarded(handler):
     return wrapper
 
 
-def render(app: App) -> str:
+def render(ctx: AppContext) -> str:
     return layout.render_page(
-        app, title="Skraper", active_key="skaper",
+        ctx, title="Skraper", active_key="skaper",
         body=layout.read_asset("skaper.html"),
         css=layout.read_asset("skaper.css"), js=layout.read_asset("skaper.js"),
     )
@@ -99,21 +83,21 @@ def _int(value, name: str, *, minimum: int = 0, maximum: int = 10_000_000) -> in
     return number
 
 
-def _settings(app: App, overrides) -> ScanSettings:
+def _settings(ctx: AppContext, overrides) -> ScanSettings:
     if overrides is None:
         overrides = {}
     if not isinstance(overrides, dict) or any(isinstance(v, (dict, list)) for v in overrides.values()):
         raise HttpError(400, "Pole ustawienia musi być płaskim obiektem.")
-    settings = ScanSettings.from_params(overrides, app.load_config())
+    settings = ScanSettings.from_params(overrides, ctx.config.load())
     if not settings.contact:
         raise HttpError(400, "Ustaw SKRAPER_CONTACT w config.env (adres e-mail lub URL) — strony muszą wiedzieć, kto je odwiedza.")
     return settings
 
 
-def api_meta(req: Request, app: App) -> Response:
-    store = get_store(app)
+def api_meta(req: Request, ctx: AppContext) -> Response:
+    store = ctx.scan_store.get()
     overview = store.status_overview()
-    config = app.load_config()
+    config = ctx.config.load()
     try:
         defaults = ScanSettings.from_params({}, config)
         settings_error = ""
@@ -129,7 +113,7 @@ def api_meta(req: Request, app: App) -> Response:
         "contact": {"ok": bool(defaults.contact), "value": defaults.contact, "source": defaults.contact_source},
         "settings_error": settings_error,
         "bs4_ok": bs4_available(),
-        "maile_count": app.db.count_rows(),
+        "maile_count": ctx.db.count_rows(),
         "firmy_count": overview["firmy"],
         "default_statuses": list(st.FIRMA_DOMYSLNIE_DO_SKANU),
         "retryable": list(st.FIRMA_PONAWIALNE),
@@ -138,35 +122,35 @@ def api_meta(req: Request, app: App) -> Response:
 
 
 @guarded
-def api_seed(req: Request, app: App) -> Response:
-    return json_response(get_store(app).seed_from_maile())
+def api_seed(req: Request, ctx: AppContext) -> Response:
+    return json_response(ctx.scan_store.get().seed_from_maile())
 
 
 @guarded
-def api_dodaj(req: Request, app: App) -> Response:
+def api_dodaj(req: Request, ctx: AppContext) -> Response:
     url = req.json.get("url")
     name = req.json.get("nazwa")
     if not isinstance(url, str) or not url.strip():
         raise HttpError(400, "Podaj adres strony firmy.")
     if name is not None and not isinstance(name, str):
         raise HttpError(400, "Pole nazwa musi być tekstem.")
-    return json_response(get_store(app).add_manual(url, name))
+    return json_response(ctx.scan_store.get().add_manual(url, name))
 
 
 @guarded
-def api_firmy(req: Request, app: App) -> Response:
+def api_firmy(req: Request, ctx: AppContext) -> Response:
     status = req.arg("status")
     if status and status not in st.FIRMA_STATUSY:
         raise HttpError(400, f"Nieznany status: {status}.")
-    rows, total = get_store(app).list_firmy(
+    rows, total = ctx.scan_store.get().list_firmy(
         status=status or None, q=req.arg("q")[:100], offset=_int(req.arg("offset", "0"), "offset"),
         limit=_int(req.arg("limit", "50"), "limit", minimum=1, maximum=500))
     return json_response({"rows": rows, "total": total})
 
 
 @guarded
-def api_firma(req: Request, app: App) -> Response:
-    detail = get_store(app).firma_detail(
+def api_firma(req: Request, ctx: AppContext) -> Response:
+    detail = ctx.scan_store.get().firma_detail(
         _int(req.arg("id"), "id", minimum=1), page=_int(req.arg("page", "0"), "page"), per_page=100)
     if detail is None:
         raise HttpError(404, "Nie znaleziono firmy.")
@@ -174,8 +158,8 @@ def api_firma(req: Request, app: App) -> Response:
 
 
 @guarded
-def api_status(req: Request, app: App) -> Response:
-    store = get_store(app)
+def api_status(req: Request, ctx: AppContext) -> Response:
+    store = ctx.scan_store.get()
     run = store.active_run()
     active = run is not None
     run = run or store.latest_run()
@@ -184,7 +168,7 @@ def api_status(req: Request, app: App) -> Response:
         from datetime import datetime
         try:
             heartbeat = datetime.strptime(run["heartbeat_at"], "%Y-%m-%dT%H:%M:%S")
-            heartbeat_age = max(0.0, (app.db.now() - heartbeat).total_seconds())
+            heartbeat_age = max(0.0, (ctx.db.now() - heartbeat).total_seconds())
         except ValueError:
             pass
     return json_response({
@@ -205,12 +189,12 @@ def _id_list(raw, name: str) -> list:
 
 
 @guarded
-def api_start(req: Request, app: App) -> Response:
-    store = get_store(app)
+def api_start(req: Request, ctx: AppContext) -> Response:
+    store = ctx.scan_store.get()
     store.recover_dead_runs()
     if not bs4_available():
         raise HttpError(400, "Brak pakietu beautifulsoup4. Uruchom: uv sync")
-    settings = _settings(app, req.json.get("ustawienia"))
+    settings = _settings(ctx, req.json.get("ustawienia"))
     ids = _id_list(req.json.get("firma_ids"), "firma_ids")
     if ids is not None and len(store.existing_firma_ids(ids)) != len(ids):
         raise HttpError(400, "Niektóre z wybranych firm nie istnieją.")
@@ -226,7 +210,7 @@ def api_start(req: Request, app: App) -> Response:
         if queued == 0:
             store.finish_run(run_id, st.RUN_ZAKONCZONY, {"uwaga": "brak firm do przetworzenia"})
             raise HttpError(400, "Brak firm do przetworzenia — zaimportuj firmy z bazy maili, dodaj adres albo użyj „Ponów”.")
-        pid, log_path = runner.spawn_detached(run_id, app.config_path)
+        pid, log_path = runner.spawn_detached(run_id, ctx.config.path)
     except HttpError:
         raise
     except Exception:
@@ -237,28 +221,28 @@ def api_start(req: Request, app: App) -> Response:
 
 
 @guarded
-def api_stop(req: Request, app: App) -> Response:
-    store = get_store(app)
+def api_stop(req: Request, ctx: AppContext) -> Response:
+    store = ctx.scan_store.get()
     recovered = store.recover_dead_runs()
     return json_response({"ok": store.request_stop(), "odzyskano": recovered})
 
 
 @guarded
-def api_ponow(req: Request, app: App) -> Response:
+def api_ponow(req: Request, ctx: AppContext) -> Response:
     ids = _id_list(req.json.get("firma_ids"), "firma_ids")
     if not ids:
         raise HttpError(400, "Wybierz firmy do ponowienia.")
-    return json_response({"zmieniono": get_store(app).requeue(ids)})
+    return json_response({"zmieniono": ctx.scan_store.get().requeue(ids)})
 
 
 @guarded
-def api_uzyj_domeny(req: Request, app: App) -> Response:
-    return json_response(get_store(app).use_target_domain(_int(req.json.get("firma_id"), "firma_id", minimum=1)))
+def api_uzyj_domeny(req: Request, ctx: AppContext) -> Response:
+    return json_response(ctx.scan_store.get().use_target_domain(_int(req.json.get("firma_id"), "firma_id", minimum=1)))
 
 
 @guarded
-def api_usun_dane(req: Request, app: App) -> Response:
-    get_store(app).delete_firma_data(_int(req.json.get("firma_id"), "firma_id", minimum=1))
+def api_usun_dane(req: Request, ctx: AppContext) -> Response:
+    ctx.scan_store.get().delete_firma_data(_int(req.json.get("firma_id"), "firma_id", minimum=1))
     return json_response({"ok": True})
 
 

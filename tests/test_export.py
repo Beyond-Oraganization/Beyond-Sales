@@ -13,9 +13,8 @@ from perno import db as dbmod
 from perno.db import RowFilter
 from perno.domain import statuses as st
 from perno.services import export as exporter
-from perno.web.app import App, Request
-from perno.web.pages import PAGES
-from tests.fixtures import make_db, put, sample_row
+from perno.web.app import Request
+from tests.fixtures import make_app, make_db, put, sample_row
 
 PORT = 8799
 BODY = 'Linia 1, "cytat"; średnik\nLinia 2\r\nLinia 3'
@@ -336,7 +335,7 @@ class EndpointTests(unittest.TestCase):
         put(self.database,
             sample_row(1, status="wyslano", sent_at="2026-09-29T14:23:11"),
             sample_row(2), sample_row(3, segment="driverzy"))
-        self.app = App(self.database, PAGES, allowed_hosts={f"localhost:{PORT}"})
+        self.app = make_app(self.database, allowed_hosts={f"localhost:{PORT}"})
 
     def get(self, path, **query):
         return self.app.dispatch(Request("GET", path, query={k: v if isinstance(v, list) else [v] for k, v in query.items()},
@@ -461,7 +460,7 @@ class SelectionEndpointTests(unittest.TestCase):
             sample_row(1, country="GB", company="Alfa", status="wyslano", sent_at="2026-09-29T14:23:11"),
             sample_row(2, segment="driverzy", country="PL", company="Beta"),
             sample_row(3, company="Gamma", email="", body_html="", body_text="", status="pominieto_brak_email"))
-        self.app = App(self.database, PAGES, allowed_hosts={f"localhost:{PORT}"})
+        self.app = make_app(self.database, allowed_hosts={f"localhost:{PORT}"})
 
     def get(self, path, **query):
         return self.app.dispatch(Request("GET", path, query={k: v if isinstance(v, list) else [v] for k, v in query.items()},

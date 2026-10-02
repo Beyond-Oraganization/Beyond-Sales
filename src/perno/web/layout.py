@@ -24,9 +24,9 @@ def _script_json(value) -> str:
     return json.dumps(value, ensure_ascii=False).replace("</", "<\\/")
 
 
-def render_page(app, *, title: str, active_key: str, body: str, css: str = "", js: str = "",
+def render_page(ctx, *, title: str, active_key: str, body: str, css: str = "", js: str = "",
                 kit: bool = False) -> str:
-    nav_pages = sorted((p for p in app.pages if p.in_nav), key=lambda p: (p.order, p.label))
+    nav_pages = sorted((p for p in ctx.pages if p.in_nav), key=lambda p: (p.order, p.label))
     current = ' aria-current="page"'
     links = "".join(
         '<a class="topnav-link" href="{}"{}>{}</a>'.format(
@@ -51,7 +51,7 @@ def render_page(app, *, title: str, active_key: str, body: str, css: str = "", j
         '<nav class="topnav">'
         '<span class="topnav-brand">Perno</span>'
         f'{links}'
-        f'<span class="topnav-db" title="Baza danych">{html.escape(app.db.describe())}</span>'
+        f'<span class="topnav-db" title="Baza danych">{html.escape(ctx.db.describe())}</span>'
         '</nav>\n'
         f'{body}\n'
         f'<script>\nconst APP = {boot};\n{read_asset("common.js")}\n</script>\n'

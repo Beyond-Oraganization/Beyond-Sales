@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from datetime import datetime, timedelta
+from typing import Callable, Optional, Sequence
 
 import sqlalchemy as sa
 
 from perno import db as dbmod
+from perno.settings import ConfigFile
+from perno.web.app import App
+from perno.web.context import AppContext
+from perno.web.pages import PAGES
+
+NO_CONFIG = os.path.join(tempfile.gettempdir(), "perno-testy-brak-config.env")  # nie istnieje: testy nie czytają config.env
 
 
 class FakeClock:
@@ -25,6 +34,14 @@ def make_db(clock=None, url: str = "sqlite://") -> dbmod.Database:
     database = dbmod.Database(engine, clock=clock or FakeClock())
     database.ensure_schema()
     return database
+
+
+def make_app(database: dbmod.Database, pages: Optional[Sequence] = None, *, config_path: Optional[str] = None,
+             smtp_factory: Optional[Callable] = None, allowed_hosts: Optional[set] = None) -> App:
+    """Aplikacja z kontekstem złożonym jak w `cli/server.py`; domyślnie bez pliku konfiguracji (nie czyta config.env)."""
+    ctx = AppContext(db=database, pages=PAGES if pages is None else pages,
+                     config=ConfigFile(config_path or NO_CONFIG), smtp_factory=smtp_factory)
+    return App(ctx, allowed_hosts=allowed_hosts)
 
 
 def sample_row(n: int = 1, segment: str = "eventy", status: str = "do_wyslania",

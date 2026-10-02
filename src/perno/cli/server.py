@@ -21,8 +21,9 @@ from urllib.parse import parse_qs, urlsplit
 
 from perno import settings as cfg
 from perno.db import Database, DbError
-from perno.settings import ConfigError, load_config
+from perno.settings import ConfigError, ConfigFile
 from perno.web.app import MAX_BODY, App, Request, Response
+from perno.web.context import AppContext
 from perno.web.pages import PAGES
 from perno.web.pages import scraper as scraper_page
 
@@ -30,7 +31,7 @@ CHUNK = 64 * 1024
 
 
 class Handler(BaseHTTPRequestHandler):
-    app: App = None  # ustawiane w main()
+    server: AppServer  # aplikacja leży na serwerze (`self.server.app`), nie na klasie handlera
 
     def log_message(self, fmt: str, *args) -> None:
         pass
@@ -47,7 +48,7 @@ class Handler(BaseHTTPRequestHandler):
             method=self.command, path=parts.path, query=parse_qs(parts.query),
             headers=headers, body=body, content_length=length,
         )
-        self._write(self.app.dispatch(request))
+        self._write(self.server.app.dispatch(request))
 
     def _write(self, resp: Response) -> None:
         length = resp.length if resp.stream is not None else len(resp.body)
@@ -70,9 +71,18 @@ class Handler(BaseHTTPRequestHandler):
     do_GET = do_POST = do_PUT = do_DELETE = do_PATCH = do_OPTIONS = do_HEAD = _handle
 
 
+class AppServer(ThreadingHTTPServer):
+    """Serwer HTTP niosący aplikację: handler bierze ją z `self.server.app`, więc nie ma współdzielonego stanu klasy."""
+
+    def __init__(self, address: tuple, app: App):
+        super().__init__(address, Handler)
+        self.app = app
+
+
 def build_app(config_path: str) -> App:
-    config = load_config(config_path)
-    db = Database.from_config(config)
+    """Korzeń kompozycji: tu powstają zależności stron (baza, konfiguracja, dziennik cofania, magazyn skrapera)."""
+    config = ConfigFile(config_path)
+    db = Database.from_config(config.load())
     info = db.check_connection()
     if not info["table_exists"]:
         raise DbError("Tabela maile nie istnieje. Uruchom migrate_csv_to_sql.py (lub: python3 -m perno.db --init).")
@@ -85,9 +95,9 @@ def build_app(config_path: str) -> App:
     if info["row_count"] == 0:
         print("UWAGA: baza jest pusta. Jeśli masz historię w Maile.csv, uruchom najpierw migrate_csv_to_sql.py — "
               "„Odśwież dane” w panelu odmówi generowania do pustej bazy.")
-    app = App(db, PAGES, config_path=config_path)
-    scraper_page.prepare(app)
-    return app
+    ctx = AppContext(db=db, pages=PAGES, config=config)
+    scraper_page.prepare(ctx)
+    return App(ctx)
 
 
 def main() -> None:
@@ -102,12 +112,11 @@ def main() -> None:
     except (ConfigError, DbError) as exc:
         sys.exit(f"BŁĄD: {exc}")
 
-    Handler.app = app
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = AppServer(("127.0.0.1", args.port), app)
     port = server.server_address[1]
     app.set_port(port)
     url = f"http://localhost:{port}/"
-    print(f"Aplikacja: {url}   (baza: {app.db.describe()})")
+    print(f"Aplikacja: {url}   (baza: {app.ctx.db.describe()})")
     print("Serwer nasłuchuje tylko na 127.0.0.1. Zatrzymaj: Ctrl+C")
 
     if not args.no_browser:
@@ -116,7 +125,7 @@ def main() -> None:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nZatrzymano.")
-        hint = scraper_page.shutdown_hint(app)
+        hint = scraper_page.shutdown_hint(app.ctx)
         if hint:
             print(hint)
 

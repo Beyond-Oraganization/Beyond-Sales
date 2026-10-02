@@ -13,6 +13,7 @@ from perno.scraper.contacts import Contact
 from perno.scraper.schema import firmy
 from perno.scraper.store import LinkRecord, PageRecord, Store
 from perno.scraper.urls import url_hash
+from perno.settings import ConfigFile
 from perno.web.pages import scraper as skaper
 from tests.fixtures import put, sample_row
 from tests.test_web import SECRET, WebCase, write_config
@@ -44,8 +45,8 @@ class SkaperCase(WebCase):
         patcher = mock.patch.object(skaper.runner, "spawn_detached", side_effect=fake_spawn)
         patcher.start()
         self.addCleanup(patcher.stop)
-        self.store = skaper.get_store(self.app)
-        self.app.config_path = write_config_with(self.tmp, "SKRAPER_CONTACT=ops@example.com\n")
+        self.store = self.app.ctx.scan_store.get()
+        self.app.ctx.config = ConfigFile(write_config_with(self.tmp, "SKRAPER_CONTACT=ops@example.com\n"))
 
     def seed(self, count=3):
         put(self.database, *[sample_row(n) for n in range(1, count + 1)])
@@ -84,10 +85,10 @@ class PageAndMetaTests(SkaperCase):
         self.assertEqual(data["default_statuses"], list(st.FIRMA_DOMYSLNIE_DO_SKANU))
 
     def test_meta_reports_smtp_user_fallback_and_invalid_settings_without_failing(self):
-        self.app.config_path = write_config(self.tmp)  # tylko SMTP_USER
+        self.app.ctx.config = ConfigFile(write_config(self.tmp))  # tylko SMTP_USER
         contact = self.data(self.call("GET", "/api/skaper/meta"))["contact"]
         self.assertEqual((contact["ok"], contact["source"], contact["value"]), (True, "smtp_user", "demo@example.com"))
-        self.app.config_path = write_config_with(self.tmp, "SKRAPER_CONCURRENCY=dużo\n")
+        self.app.ctx.config = ConfigFile(write_config_with(self.tmp, "SKRAPER_CONCURRENCY=dużo\n"))
         data = self.data(self.call("GET", "/api/skaper/meta"))
         self.assertIn("nie jest liczbą", data["settings_error"])
 
@@ -166,7 +167,7 @@ class RunLifecycleTests(SkaperCase):
         self.assertEqual(resp.status, 202)
         data = self.data(resp)
         self.assertEqual(data["queued"], 3)
-        self.assertEqual(self.spawned, [(data["run_id"], self.app.config_path)])
+        self.assertEqual(self.spawned, [(data["run_id"], self.app.ctx.config.path)])
         run = self.store.get_run(data["run_id"])
         self.assertEqual((run["pid"], run["status"], run["aktywny"]), (os.getpid(), st.RUN_URUCHAMIANIE, 1))
         self.assertTrue(run["log_path"].startswith(self.logs))
@@ -222,12 +223,13 @@ class RunLifecycleTests(SkaperCase):
 
     def test_start_requires_contact_and_bs4(self):
         self.seed(1)
-        self.app.config_path = os.path.join(self.tmp, "pusty.env")
-        open(self.app.config_path, "w").close()
+        empty = os.path.join(self.tmp, "pusty.env")
+        open(empty, "w").close()
+        self.app.ctx.config = ConfigFile(empty)
         resp = self.start()
         self.assertEqual(resp.status, 400)
         self.assertIn("SKRAPER_CONTACT", self.data(resp)["error"])
-        self.app.config_path = write_config_with(self.tmp, "SKRAPER_CONTACT=ops@example.com\n")
+        self.app.ctx.config = ConfigFile(write_config_with(self.tmp, "SKRAPER_CONTACT=ops@example.com\n"))
         with mock.patch.object(skaper, "bs4_available", return_value=False):
             resp = self.start()
         self.assertEqual(resp.status, 400)
@@ -342,19 +344,19 @@ class StartupHelpersTests(SkaperCase):
         self.seed(1)
         dead = self.store.start_run({}, pid=2_000_000_000)
         lines = []
-        self.assertEqual(skaper.prepare(self.app, log=lines.append), [dead])
+        self.assertEqual(skaper.prepare(self.app.ctx, log=lines.append), [dead])
         self.assertIn("odzyskano przerwane przebiegi", lines[0])
 
     def test_prepare_swallows_errors_so_the_mailing_panel_still_starts(self):
         lines = []
         with mock.patch.object(Store, "recover_dead_runs", side_effect=RuntimeError("tabela nie istnieje")):
-            self.assertEqual(skaper.prepare(self.app, log=lines.append), [])
+            self.assertEqual(skaper.prepare(self.app.ctx, log=lines.append), [])
         self.assertIn("Panel wysyłki działa normalnie", lines[0])
 
     def test_shutdown_hint(self):
-        self.assertIsNone(skaper.shutdown_hint(self.app))
+        self.assertIsNone(skaper.shutdown_hint(self.app.ctx))
         self.store.start_run({}, pid=os.getpid())
-        self.assertIn("python3 scrape.py stop", skaper.shutdown_hint(self.app))
+        self.assertIn("python3 scrape.py stop", skaper.shutdown_hint(self.app.ctx))
 
 
 class ImportIsolationTests(unittest.TestCase):

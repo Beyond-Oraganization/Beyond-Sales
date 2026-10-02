@@ -2,63 +2,47 @@
 
 from __future__ import annotations
 
-import threading
-
 from perno.domain import statuses as st
 from perno.services import bulk, generation, sending
 from perno.settings import require_smtp, smtp_configured
 from perno.web import layout
-from perno.web.app import App, HttpError, Request, Response, json_response
-from perno.web.pages.base import Page
+from perno.web.app import HttpError, Request, Response, json_response
+from perno.web.context import AppContext
+from perno.web.page import Page
 
 
-def render(app: App) -> str:
+def render(ctx: AppContext) -> str:
     return layout.render_page(
-        app, title="Wysyłka", active_key="wysylka",
+        ctx, title="Wysyłka", active_key="wysylka",
         body=layout.read_asset("wysylka.html"),
         css=layout.read_asset("wysylka.css"),
         js=layout.read_asset("bulk.js") + "\n" + layout.read_asset("wysylka.js"), kit=True,
     )
 
 
-_LOG_LOCK = threading.Lock()
-
-
-def get_undo_log(app: App) -> bulk.UndoLog:
-    """Jeden dziennik cofania na aplikację (w pamięci serwera); tworzony przy pierwszym użyciu."""
-    log = getattr(app, "bulk_log", None)
-    if log is None:
-        with _LOG_LOCK:
-            log = getattr(app, "bulk_log", None)
-            if log is None:
-                log = bulk.UndoLog()
-                app.bulk_log = log
-    return log
-
-
-def api_maile(req: Request, app: App) -> Response:
+def api_maile(req: Request, ctx: AppContext) -> Response:
     """`?light=1` zwraca wiersze bez treści maili (z `has_body`) — treść pobiera się osobno przez `/api/maile/row`."""
-    return json_response({"rows": app.db.fetch_all(light=req.arg("light") == "1")})
+    return json_response({"rows": ctx.db.fetch_all(light=req.arg("light") == "1")})
 
 
-def api_maile_row(req: Request, app: App) -> Response:
+def api_maile_row(req: Request, ctx: AppContext) -> Response:
     row_id = req.arg("id")
     if not row_id:
         raise HttpError(400, "Brak parametru id.")
-    row = app.db.get(row_id)
+    row = ctx.db.get(row_id)
     if row is None:
         raise HttpError(404, f"Nie znaleziono wiersza {row_id}.")
     return json_response({"row": row})
 
 
-def api_status(req: Request, app: App) -> Response:
-    config = app.load_config()
+def api_status(req: Request, ctx: AppContext) -> Response:
+    config = ctx.config.load()
     return json_response({
         "smtp_configured": smtp_configured(config),
         "smtp_user": config.get("SMTP_USER", ""),
-        "sent_today": app.db.sent_today_count(),
-        "row_count": app.db.count_rows(),
-        "db": app.db.describe(),
+        "sent_today": ctx.db.sent_today_count(),
+        "row_count": ctx.db.count_rows(),
+        "db": ctx.db.describe(),
     })
 
 
@@ -69,18 +53,18 @@ def _row_id(req: Request) -> str:
     return row_id
 
 
-def api_update_row(req: Request, app: App) -> Response:
+def api_update_row(req: Request, ctx: AppContext) -> Response:
     row_id = _row_id(req)
     changes = {k: v for k, v in req.json.items() if k != "id"}
     for name, value in changes.items():
         if not isinstance(value, str):
             raise HttpError(400, f"Pole {name} musi być tekstem.")
-    return json_response({"row": app.db.apply_edit(row_id, changes)})
+    return json_response({"row": ctx.db.apply_edit(row_id, changes)})
 
 
-def api_send_one(req: Request, app: App) -> Response:
+def api_send_one(req: Request, ctx: AppContext) -> Response:
     row_id = _row_id(req)
-    row = app.db.get(row_id)
+    row = ctx.db.get(row_id)
     if row is None:
         raise HttpError(404, f"Nie znaleziono wiersza {row_id}.")
     if row["status"] == st.STATUS_SENT:
@@ -91,15 +75,15 @@ def api_send_one(req: Request, app: App) -> Response:
     if not row["email"] or not row["body_html"]:
         raise HttpError(400, "Brak e-maila lub treści — uzupełnij przed wysyłką.")
 
-    config = require_smtp(app.load_config(), app.config_path)
+    config = require_smtp(ctx.config.load(), ctx.config.path)
     daily_cap = req.json.get("daily_cap")
     if isinstance(daily_cap, int) and not isinstance(daily_cap, bool) and daily_cap > 0:
-        if app.db.sent_today_count() >= daily_cap:
+        if ctx.db.sent_today_count() >= daily_cap:
             raise HttpError(429, f"Dzienny limit wysyłki ({daily_cap}) jest wyczerpany.")
 
-    smtp_factory = app.smtp_factory or sending.smtp_factory_from_config(config)
+    smtp_factory = ctx.smtp_factory or sending.smtp_factory_from_config(config)
     result = sending.send_row(
-        app.db, row_id, smtp_factory=smtp_factory, config=config,
+        ctx.db, row_id, smtp_factory=smtp_factory, config=config,
         sender_name=config.get("SENDER_NAME", ""),
         allowed_from=(st.STATUS_PENDING, st.STATUS_ERROR),
     )
@@ -108,35 +92,35 @@ def api_send_one(req: Request, app: App) -> Response:
     return json_response({"row": result.row, "outcome": result.outcome, "message": result.message})
 
 
-def api_regenerate(req: Request, app: App) -> Response:
-    sender_name = app.load_config().get("SENDER_NAME", "")
-    result = generation.refresh_segments(app.db, ("eventy", "driverzy"), sender_name)
-    return json_response({**result, "rows": app.db.fetch_all(light=req.json.get("light") is True)})
+def api_regenerate(req: Request, ctx: AppContext) -> Response:
+    sender_name = ctx.config.load().get("SENDER_NAME", "")
+    result = generation.refresh_segments(ctx.db, ("eventy", "driverzy"), sender_name)
+    return json_response({**result, "rows": ctx.db.fetch_all(light=req.json.get("light") is True)})
 
 
-def api_bulk_update(req: Request, app: App) -> Response:
+def api_bulk_update(req: Request, ctx: AppContext) -> Response:
     """Zbiorcza zmiana statusu i/lub danych firm. `dry_run: true` tylko pokazuje, co by się stało; zapis, który
     wymaga potwierdzenia ostrzeżeń (`acknowledge`), a go nie dostał, kończy się 409 i niczego nie zmienia."""
     request = bulk.parse_request(req.json)
     if req.json.get("dry_run") is True:
-        return json_response({"dry_run": True, **bulk.preview(app.db, request).to_json()})
+        return json_response({"dry_run": True, **bulk.preview(ctx.db, request).to_json()})
     try:
-        result = bulk.apply(app.db, request, get_undo_log(app))
+        result = bulk.apply(ctx.db, request, ctx.undo_log)
     except bulk.AckRequired as exc:
         raise HttpError(409, str(exc), **exc.plan.to_json()) from None
     return json_response({"dry_run": False, **result})
 
 
-def api_bulk_undo(req: Request, app: App) -> Response:
+def api_bulk_undo(req: Request, ctx: AppContext) -> Response:
     operation = req.json.get("operation")
     if operation is not None and not isinstance(operation, str):
         raise HttpError(400, "Pole operation musi być tekstem.")
-    result = bulk.undo(app.db, get_undo_log(app), operation)
+    result = bulk.undo(ctx.db, ctx.undo_log, operation)
     return json_response(result)
 
 
-def api_bulk_log(req: Request, app: App) -> Response:
-    return json_response({"operations": get_undo_log(app).listing(), "limit": bulk.UNDO_LIMIT})
+def api_bulk_log(req: Request, ctx: AppContext) -> Response:
+    return json_response({"operations": ctx.undo_log.listing(), "limit": bulk.UNDO_LIMIT})
 
 
 PAGE = Page(
