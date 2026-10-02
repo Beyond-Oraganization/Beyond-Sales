@@ -1,0 +1,23 @@
+# Sekrety i konfiguracja lokalna (wzór: config.example.env)
+config.env
+.env
+
+# Środowisko i cache narzędzi
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Artefakty generowane lub robocze (odtwarzalne albo zbyt duże do wersjonowania)
+index.html
+logs/
+backup/
+assets/inline/
+.DS_Store
+
+# Uwaga: data/ zawiera listy firm i adresy e-mail (dane osobowe kontaktów służbowych).
+# Repozytorium jest lokalne — nie wypychaj go do zdalnego serwera bez przeglądu data/.

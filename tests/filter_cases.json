@@ -1,0 +1,42 @@
+{
+  "_comment": "Wspólne wektory testowe: te same wiersze i filtry sprawdza filters.js (tests/js/filters.test.js) oraz RowFilter po stronie serwera (tests/test_js.py). Tylko wymiary, które mają oba światy: status, segment, kraj, e-mail, treść, data wysłania.",
+  "rows": [
+    {"id": "eventy-001", "segment": "eventy", "company": "Alfa Konferencje", "email": "a1@x.pl", "website": "https://alfa.example.pl", "status": "wyslano", "country": "PL", "city": "Łódź", "address": "ul. Piotrkowska 10", "description": "Organizacja konferencji i eventów firmowych", "generated_at": "2026-09-28T10:00:00", "sent_at": "2026-09-29T00:00:00", "has_body": true},
+    {"id": "eventy-002", "segment": "eventy", "company": "Beta Events", "email": "a2@x.pl", "website": "https://beta-events.example.co.uk", "status": "do_wyslania", "country": "GB", "city": "London", "address": "", "description": "Corporate events", "generated_at": "2026-09-28T10:00:00", "sent_at": "", "has_body": true},
+    {"id": "eventy-003", "segment": "eventy", "company": "Gamma Weddings", "email": "a3@x.pl", "website": "https://gamma.example.co.uk", "status": "do_wyslania", "country": "GB", "city": "Leeds", "address": "", "description": "Wedding planner", "generated_at": "2026-09-28T10:00:00", "sent_at": "", "has_body": false},
+    {"id": "eventy-004", "segment": "eventy", "company": "Delta Veranstaltungen", "email": "", "website": "https://delta.example.de", "status": "pominieto_brak_email", "country": "DE", "city": "München", "address": "", "description": "Veranstaltungen", "generated_at": "2026-09-28T10:00:00", "sent_at": "", "has_body": false},
+    {"id": "driverzy-005", "segment": "driverzy", "company": "Taxi Berlin PL", "email": "a5@x.pl", "website": "https://taxi-berlin.example.com", "status": "blad", "country": "", "city": "", "address": "", "description": "Przewozy osób Berlin", "generated_at": "2026-09-28T10:00:00", "sent_at": "", "has_body": true},
+    {"id": "driverzy-006", "segment": "driverzy", "company": "Epsilon Transfer", "email": "a6@x.pl", "website": "https://epsilon.example.pl", "status": "odpowiedzial", "country": "PL", "city": "Kraków", "address": "ul. Floriańska 3", "description": "Transfery lotniskowe", "generated_at": "2026-09-28T10:00:00", "sent_at": "2026-09-29T23:59:59", "has_body": true},
+    {"id": "driverzy-007", "segment": "driverzy", "company": "Zeta Chauffeur", "email": "a7@x.pl", "website": "https://zeta.example.ie", "status": "zainteresowany", "country": "IE", "city": "Dublin", "address": "", "description": "", "generated_at": "2026-09-28T10:00:00", "sent_at": "2026-09-30T00:00:00", "has_body": true},
+    {"id": "driverzy-008", "segment": "driverzy", "company": "Eta Taxi", "email": "a8@x.pl", "website": "https://eta.example.pl", "status": "nie_kontaktowac", "country": "PL", "city": "Gdańsk", "address": "", "description": "", "generated_at": "2026-09-28T10:00:00", "sent_at": "", "has_body": true},
+    {"id": "eventy-009", "segment": "eventy", "company": "Theta Messen", "email": "a9@x.pl", "website": "https://theta.example.de", "status": "wyslano", "country": "DE", "city": "Berlin", "address": "", "description": "", "generated_at": "2026-09-28T10:00:00", "sent_at": "2026-10-01T08:00:00", "has_body": true},
+    {"id": "eventy-010", "segment": "eventy", "company": "Iota Klient", "email": "", "website": "https://iota.example.pl", "status": "pominieto_klient", "country": "PL", "city": "Poznań", "address": "", "description": "", "generated_at": "2026-09-30T09:00:00", "sent_at": "", "has_body": false},
+    {"id": "eventy-011", "segment": "eventy", "company": "Kappa Studio", "email": "", "website": "https://kappa.example.com", "status": "oczekuje_na_tresc", "country": "", "city": "", "address": "", "description": "", "generated_at": "2026-09-30T09:00:00", "sent_at": "", "has_body": false},
+    {"id": "driverzy-012", "segment": "driverzy", "company": "Lambda Przewozy", "email": "   ", "website": "https://lambda.example.pl", "status": "do_wyslania", "country": "PL", "city": "Łódź", "address": "", "description": "", "generated_at": "2026-09-30T09:00:00", "sent_at": "", "has_body": true},
+    {"id": "eventy-013", "segment": "eventy", "company": "Mu Messebau", "email": "a13@x.pl", "website": "https://mu.example.de", "status": "wyslano", "country": "DE", "city": "Köln", "address": "", "description": "", "generated_at": "2026-09-30T09:00:00", "sent_at": "2026-09-20T09:00:00", "has_body": true}
+  ],
+  "cases": [
+    {"name": "bez filtrów", "filter": {}, "expect": ["eventy-001", "eventy-002", "eventy-003", "eventy-004", "driverzy-005", "driverzy-006", "driverzy-007", "driverzy-008", "eventy-009", "eventy-010", "eventy-011", "driverzy-012", "eventy-013"]},
+    {"name": "jeden status", "filter": {"statuses": ["wyslano"]}, "expect": ["eventy-001", "eventy-009", "eventy-013"]},
+    {"name": "kilka statusów", "filter": {"statuses": ["blad", "odpowiedzial"]}, "expect": ["driverzy-005", "driverzy-006"]},
+    {"name": "segment", "filter": {"segments": ["driverzy"]}, "expect": ["driverzy-005", "driverzy-006", "driverzy-007", "driverzy-008", "driverzy-012"]},
+    {"name": "kraj", "filter": {"countries": ["PL"]}, "expect": ["eventy-001", "driverzy-006", "driverzy-008", "eventy-010", "driverzy-012"]},
+    {"name": "kilka krajów", "filter": {"countries": ["GB", "DE"]}, "expect": ["eventy-002", "eventy-003", "eventy-004", "eventy-009", "eventy-013"]},
+    {"name": "firmy bez kraju", "filter": {"countries": ["_none"]}, "expect": ["driverzy-005", "eventy-011"]},
+    {"name": "kraj albo brak kraju", "filter": {"countries": ["IE", "_none"]}, "expect": ["driverzy-007", "driverzy-005", "eventy-011"]},
+    {"name": "ma e-mail (spacje to brak)", "filter": {"email": "yes"}, "expect": ["eventy-001", "eventy-002", "eventy-003", "driverzy-005", "driverzy-006", "driverzy-007", "driverzy-008", "eventy-009", "eventy-013"]},
+    {"name": "brak e-maila (spacje to brak)", "filter": {"email": "no"}, "expect": ["eventy-004", "eventy-010", "eventy-011", "driverzy-012"]},
+    {"name": "ma treść", "filter": {"body": "yes"}, "expect": ["eventy-001", "eventy-002", "driverzy-005", "driverzy-006", "driverzy-007", "driverzy-008", "eventy-009", "driverzy-012", "eventy-013"]},
+    {"name": "brak treści", "filter": {"body": "no"}, "expect": ["eventy-003", "eventy-004", "eventy-010", "eventy-011"]},
+    {"name": "e-mail bez treści", "filter": {"email": "yes", "body": "no"}, "expect": ["eventy-003"]},
+    {"name": "treść bez e-maila", "filter": {"email": "no", "body": "yes"}, "expect": ["driverzy-012"]},
+    {"name": "wysłano jednego dnia (oba końce włącznie)", "filter": {"sentFrom": "2026-09-29", "sentTo": "2026-09-29"}, "expect": ["eventy-001", "driverzy-006"]},
+    {"name": "wysłano od dnia", "filter": {"sentFrom": "2026-09-30"}, "expect": ["driverzy-007", "eventy-009"]},
+    {"name": "wysłano do dnia", "filter": {"sentTo": "2026-09-29"}, "expect": ["eventy-001", "driverzy-006", "eventy-013"]},
+    {"name": "wysłano w zakresie", "filter": {"sentFrom": "2026-09-21", "sentTo": "2026-09-30"}, "expect": ["eventy-001", "driverzy-006", "driverzy-007"]},
+    {"name": "zakres bez wyników", "filter": {"sentFrom": "2026-10-02"}, "expect": []},
+    {"name": "status + kraj + data", "filter": {"statuses": ["wyslano"], "countries": ["DE"], "sentFrom": "2026-09-25"}, "expect": ["eventy-009"]},
+    {"name": "segment + brak e-maila", "filter": {"segments": ["eventy"], "email": "no"}, "expect": ["eventy-004", "eventy-010", "eventy-011"]},
+    {"name": "kraj + treść + statusy", "filter": {"countries": ["PL"], "body": "yes", "statuses": ["do_wyslania", "nie_kontaktowac"]}, "expect": ["driverzy-008", "driverzy-012"]}
+  ]
+}

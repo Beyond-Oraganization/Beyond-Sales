@@ -1,0 +1,57 @@
+<div class="page-head">
+  <h1>Skraper stron firm</h1>
+  <p class="muted lead">Uprzejmie pobiera strony firm (z poszanowaniem robots.txt), żeby zebrać kontekst i znaleźć kontakty. Skanowanie działa w osobnym procesie — przeżyje zamknięcie tej karty.</p>
+  <div id="banners"></div>
+  <div id="notices"></div>
+  <div class="summary" id="statusChips"></div>
+  <div class="controls">
+    <button id="seedBtn">Zaimportuj firmy z bazy maili</button>
+    <input type="text" id="addUrl" placeholder="Dodaj firmę: adres strony, np. firma.pl">
+    <input type="text" id="addName" placeholder="Nazwa (opcjonalnie)" class="narrow">
+    <button id="addBtn">Dodaj</button>
+  </div>
+  <details class="settings" id="settingsBox">
+    <summary>Ustawienia przebiegu</summary>
+    <div class="settings-grid">
+      <label>Domen naraz <input type="number" id="s_concurrency" min="1" max="100"></label>
+      <label>Odstęp na domenę (s) <input type="number" id="s_delay" min="1" step="0.5"></label>
+      <label>Głębokość <input type="number" id="s_depth" min="1" max="20"></label>
+      <label>Stron na firmę <input type="number" id="s_max_pages" min="1" max="5000"></label>
+      <label>MB na firmę <input type="number" id="s_max_mb" min="1" max="500"></label>
+      <label>Minut na firmę <input type="number" id="s_max_minutes" min="1" max="240"></label>
+    </div>
+    <p class="muted" id="estimate"></p>
+    <p class="muted small">Zasady uprzejmości (nie do wyłączenia): robots.txt zawsze respektowany, na jedną domenę najwyżej jedno żądanie naraz z odstępem ≥ 1 s, równoległość tylko między różnymi domenami, odmowa serwera (403/429/blokada dla botów) zatrzymuje firmę. Bot przedstawia się jawnie.</p>
+  </details>
+  <div class="controls spaced">
+    <button id="startBtn" class="primary">Start</button>
+    <button id="stopBtn">Stop</button>
+    <button id="selectVisibleBtn">Zaznacz widoczne</button>
+    <button id="clearSelectionBtn">Odznacz</button>
+    <span class="count" id="selInfo"></span>
+  </div>
+  <div id="runBox"></div>
+</div>
+
+<main class="page-main">
+  <div class="controls table-controls">
+    <select id="statusFilter"><option value="">Wszystkie statusy</option></select>
+    <input type="text" id="search" placeholder="Szukaj po domenie lub nazwie…">
+    <span class="count" id="count"></span>
+    <button id="prevBtn">‹ Poprzednia</button>
+    <button id="nextBtn">Następna ›</button>
+  </div>
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width:28px;"><input type="checkbox" id="headerCheckbox"></th>
+        <th>Firma</th><th>Status</th><th>Strony</th><th>MB</th><th>Głęb.</th><th>E-maile</th><th>Telefony</th>
+        <th>Ostatni skan</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  </div>
+  <div class="empty-state" id="emptyState" style="display:none;">Brak firm. Zaimportuj je z bazy maili albo dodaj adres strony powyżej.</div>
+</main>

@@ -1,0 +1,61 @@
+<div class="page-head">
+  <h1>Wysyłka (Eventy + Driverzy)</h1>
+  <div id="configBanner"></div>
+  <div class="send-settings">
+    <label class="count">Opóźnienie (s): <input type="number" id="delayMin" value="45" min="0"> – <input type="number" id="delayMax" value="120" min="0"></label>
+    <label class="count">Dzienny limit: <input type="number" id="dailyCap" value="50" min="1"></label>
+    <span class="count" id="sentToday"></span>
+    <button type="button" class="kit-btn" id="refreshBtn" title="Dogeneruj brakujące wiersze z data/*.csv — istniejących nie nadpisuje">Odśwież dane</button>
+    <button type="button" class="kit-btn" id="reloadBtn" title="Wczytaj listę z bazy jeszcze raz">Przeładuj listę</button>
+    <div class="kit-pop" id="columnsPop"><button type="button" class="kit-btn" aria-expanded="false">Kolumny ▾</button><div class="kit-popover align-right" hidden></div></div>
+  </div>
+  <div id="filterBar"></div>
+  <div id="log"></div>
+</div>
+
+<main class="page-main">
+  <div class="kit-toolbar"><div id="selectBar"></div></div>
+  <div class="table-wrap">
+    <table class="kit-table" id="listTable">
+      <thead>
+        <tr>
+          <th data-sort="segment" data-col="segment">Segment</th>
+          <th data-sort="company" data-col="company">Firma</th>
+          <th data-sort="country" data-col="country">Kraj</th>
+          <th data-sort="email" data-col="email">E-mail</th>
+          <th data-col="subject">Temat</th>
+          <th data-sort="status" data-col="status">Status</th>
+          <th data-sort="generated_at" data-col="generated">Wygenerowano</th>
+          <th data-sort="sent_at" data-col="sent">Wysłano</th>
+        </tr>
+      </thead>
+      <tbody id="listBody"></tbody>
+    </table>
+    <div class="kit-empty" id="emptyState" hidden>Brak wierszy pasujących do filtrów.</div>
+  </div>
+  <div id="pager"></div>
+</main>
+
+<div class="action-bar" id="actionBar">
+  <span class="action-count" id="actionCount" aria-live="polite"></span>
+  <div class="kit-pop kit-menu"><button type="button" class="kit-btn" id="statusBtn" aria-expanded="false">Zmień status ▾</button><div class="kit-popover up" id="statusMenu" hidden></div></div>
+  <button type="button" class="kit-btn" id="dataBtn">Dane firmy…</button>
+  <button type="button" class="kit-btn" id="copyBtn">Kopiuj e-maile</button>
+  <div class="kit-pop kit-menu"><button type="button" class="kit-btn" id="exportBtn" aria-expanded="false">Eksportuj ▾</button><div class="kit-popover up" id="exportMenu" hidden></div></div>
+  <button type="button" class="kit-btn" id="undoBtn" hidden></button>
+  <span class="spacer"></span>
+  <button type="button" class="primary" id="sendBtn" disabled>Wyślij gotowe (0)</button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<dialog id="bulkDialog" class="bulk-dialog" aria-labelledby="bulkTitle">
+  <form method="dialog" class="bulk-form" id="bulkForm">
+    <header><h2 id="bulkTitle"></h2></header>
+    <div class="bulk-body" id="bulkBody"></div>
+    <footer>
+      <button type="button" class="kit-btn" id="bulkCancel">Anuluj</button>
+      <button type="submit" class="primary" id="bulkApply" disabled>Zastosuj</button>
+    </footer>
+  </form>
+</dialog>

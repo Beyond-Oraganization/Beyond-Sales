@@ -1,0 +1,63 @@
+<main class="page-main export-page">
+  <h1>Eksport bazy maili</h1>
+  <p class="muted">Wybierz firmy filtrami i checkboxami, potem kolumny i format — plik będzie zawierał dokładnie to, co wskażesz.</p>
+
+  <section class="card">
+    <h2>1. Które firmy</h2>
+    <div id="filterBar"></div>
+    <div class="kit-toolbar">
+      <div id="selectBar"></div>
+      <span class="muted" id="snapshot"></span>
+      <button type="button" class="kit-btn" id="reload">Odśwież listę</button>
+    </div>
+    <div class="table-wrap">
+      <table class="kit-table row-toggle" id="listTable">
+        <thead>
+          <tr>
+            <th data-sort="company">Firma</th><th data-sort="segment">Segment</th><th data-sort="country">Kraj</th>
+            <th data-sort="email">E-mail</th><th data-sort="status">Status</th>
+            <th data-sort="generated_at">Wygenerowano</th><th data-sort="sent_at">Wysłano</th>
+          </tr>
+        </thead>
+        <tbody id="listBody"></tbody>
+      </table>
+      <div class="kit-empty" id="emptyState" hidden>Brak wierszy pasujących do filtrów.</div>
+    </div>
+    <div id="pager"></div>
+  </section>
+
+  <section class="card">
+    <h2>2. Co trafi do pliku</h2>
+
+    <fieldset>
+      <legend>Zakres</legend>
+      <label class="choice"><input type="radio" name="scope" value="filtered" checked> Wszystkie pasujące do filtrów <b id="scopeFilteredN"></b></label>
+      <label class="choice"><input type="radio" name="scope" value="selected" id="scopeSelected" disabled> Tylko zaznaczone <b id="scopeSelectedN"></b></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Kolumny <span class="muted" id="columnsCount"></span></legend>
+      <div class="column-presets" id="columnPresets"></div>
+      <details class="column-details">
+        <summary>Wybierz kolumny ręcznie…</summary>
+        <div class="column-groups" id="columnGroups"></div>
+      </details>
+    </fieldset>
+
+    <fieldset>
+      <legend>Format pliku</legend>
+      <label class="choice"><input type="radio" name="format" value="xlsx" checked> XLSX (Excel)</label>
+      <label class="choice"><input type="radio" name="format" value="csv"> CSV</label>
+    </fieldset>
+
+    <fieldset id="delimiterBox" hidden>
+      <legend>Separator kolumn w CSV</legend>
+      <label class="choice"><input type="radio" name="delimiter" value="semicolon" checked> Średnik (Excel w polskiej wersji)</label>
+      <label class="choice"><input type="radio" name="delimiter" value="comma"> Przecinek (inne programy)</label>
+    </fieldset>
+
+    <p id="summary" class="summary-line">Wczytywanie…</p>
+    <button type="button" id="download" class="btn primary" disabled>Pobierz plik</button>
+    <p id="exportMsg" class="export-msg" role="status"></p>
+  </section>
+</main>

@@ -1,0 +1,30 @@
+.export-page{max-width:1180px;}
+.export-page h1{margin:0 0 6px;font-size:20px;font-weight:650;}
+.export-page h2{margin:0 0 12px;font-size:15px;font-weight:650;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-top:16px;}
+.card fieldset{border:none;margin:0 0 16px;padding:0;}
+.card fieldset[hidden]{display:none;}
+.card legend{font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:0;margin-bottom:8px;}
+.choice{display:block;font-size:14px;margin:4px 0;cursor:pointer;}
+.choice input:disabled + *,.choice input:disabled{cursor:not-allowed;}
+.summary-line{font-size:14px;font-weight:600;margin:4px 0 14px;}
+.btn{display:inline-block;padding:9px 18px;border-radius:8px;border:1px solid var(--border);font-size:14px;
+     font-weight:600;text-decoration:none;color:var(--text);background:var(--card);}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn.primary:hover:not(:disabled){background:var(--accent-dark);}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.export-msg{font-size:13px;margin:10px 0 0;min-height:18px;}
+.export-msg.ok{color:var(--ok);}
+.export-msg.error{color:var(--danger);}
+
+.company-cell{font-weight:600;}
+.column-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+.column-details{margin-top:6px;}
+.column-details summary{cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;}
+.column-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px 22px;margin-top:12px;}
+.column-group-head{display:flex;gap:8px;align-items:baseline;font-size:12px;margin-bottom:4px;}
+.column-group-head b{text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-size:11.5px;}
+.column-group-head button{border:none;background:none;color:var(--accent);font-size:12px;font-weight:600;padding:0;cursor:pointer;}
+.column-groups .choice{font-size:13px;margin:2px 0;}
+.column-groups .code{font-size:11px;font-family:ui-monospace,Menlo,monospace;}
+.kit-toolbar #selectBar{flex:1 1 auto;}
