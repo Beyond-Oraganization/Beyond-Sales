@@ -90,48 +90,60 @@ class PageStore(StoreCore):
 
         def work(conn) -> int:
             self._check_lease(conn, firma_id, run_id)
-            values = {
-                "status": rec.status, "http_status": rec.http_status,
-                "content_type": clean_text(rec.content_type, 100), "kodowanie": clean_text(rec.encoding, 24),
-                "bajty": int(rec.bytes or 0), "czas_ms": rec.elapsed_ms, "tytul": clean_text(rec.title, 500),
-                "opis": clean_text(rec.description, 1000), "content_hash": rec.content_hash,
-                "blad": clean_text(rec.error, 500), "pobrano_at": now if rec.counts else None,
-            }
-            existing = conn.execute(sa.select(strony.c.id).where(
-                strony.c.firma_id == firma_id, strony.c.url_hash == rec.url_hash)).scalar()
-            if existing is not None:
-                conn.execute(sa.update(strony).where(strony.c.id == existing).values(**values))
-                strona_id = int(existing)
-            else:
-                result = conn.execute(sa.insert(strony).values(
-                    firma_id=firma_id, url=page_url, url_hash=rec.url_hash, glebokosc=int(rec.depth),
-                    priorytet=int(rec.priority), zrodlo=rec.source[:8], rodzic_id=rec.parent_id, dodano_at=now, **values))
-                strona_id = int(result.inserted_primary_key[0])
-
-            if rec.text is not None or rec.html_gz is not None:
-                conn.execute(sa.delete(strony_tresc).where(strony_tresc.c.strona_id == strona_id))
-                conn.execute(sa.insert(strony_tresc).values(
-                    strona_id=strona_id, tekst=clean_text(rec.text) if rec.text is not None else None, html_gz=rec.html_gz))
-
-            self._insert_noop(conn, strony, self._link_rows(firma_id, rec.links, strona_id, now), "id")
-
-            for contact in rec.contacts:
-                value = clean_text(contact.wartosc, 255)
-                if not value:
-                    continue
-                self._upsert_contact(conn, {
-                    "firma_id": firma_id, "typ": contact.typ, "wartosc": value, "zrodlo_url": page_url,
-                    "zrodlo_typ": contact.zrodlo_typ, "liczba_stron": 1, "w_domenie": bool(contact.w_domenie),
-                    "rola": contact.rola or None, "pierwszy_at": now})
-
-            depth = int(rec.depth)
-            counters: dict[str, Any] = {"updated_at": now}
-            if rec.counts:
-                counters["stron_pobranych"] = firmy.c.stron_pobranych + 1
-                counters["bajty_pobranych"] = firmy.c.bajty_pobranych + int(rec.bytes or 0)
-                counters["glebokosc_max"] = sa.case((firmy.c.glebokosc_max.is_(None), depth),
-                                                    (firmy.c.glebokosc_max < depth, depth), else_=firmy.c.glebokosc_max)
-            conn.execute(sa.update(firmy).where(firmy.c.id == firma_id).values(**counters))
-            return strona_id
+            page_id = self._write_page(conn, firma_id, rec, page_url, now)
+            self._write_content(conn, page_id, rec)
+            self._insert_noop(conn, strony, self._link_rows(firma_id, rec.links, page_id, now), "id")
+            self._write_contacts(conn, firma_id, rec, page_url, now)
+            self._bump_counters(conn, firma_id, rec, now)
+            return page_id
 
         return self._run(work)
+
+    @staticmethod
+    def _write_page(conn, firma_id: int, rec: PageRecord, page_url: str, now: datetime) -> int:
+        """Wiersz strony (wstawienie albo aktualizacja po `url_hash`); zwraca id strony."""
+        values = {
+            "status": rec.status, "http_status": rec.http_status,
+            "content_type": clean_text(rec.content_type, 100), "kodowanie": clean_text(rec.encoding, 24),
+            "bajty": int(rec.bytes or 0), "czas_ms": rec.elapsed_ms, "tytul": clean_text(rec.title, 500),
+            "opis": clean_text(rec.description, 1000), "content_hash": rec.content_hash,
+            "blad": clean_text(rec.error, 500), "pobrano_at": now if rec.counts else None,
+        }
+        existing = conn.execute(sa.select(strony.c.id).where(
+            strony.c.firma_id == firma_id, strony.c.url_hash == rec.url_hash)).scalar()
+        if existing is not None:
+            conn.execute(sa.update(strony).where(strony.c.id == existing).values(**values))
+            return int(existing)
+        result = conn.execute(sa.insert(strony).values(
+            firma_id=firma_id, url=page_url, url_hash=rec.url_hash, glebokosc=int(rec.depth),
+            priorytet=int(rec.priority), zrodlo=rec.source[:8], rodzic_id=rec.parent_id, dodano_at=now, **values))
+        return int(result.inserted_primary_key[0])
+
+    @staticmethod
+    def _write_content(conn, page_id: int, rec: PageRecord) -> None:
+        if rec.text is not None or rec.html_gz is not None:
+            conn.execute(sa.delete(strony_tresc).where(strony_tresc.c.strona_id == page_id))
+            conn.execute(sa.insert(strony_tresc).values(
+                strona_id=page_id, tekst=clean_text(rec.text) if rec.text is not None else None, html_gz=rec.html_gz))
+
+    def _write_contacts(self, conn, firma_id: int, rec: PageRecord, page_url: str, now: datetime) -> None:
+        for contact in rec.contacts:
+            value = clean_text(contact.wartosc, 255)
+            if not value:
+                continue
+            self._upsert_contact(conn, {
+                "firma_id": firma_id, "typ": contact.typ, "wartosc": value, "zrodlo_url": page_url,
+                "zrodlo_typ": contact.zrodlo_typ, "liczba_stron": 1, "w_domenie": bool(contact.w_domenie),
+                "rola": contact.rola or None, "pierwszy_at": now})
+
+    @staticmethod
+    def _bump_counters(conn, firma_id: int, rec: PageRecord, now: datetime) -> None:
+        """Liczniki firmy rosną tylko dla stron, które kosztowały żądanie sieciowe (`rec.counts`)."""
+        depth = int(rec.depth)
+        counters: dict[str, Any] = {"updated_at": now}
+        if rec.counts:
+            counters["stron_pobranych"] = firmy.c.stron_pobranych + 1
+            counters["bajty_pobranych"] = firmy.c.bajty_pobranych + int(rec.bytes or 0)
+            counters["glebokosc_max"] = sa.case((firmy.c.glebokosc_max.is_(None), depth),
+                                                (firmy.c.glebokosc_max < depth, depth), else_=firmy.c.glebokosc_max)
+        conn.execute(sa.update(firmy).where(firmy.c.id == firma_id).values(**counters))

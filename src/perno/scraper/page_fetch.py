@@ -57,28 +57,10 @@ class PageFetcher:
         hops: list = []
         retries = 0
         while True:
-            if self.rc.stop.is_set():
-                return Got("interrupted")
-            if not company.gate.wait_turn(self.rc.stop, company.deadline):
-                return Got("interrupted") if self.rc.stop.is_set() else Got("limit_czasu")
-            parts = urlsplit(current)
-            port = parts.port or (443 if parts.scheme == "https" else 80)
-            ip = ""
-            try:
-                ip = self.rc.fetcher.resolve(parts.hostname or "", port)[0]
-                res = None
-            except FetchError as exc:
-                res = FetchResult(url=current, error=exc.kind)
-            if res is None:
-                budget = max(0.0, company.deadline - self.rc.clock.now())
-                if not self.rc.ip_limiter.acquire(ip, self.rc.stop, timeout=budget):
-                    return Got("interrupted") if self.rc.stop.is_set() else Got("limit_czasu")
-                try:
-                    if not self.rc.global_gate.wait(self.rc.stop):
-                        return Got("interrupted")
-                    res = self.rc.fetcher.fetch_once(current, kind, ip=ip)
-                finally:
-                    self.rc.ip_limiter.release(ip)
+            outcome = self._request(company, current, kind)
+            if isinstance(outcome, Got):
+                return outcome
+            res, ip = outcome
             self.rc.stats.add(zapytania=1)
             if self.rc.verbose:
                 self.rc.log(f"[{company.domena}] {kind} {current} -> {res.status or res.error} ({res.elapsed:.2f}s)")
@@ -101,30 +83,61 @@ class PageFetcher:
                 continue
             if res.status in REDIRECT_CODES and res.location:
                 hops.append((current, res.status))
-                if len(hops) > MAX_REDIRECTS:
-                    return Got("bad", fetch=res, url=current, hops=hops, message="za wiele przekierowań")
-                target = normalize_url(res.location, base=current)
-                if target is None:
-                    return Got("bad", fetch=res, url=current, hops=hops, message="nieprawidłowy adres przekierowania")
-                if target in visited:
-                    return Got("bad", fetch=res, url=current, hops=hops, message="pętla przekierowań")
-                visited.add(target)
-                if not company.same_site(target):
-                    return Got("foreign", fetch=res, url=target, hops=hops,
-                               target=host_key(urlsplit(target).hostname or "") or "")
-                if kind == "html":
-                    if company.rules is not None and not company.rules.allowed(path_query(target)):
-                        return Got("robots_skip", fetch=res, url=target, hops=hops)
-                    digest = url_hash(target)
-                    if digest in company.seen:
-                        return Got("known", fetch=res, url=target, hops=hops)
-                    admitted, why = company.trap.admit(target)
-                    if not admitted:
-                        return Got("bad", fetch=res, url=target, hops=hops, message=f"przekierowanie na odrzucony adres ({why})")
-                    company.seen.add(digest)
-                current, retries = target, 0
+                step = self._follow_redirect(company, res, current, kind, visited, hops)
+                if isinstance(step, Got):
+                    return step
+                current, retries = step, 0
                 continue
             return Got("ok", fetch=res, url=current, hops=hops)
+
+    def _request(self, company: Company, url: str, kind: str):
+        """Jedno żądanie przez wszystkie bramki: odstęp hosta → DNS → limit na IP → bramka globalna → fetcher.
+        Zwraca (odpowiedź, ip) albo gotowy `Got`, gdy przebieg zatrzymano lub skończył się czas firmy."""
+        rc = self.rc
+        if rc.stop.is_set():
+            return Got("interrupted")
+        if not company.gate.wait_turn(rc.stop, company.deadline):
+            return Got("interrupted") if rc.stop.is_set() else Got("limit_czasu")
+        parts = urlsplit(url)
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        try:
+            ip = rc.fetcher.resolve(parts.hostname or "", port)[0]
+        except FetchError as exc:
+            return FetchResult(url=url, error=exc.kind), ""
+        budget = max(0.0, company.deadline - rc.clock.now())
+        if not rc.ip_limiter.acquire(ip, rc.stop, timeout=budget):
+            return Got("interrupted") if rc.stop.is_set() else Got("limit_czasu")
+        try:
+            if not rc.global_gate.wait(rc.stop):
+                return Got("interrupted")
+            return rc.fetcher.fetch_once(url, kind, ip=ip), ip
+        finally:
+            rc.ip_limiter.release(ip)
+
+    def _follow_redirect(self, company: Company, res: FetchResult, current: str, kind: str, visited: set, hops: list):
+        """Następny adres po przekierowaniu albo `Got`, gdy podążanie nie ma sensu (pętla, obca domena, robots…)."""
+        if len(hops) > MAX_REDIRECTS:
+            return Got("bad", fetch=res, url=current, hops=hops, message="za wiele przekierowań")
+        target = normalize_url(res.location or "", base=current)  # wołający gwarantuje niepusty Location
+        if target is None:
+            return Got("bad", fetch=res, url=current, hops=hops, message="nieprawidłowy adres przekierowania")
+        if target in visited:
+            return Got("bad", fetch=res, url=current, hops=hops, message="pętla przekierowań")
+        visited.add(target)
+        if not company.same_site(target):
+            return Got("foreign", fetch=res, url=target, hops=hops,
+                       target=host_key(urlsplit(target).hostname or "") or "")
+        if kind == "html":
+            if company.rules is not None and not company.rules.allowed(path_query(target)):
+                return Got("robots_skip", fetch=res, url=target, hops=hops)
+            digest = url_hash(target)
+            if digest in company.seen:
+                return Got("known", fetch=res, url=target, hops=hops)
+            admitted, why = company.trap.admit(target)
+            if not admitted:
+                return Got("bad", fetch=res, url=target, hops=hops, message=f"przekierowanie na odrzucony adres ({why})")
+            company.seen.add(digest)
+        return target
 
     @staticmethod
     def _bot_wall(res: FetchResult) -> bool:

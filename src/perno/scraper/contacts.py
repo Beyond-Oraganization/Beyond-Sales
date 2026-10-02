@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 from urllib.parse import quote, unquote, urlsplit
 
 from perno.scraper.extract import FormInfo, PageData
@@ -242,6 +242,38 @@ _GH_BAD = {"topics", "features", "pricing", "about", "login", "join", "marketpla
            "collections", "trending", "events", "explore", "settings", "enterprise", "customer-stories", "readme", "search"}
 
 
+def _keep_first_unless(bad: set) -> Callable:
+    return lambda first, segments: None if first in bad else segments[:1]
+
+
+def _facebook_segments(first: str, segments: list) -> Optional[list]:
+    return None if first in _FB_BAD or first.endswith(".php") else segments[:1]
+
+
+def _linkedin_segments(first: str, segments: list) -> Optional[list]:
+    return segments[:2] if first in ("company", "school", "showcase") and len(segments) >= 2 else None
+
+
+def _youtube_segments(first: str, segments: list) -> Optional[list]:
+    if first.startswith("@"):
+        return segments[:1]
+    if first in ("c", "channel", "user") and len(segments) >= 2:
+        return segments[:2]
+    return None
+
+
+def _tiktok_segments(first: str, segments: list) -> Optional[list]:
+    return segments[:1] if first.startswith("@") else None
+
+
+# platforma -> reguła: (pierwszy segment ścieżki, wszystkie segmenty) -> segmenty profilu albo None (nie profil firmy)
+_PROFILE_RULES = {
+    "facebook": _facebook_segments, "instagram": _keep_first_unless(_IG_BAD), "linkedin": _linkedin_segments,
+    "x": _keep_first_unless(_X_BAD), "youtube": _youtube_segments, "tiktok": _tiktok_segments,
+    "github": _keep_first_unless(_GH_BAD),
+}
+
+
 def social_profile(url: str) -> Optional[tuple]:
     """(platforma, kanoniczny URL) tylko dla profili firmowych; share/intent/plugin/profile osobisty → None."""
     try:
@@ -260,38 +292,9 @@ def social_profile(url: str) -> Optional[tuple]:
     segments = [unquote(seg) for seg in parts.path.split("/") if seg]
     if not segments:
         return None
-    first = segments[0].lower()
-    if platform == "facebook":
-        if first in _FB_BAD or first.endswith(".php"):
-            return None
-        keep = segments[:1]
-    elif platform == "instagram":
-        if first in _IG_BAD:
-            return None
-        keep = segments[:1]
-    elif platform == "linkedin":
-        if first not in ("company", "school", "showcase") or len(segments) < 2:
-            return None
-        keep = segments[:2]
-    elif platform == "x":
-        if first in _X_BAD:
-            return None
-        keep = segments[:1]
-    elif platform == "youtube":
-        if first.startswith("@"):
-            keep = segments[:1]
-        elif first in ("c", "channel", "user") and len(segments) >= 2:
-            keep = segments[:2]
-        else:
-            return None
-    elif platform == "tiktok":
-        if not first.startswith("@"):
-            return None
-        keep = segments[:1]
-    else:  # github
-        if first in _GH_BAD:
-            return None
-        keep = segments[:1]
+    keep = _PROFILE_RULES[platform](segments[0].lower(), segments)
+    if keep is None:
+        return None
     keep = [quote(seg, safe="@.-_+") for seg in keep]  # wynik zawsze ASCII
     if any(not re.fullmatch(r"[A-Za-z0-9.@\-_+%]{1,150}", seg) for seg in keep):
         return None
@@ -344,20 +347,33 @@ def _in_domain(email: str, hosts: Iterable[Optional[str]]) -> bool:
     return any(host and (domain == host or domain.endswith("." + host)) for host in hosts)
 
 
-def extract_contacts(data: PageData, page_url: str, company_host: str, extra_hosts: Iterable[str] = (),
-                     *, international: bool = False) -> list:
-    """Kontakty z jednej strony. `company_host` = `host_key` domeny firmy; `extra_hosts` np. `domena_docelowa`."""
-    hosts = [host_key(company_host)] + [host_key(h) for h in extra_hosts if h]
-    best: dict = {}
+class _ContactBook:
+    """Kontakty z jednej strony: dla pary (typ, wartość) zostaje źródło o najlepszej randze, a wynik ma limity."""
 
-    def add(typ: str, value: str, source: str, **extra) -> None:
+    def __init__(self) -> None:
+        self.best: dict = {}
+
+    def add(self, typ: str, value: str, source: str, **extra) -> None:
         key = (typ, value)
-        current = best.get(key)
+        current = self.best.get(key)
         if current is None or _RANK[source] < _RANK[current.zrodlo_typ]:
-            best[key] = Contact(typ, value, source, **extra)
+            self.best[key] = Contact(typ, value, source, **extra)
 
+    def limited(self) -> list:
+        out: list = []
+        counts: dict = {}
+        for contact in self.best.values():
+            if len(contact.wartosc) > MAX_VALUE_LEN:  # kolumna kontakty.wartosc ma 255 znaków
+                continue
+            counts[contact.typ] = counts.get(contact.typ, 0) + 1
+            if counts[contact.typ] <= MAX_PER_TYPE:
+                out.append(contact)
+        return out
+
+
+def _collect_emails(book: _ContactBook, data: PageData, hosts: list) -> None:
     def add_email(email: str, source: str) -> None:
-        add("email", email, source, w_domenie=_in_domain(email, hosts), rola=email_role(email))
+        book.add("email", email, source, w_domenie=_in_domain(email, hosts), rola=email_role(email))
 
     for href in data.mailtos:
         for email in _emails_from_mailto(href):
@@ -367,42 +383,46 @@ def extract_contacts(data: PageData, page_url: str, company_host: str, extra_hos
         email = normalize_email(decoded) if decoded else None
         if email:
             add_email(email, "cfemail")
-    for key, value in _jsonld_values(data.jsonld, ("email",)):
+    for _key, value in _jsonld_values(data.jsonld, ("email",)):
         email = normalize_email(value)
         if email:
             add_email(email, "jsonld")
     for email in emails_in_text(data.text):
         add_email(email, "tekst")
 
+
+def _collect_phones(book: _ContactBook, data: PageData, international: bool) -> None:
     for href in data.tels:
         number = normalize_phone(unquote(href[4:]).split(";", 1)[0], international=international, trusted=True)
         if number:
-            add("telefon", number, "tel")
-    for key, value in _jsonld_values(data.jsonld, ("telephone",)):
+            book.add("telefon", number, "tel")
+    for _key, value in _jsonld_values(data.jsonld, ("telephone",)):
         number = normalize_phone(value, international=international, trusted=True)
         if number:
-            add("telefon", number, "jsonld")
+            book.add("telefon", number, "jsonld")
     for number in phones_in_text(data.text, international=international):
-        add("telefon", number, "tekst")
+        book.add("telefon", number, "tekst")
 
+
+def _collect_social(book: _ContactBook, data: PageData) -> None:
     for link in data.links:
         profile = social_profile(link.href)
         if profile:
-            add("social", profile[1], "link")
-    for key, value in _jsonld_values(data.jsonld, ("sameAs",)):
+            book.add("social", profile[1], "link")
+    for _key, value in _jsonld_values(data.jsonld, ("sameAs",)):
         profile = social_profile(value)
         if profile:
-            add("social", profile[1], "jsonld")
+            book.add("social", profile[1], "jsonld")
 
+
+def extract_contacts(data: PageData, page_url: str, company_host: str, extra_hosts: Iterable[str] = (),
+                     *, international: bool = False) -> list:
+    """Kontakty z jednej strony. `company_host` = `host_key` domeny firmy; `extra_hosts` np. `domena_docelowa`."""
+    hosts = [host_key(company_host)] + [host_key(h) for h in extra_hosts if h]
+    book = _ContactBook()
+    _collect_emails(book, data, hosts)
+    _collect_phones(book, data, international)
+    _collect_social(book, data)
     if any(is_contact_form(form) for form in data.forms) or _embed_has_form(data.embeds):
-        add("formularz", page_url, "forma")
-
-    out: list = []
-    counts: dict = {}
-    for contact in best.values():
-        if len(contact.wartosc) > MAX_VALUE_LEN:  # kolumna kontakty.wartosc ma 255 znaków
-            continue
-        counts[contact.typ] = counts.get(contact.typ, 0) + 1
-        if counts[contact.typ] <= MAX_PER_TYPE:
-            out.append(contact)
-    return out
+        book.add("formularz", page_url, "forma")
+    return book.limited()

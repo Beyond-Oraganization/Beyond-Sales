@@ -101,8 +101,20 @@ def _make_ssl_context(cafile: str = "") -> ssl.SSLContext:
     return context
 
 
+@dataclass(frozen=True)
+class _Request:
+    """Stałe parametry jednego pobrania (wspólne dla prób na kolejnych adresach IP)."""
+    scheme: str
+    host: str
+    port: int
+    target: str  # ścieżka z zapytaniem
+    kind: str  # html | robots | sitemap
+    limit: int  # maks. rozmiar treści (bajty)
+    started: float
+
+
 class Fetcher:
-    def __init__(self, settings: ScanSettings, *, resolver: Optional[Callable] = None,
+    def __init__(self, settings: ScanSettings, *, resolver: Optional[Callable] = None,  # noqa: PLR0913 — szwy wstrzykiwania z domyślnymi wartościami (testy)
                  allow_private: Optional[bool] = None, ssl_context: Optional[ssl.SSLContext] = None,
                  env: Optional[Environment] = None,
                  request_deadline: float = REQUEST_DEADLINE, connect_timeout: float = CONNECT_TIMEOUT,
@@ -168,8 +180,10 @@ class Fetcher:
         started = time.monotonic()
         host = parts.hostname or ""
         port = parts.port or (443 if parts.scheme == "https" else 80)
-        target = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
-        limit = {"html": self.max_body, "robots": ROBOTS_MAX_BYTES, "sitemap": SITEMAP_MAX_BYTES}[kind]
+        request = _Request(
+            scheme=parts.scheme, host=host, port=port, kind=kind, started=started,
+            target=(parts.path or "/") + (f"?{parts.query}" if parts.query else ""),
+            limit={"html": self.max_body, "robots": ROBOTS_MAX_BYTES, "sitemap": SITEMAP_MAX_BYTES}[kind])
 
         try:
             if ip and not self.allow_private and not is_public_ip(ip):
@@ -181,57 +195,68 @@ class Fetcher:
 
         last_error = "siec"
         for address in candidates[:3]:
-            conn = None
-            watchdog = None
-            response = None
-            state = {"sock": None, "aborted": False}
-            try:
-                conn = self._connection(parts.scheme, host, port, address)
-                deadline = started + self.request_deadline
-                watchdog = threading.Timer(max(0.05, deadline - time.monotonic()), self._abort, args=(conn, state))
-                watchdog.daemon = True
-                watchdog.start()
-                conn.connect()
-                # Przy `Connection: close` http.client zeruje conn.sock po getresponse(), więc trzymamy własne
-                # odwołanie — potrzebne i do settimeout w pętli czytania, i do przerwania przez watchdog.
-                sock = state["sock"] = conn.sock
-                sock.settimeout(self._recv_timeout(deadline))
-                headers = self._headers()
-                headers["Accept"] = ACCEPT[kind]
-                conn.request("GET", target, headers=headers)
-                response = conn.getresponse()
-                result.ip = address
-                self._read_response(response, result, kind, limit, deadline, sock)
-                result.elapsed = time.monotonic() - started
+            verdict, error = self._try_address(address, request, result)
+            if verdict == "done":
                 return result
-            except FetchError as exc:
-                result.error = exc.kind
-                result.ip = address
-                result.elapsed = time.monotonic() - started
-                return result
-            except ssl.SSLError:
-                last_error = "tls"
-                result.error = "tls"
-                result.ip = address
-                if state["aborted"]:
-                    result.error = last_error = "timeout"
-                break  # inny adres tego samego hosta nie naprawi certyfikatu
-            except (socket.timeout, TimeoutError):
-                last_error = "timeout"
-            except (ConnectionError, OSError, http.client.HTTPException):
-                last_error = "timeout" if state["aborted"] else "siec"
-            finally:
-                if watchdog is not None:
-                    watchdog.cancel()
-                for closable in (response, conn):
-                    if closable is not None:
-                        try:
-                            closable.close()
-                        except OSError:
-                            pass
+            last_error = error
+            if verdict == "stop":
+                break
         result.error = result.error or last_error
         result.elapsed = time.monotonic() - started
         return result
+
+    def _try_address(self, address: str, request: "_Request", result: FetchResult) -> tuple:
+        """Jedna próba pobrania z konkretnego adresu IP. Zwraca (co dalej, ostatni błąd): „done” — wynik gotowy,
+        „stop” — nie próbuj innych adresów (inny adres tego samego hosta nie naprawi certyfikatu), „next” — spróbuj
+        kolejnego adresu."""
+        conn = None
+        watchdog = None
+        response = None
+        state = {"sock": None, "aborted": False}
+        try:
+            conn = self._connection(request.scheme, request.host, request.port, address)
+            deadline = request.started + self.request_deadline
+            watchdog = threading.Timer(max(0.05, deadline - time.monotonic()), self._abort, args=(conn, state))
+            watchdog.daemon = True
+            watchdog.start()
+            conn.connect()
+            # Przy `Connection: close` http.client zeruje conn.sock po getresponse(), więc trzymamy własne
+            # odwołanie — potrzebne i do settimeout w pętli czytania, i do przerwania przez watchdog.
+            sock = state["sock"] = conn.sock
+            sock.settimeout(self._recv_timeout(deadline))
+            headers = self._headers()
+            headers["Accept"] = ACCEPT[request.kind]
+            conn.request("GET", request.target, headers=headers)
+            response = conn.getresponse()
+            result.ip = address
+            self._read_response(response, result, request.kind, request.limit, deadline, sock)
+            result.elapsed = time.monotonic() - request.started
+            return "done", ""
+        except FetchError as exc:
+            result.error = exc.kind
+            result.ip = address
+            result.elapsed = time.monotonic() - request.started
+            return "done", ""
+        except ssl.SSLError:
+            result.error = "tls"
+            result.ip = address
+            if state["aborted"]:
+                result.error = "timeout"
+                return "stop", "timeout"
+            return "stop", "tls"
+        except (socket.timeout, TimeoutError):
+            return "next", "timeout"
+        except (ConnectionError, OSError, http.client.HTTPException):
+            return "next", "timeout" if state["aborted"] else "siec"
+        finally:
+            if watchdog is not None:
+                watchdog.cancel()
+            for closable in (response, conn):
+                if closable is not None:
+                    try:
+                        closable.close()
+                    except OSError:
+                        pass
 
     def _connection(self, scheme: str, host: str, port: int, ip: str):
         if scheme == "https":
@@ -287,15 +312,11 @@ class Fetcher:
 
     def _read_body(self, response, limit: int, deadline: float, strict: bool, headers: dict, sock) -> bytes:
         encoding = headers.get("content-encoding", "").strip().lower()
-        decoder = None
-        if encoding in ("gzip", "x-gzip"):
-            decoder = zlib.decompressobj(31)
-        elif encoding == "deflate":
-            decoder = zlib.decompressobj(15)
-        elif encoding not in ("", "identity"):
+        if encoding not in _SUPPORTED_ENCODINGS:
             if strict:
                 raise FetchError("kodowanie", f"nieobsługiwane kodowanie: {encoding}")
             return b""
+        decoder = _new_decoder(encoding)
         out = bytearray()
         raw_total = 0
         first = True
@@ -309,12 +330,7 @@ class Fetcher:
                 eof = True
                 break
             sock.settimeout(self._recv_timeout(deadline))
-            try:
-                chunk = response.read1(65536)
-            except ValueError:  # gniazdo odcięte przez strażnika w trakcie odczytu
-                if time.monotonic() >= deadline:
-                    raise FetchError("timeout", "przekroczono całkowity czas żądania") from None
-                raise
+            chunk = self._read_chunk(response, deadline)
             if not chunk:
                 eof = True
                 break
@@ -323,42 +339,83 @@ class Fetcher:
                 if strict:
                     raise FetchError("za_duze", "za dużo danych skompresowanych")
                 break
-            if decoder is None:
-                out += chunk
-            else:
-                try:
-                    data = decoder.decompress(chunk, limit - len(out) + 1)
-                except zlib.error:
-                    if first and encoding == "deflate":
-                        decoder = zlib.decompressobj(-15)  # surowy deflate bez nagłówka zlib
-                        try:
-                            data = decoder.decompress(chunk, limit - len(out) + 1)
-                        except zlib.error:
-                            raise FetchError("siec", "uszkodzona treść deflate") from None
-                    else:
-                        raise FetchError("siec", "uszkodzona treść gzip") from None
-                out += data
-                if decoder.unconsumed_tail:
-                    out = out[: limit + 1]
+            decoder = _append_chunk(decoder, out, chunk, limit, retry_raw=first and encoding == "deflate")
             first = False
             if len(out) > limit:
                 if strict:
                     raise FetchError("za_duze", "treść przekracza limit")
                 return bytes(out[:limit])
         if eof:
-            # EOF po watchdogu albo przed końcem Content-Length to nie jest kompletna odpowiedź
+            self._require_complete(response, deadline)
+        return _finish_body(decoder, out, limit, strict)
+
+    @staticmethod
+    def _read_chunk(response, deadline: float) -> bytes:
+        try:
+            return response.read1(65536)
+        except ValueError:  # gniazdo odcięte przez strażnika w trakcie odczytu
             if time.monotonic() >= deadline:
-                raise FetchError("timeout", "przekroczono całkowity czas żądania")
-            if response.length:
-                raise FetchError("siec", "odpowiedź ucięta przed końcem Content-Length")
-        if decoder is not None:
-            try:
-                out += decoder.flush()
-            except zlib.error:
-                pass
-            if len(out) > limit and strict:
-                raise FetchError("za_duze", "treść przekracza limit")
-        return bytes(out[:limit]) if len(out) > limit else bytes(out)
+                raise FetchError("timeout", "przekroczono całkowity czas żądania") from None
+            raise
+
+    @staticmethod
+    def _require_complete(response, deadline: float) -> None:
+        """EOF po watchdogu albo przed końcem Content-Length to nie jest kompletna odpowiedź."""
+        if time.monotonic() >= deadline:
+            raise FetchError("timeout", "przekroczono całkowity czas żądania")
+        if response.length:
+            raise FetchError("siec", "odpowiedź ucięta przed końcem Content-Length")
+
+
+_SUPPORTED_ENCODINGS = ("", "identity", "gzip", "x-gzip", "deflate")
+
+
+def _new_decoder(encoding: str):
+    """Dekompresor dla `Content-Encoding` (None, gdy treść nie jest skompresowana)."""
+    if encoding in ("gzip", "x-gzip"):
+        return zlib.decompressobj(31)
+    if encoding == "deflate":
+        return zlib.decompressobj(15)
+    return None
+
+
+def _append_chunk(decoder, out: bytearray, chunk: bytes, limit: int, *, retry_raw: bool):
+    """Dokleja kawałek odpowiedzi do `out` (po dekompresji, jeśli trzeba); zwraca dekompresor, którego użyć dalej."""
+    if decoder is None:
+        out += chunk
+        return None
+    data, decoder = _decompress(decoder, chunk, limit - len(out) + 1, retry_raw=retry_raw)
+    out += data
+    if decoder.unconsumed_tail:
+        del out[limit + 1:]
+    return decoder
+
+
+def _finish_body(decoder, out: bytearray, limit: int, strict: bool) -> bytes:
+    """Domyka dekompresję i przycina wynik do limitu (w trybie ścisłym przekroczenie to błąd)."""
+    if decoder is not None:
+        try:
+            out += decoder.flush()
+        except zlib.error:
+            pass
+        if len(out) > limit and strict:
+            raise FetchError("za_duze", "treść przekracza limit")
+    return bytes(out[:limit]) if len(out) > limit else bytes(out)
+
+
+def _decompress(decoder, chunk: bytes, max_length: int, *, retry_raw: bool) -> tuple:
+    """(dane, dekompresor). Pierwszy kawałek `deflate` bywa surowy (bez nagłówka zlib) — wtedy `retry_raw` pozwala
+    spróbować jeszcze raz z dekompresorem surowego deflate."""
+    try:
+        return decoder.decompress(chunk, max_length), decoder
+    except zlib.error:
+        if not retry_raw:
+            raise FetchError("siec", "uszkodzona treść gzip") from None
+        raw = zlib.decompressobj(-15)
+        try:
+            return raw.decompress(chunk, max_length), raw
+        except zlib.error:
+            raise FetchError("siec", "uszkodzona treść deflate") from None
 
 
 def _looks_like_html(body: bytes) -> bool:

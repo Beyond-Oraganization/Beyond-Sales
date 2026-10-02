@@ -66,20 +66,17 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Skrypty CLI drukują wynik dla człowieka; biblioteka przechodzi na logging w fazie 3.4.
 "src/perno/cli/**" = ["T201"]
-"src/perno/db/__init__.py" = ["T201", "B008"]   # `python -m perno.db --check`; RowFilter to niezmienna dataclass
 "src/perno/services/sending.py" = ["T201"]      # ostrzeżenie o wysłanym mailu bez zapisu statusu (faza 3.4)
-"src/perno/web/app.py" = ["T201"]               # komunikat przy błędzie odświeżenia index.html (faza 2.7)
 "src/perno/scraper/runner.py" = ["T201"]        # RunLogger drukuje linie logu (faza 4.11)
-"src/perno/services/export.py" = ["RUF009"]     # RowFilter() jako domyślna wartość pola: niezmienna dataclass
 "tests/**" = ["S104", "S105", "S106", "S107", "S603", "RUF012", "PLR0912", "PLR0913", "PLR0915", "C901"]
 
 [tool.ruff.lint.mccabe]
-max-complexity = 26    # ratchet: 26 -> 15 -> 10 (faza 2.6); dziś największa funkcja (Fetcher._read_body) ma 26
+max-complexity = 15    # ratchet: 26 -> 15 (faza 2.6) -> 10; dziś największa funkcja ma 14
 
 [tool.ruff.lint.pylint]
-max-args = 14          # ratchet: 14 -> 8 -> 6 (faza 2.5/2.6); dziś największy konstruktor ma 14
-max-branches = 30      # ratchet: 30 -> 15 -> 12
-max-statements = 70    # ratchet: 70 -> 60 -> 50
+max-args = 8           # ratchet: 14 -> 8 (faza 2.6) -> 6; wyjątki: trzy konstruktory ze szwami wstrzykiwania (noqa)
+max-branches = 15      # ratchet: 30 -> 15 (faza 2.6) -> 12
+max-statements = 50    # ratchet: 70 -> 50 (faza 2.6)
 
 # ---------------------------------------------------------------------------------------------
 # Typy. Moduły bez błędów są sprawdzane w całości od razu; moduły z istniejącymi błędami (baza z fazy 0:

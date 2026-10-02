@@ -63,7 +63,7 @@ class RunContext:
     parse_slots: threading.BoundedSemaphore = field(default_factory=lambda: threading.BoundedSemaphore(4))
 
     @classmethod
-    def create(cls, store: Store, settings: ScanSettings, run_id: int, *, fetcher: Optional[Fetcher] = None,
+    def create(cls, store: Store, settings: ScanSettings, run_id: int, *, fetcher: Optional[Fetcher] = None,  # noqa: PLR0913 — jw.
                clock: Optional[Clock] = None, rng: Optional[random.Random] = None, log: Optional[Callable] = None,
                stop_event: Optional[threading.Event] = None, ip_limiter: Optional[IpLimiter] = None,
                global_gate: Optional[GlobalGate] = None, verbose: bool = False) -> "RunContext":

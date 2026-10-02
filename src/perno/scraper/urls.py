@@ -11,6 +11,7 @@ import ipaddress
 import os
 import re
 from collections import defaultdict, deque
+from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import parse_qsl, quote, unquote_to_bytes, urlencode, urljoin, urlsplit
 
@@ -259,6 +260,17 @@ def pattern_of(url: str) -> str:
     return f"d:{_parent_dir(parts.path)}"
 
 
+@dataclass
+class _Admission:
+    """Co zapisać w licznikach po przyjęciu adresu: liczniki zmieniamy dopiero, gdy przejdą WSZYSTKIE limity."""
+    query: str
+    is_category: bool = False
+    pagination_key: Optional[tuple] = None
+    identity: list = field(default_factory=list)  # [(nazwa, wartość)] parametrów tożsamości
+    variant_key: Optional[tuple] = None
+    directory: Optional[tuple] = None  # (katalog nadrzędny, czy strona kluczowa), gdy adres liczy się do katalogu
+
+
 class TrapGuard:
     """Limity wzorców/katalogów/paginacji dla jednej firmy. `admit` rejestruje URL."""
 
@@ -271,7 +283,7 @@ class TrapGuard:
     IDENTITY_CAP = 100
     DEAD_WINDOW = 8
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.dir_count: dict = defaultdict(int)
         self.dir_key_count: dict = defaultdict(int)
         self.category_count = 0
@@ -282,74 +294,88 @@ class TrapGuard:
         self.dead: set = set()
 
     def admit(self, url: str) -> tuple:
+        """(True, "") i zapis w licznikach albo (False, powód) bez zmian liczników."""
         reason = static_reject(url)
         if reason:
             return False, reason
         parts = urlsplit(url)
-        path = parts.path
-        pairs = _query_pairs(parts.query)
-        pattern = pattern_of(url)
-        if pattern in self.dead:
+        if pattern_of(url) in self.dead:
             return False, "martwy_wzorzec"
+        path, pairs = parts.path, _query_pairs(parts.query)
+        admission = _Admission(parts.query)
+        for check in (self._check_category, self._check_pagination, self._check_identity, self._check_directory):
+            reason = check(path, pairs, admission)
+            if reason:
+                return False, reason
+        self._commit(admission)
+        return True, ""
 
+    def _check_category(self, path: str, pairs: list, admission: _Admission) -> Optional[str]:
         segments = [s.lower() for s in path.split("/") if s]
-        is_category = any(s in CATEGORY_SEGMENTS for s in segments)
-        if is_category and self.category_count >= self.CATEGORY_CAP:
-            return False, "limit_kategorii"
+        admission.is_category = any(s in CATEGORY_SEGMENTS for s in segments)
+        if admission.is_category and self.category_count >= self.CATEGORY_CAP:
+            return "limit_kategorii"
+        return None
 
-        pagination_key = None
+    def _check_pagination(self, path: str, pairs: list, admission: _Admission) -> Optional[str]:
         page_match = PAGE_N_RE.search(path)
         page_params = [k for k, _ in pairs if k.lower() in PAGINATION_PARAMS]
-        if page_match or page_params:
-            listing_path = PAGE_N_RE.sub("/", path)
-            rest = sorted((k, v) for k, v in pairs if k.lower() not in PAGINATION_PARAMS)
-            pagination_key = (listing_path, tuple(rest))
-            if self.pagination[pagination_key] >= self.PAGINATION_CAP:
-                return False, "limit_paginacji"
+        if not (page_match or page_params):
+            return None
+        listing_path = PAGE_N_RE.sub("/", path)
+        rest = sorted((k, v) for k, v in pairs if k.lower() not in PAGINATION_PARAMS)
+        admission.pagination_key = (listing_path, tuple(rest))
+        if self.pagination[admission.pagination_key] >= self.PAGINATION_CAP:
+            return "limit_paginacji"
+        return None
 
+    def _check_identity(self, path: str, pairs: list, admission: _Admission) -> Optional[str]:
+        """Parametry tożsamości (`?p=123`) mają własny limit; pozostałe zapytania — limit wariantów jednej ścieżki."""
         identity = [(k.lower(), v) for k, v in pairs if k.lower() in IDENTITY_PARAMS]
         other_names = frozenset(k.lower() for k, _ in pairs if k.lower() not in IDENTITY_PARAMS)
-        new_identity = []
         for name, value in identity:
             values = self.identity_values[name]
             if value not in values and len(values) >= self.IDENTITY_CAP:
-                return False, "limit_identyfikatorow"
-            new_identity.append((name, value))
-        variant_key = None
+                return "limit_identyfikatorow"
+            admission.identity.append((name, value))
         if other_names and not identity:
-            variant_key = (path, other_names)
-            variants = self.pattern_variants[variant_key]
-            if parts.query not in variants and len(variants) >= self.PATTERN_CAP:
-                return False, "limit_wzorca"
+            admission.variant_key = (path, other_names)
+            variants = self.pattern_variants[admission.variant_key]
+            if admission.query not in variants and len(variants) >= self.PATTERN_CAP:
+                return "limit_wzorca"
+        return None
 
+    def _check_directory(self, path: str, pairs: list, admission: _Admission) -> Optional[str]:
+        # Adresy z parametrem tożsamości (`/?p=123`) nie należą do katalogu — rządzi nimi własny limit.
+        if admission.identity:
+            return None
         parent = _parent_dir(path)
         is_key = bool(page_class(path))
-        # Adresy z parametrem tożsamości (`/?p=123`) nie należą do katalogu — rządzi nimi własny limit.
-        uses_directory = not identity
-        if uses_directory:
-            if is_key:
-                if self.dir_key_count[parent] >= self.DIR_KEY_CAP:
-                    return False, "limit_katalogu"
-            else:
-                cap = self.ROOT_DIR_CAP if parent == "/" else self.DIR_CAP
-                if self.dir_count[parent] >= cap:
-                    return False, "limit_katalogu"
+        if is_key:
+            if self.dir_key_count[parent] >= self.DIR_KEY_CAP:
+                return "limit_katalogu"
+        else:
+            cap = self.ROOT_DIR_CAP if parent == "/" else self.DIR_CAP
+            if self.dir_count[parent] >= cap:
+                return "limit_katalogu"
+        admission.directory = (parent, is_key)
+        return None
 
-        # wszystko przeszło — zatwierdź liczniki
-        if uses_directory:
+    def _commit(self, admission: _Admission) -> None:
+        if admission.directory is not None:
+            parent, is_key = admission.directory
             if is_key:
                 self.dir_key_count[parent] += 1
             else:
                 self.dir_count[parent] += 1
-        if is_category:
+        if admission.is_category:
             self.category_count += 1
-        if pagination_key is not None:
-            self.pagination[pagination_key] += 1
-        for name, value in new_identity:
+        if admission.pagination_key is not None:
+            self.pagination[admission.pagination_key] += 1
+        for name, value in admission.identity:
             self.identity_values[name].add(value)
-        if variant_key is not None:
-            self.pattern_variants[variant_key].add(parts.query)
-        return True, ""
+        if admission.variant_key is not None:
+            self.pattern_variants[admission.variant_key].add(admission.query)
 
     def record(self, url: str, useful: bool) -> None:
         """Zgłoś wynik pobrania; wzorzec, z którego 8 ostatnich stron było duplikatami/pustych, zostaje wyłączony."""

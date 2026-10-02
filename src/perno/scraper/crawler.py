@@ -24,7 +24,7 @@ from perno.scraper.store import Store
 
 
 class Crawler:
-    def __init__(self, store: Store, settings: ScanSettings, run_id: int, *, fetcher: Optional[Fetcher] = None,
+    def __init__(self, store: Store, settings: ScanSettings, run_id: int, *, fetcher: Optional[Fetcher] = None,  # noqa: PLR0913 — szwy wstrzykiwania z domyślnymi wartościami (testy)
                  clock=None, rng: Optional[random.Random] = None, log: Optional[Callable] = None,
                  only_ids: Optional[list] = None, stop_event: Optional[threading.Event] = None,
                  stagger: float = 0.25, heartbeat_every: float = HEARTBEAT_EVERY,

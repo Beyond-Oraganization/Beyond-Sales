@@ -114,6 +114,15 @@ def parse_html(html: str, base_url: str) -> PageData:
 
 
 def _fill(soup, base_url: str, data: PageData, raw_html: str = "") -> None:
+    base = _fill_head(soup, base_url, data, raw_html)
+    data.embeds = [urljoin(base, str(tag["src"]).strip())[:500] for tag in soup.find_all("iframe", src=True)[:20]]
+    data.forms = [_form_info(form, base) for form in soup.find_all("form")[:50]]
+    _collect_links_and_contacts(soup, base, data)
+    _collect_text(soup, data)  # ostatnie: usuwa elementy z drzewa
+
+
+def _fill_head(soup, base_url: str, data: PageData, raw_html: str) -> str:
+    """Język, tytuł, opis, canonical i znaczniki robots; zwraca bazę do rozwiązywania adresów względnych."""
     html_tag = soup.find("html")
     if html_tag is not None and html_tag.get("lang"):
         data.lang = collapse(str(html_tag.get("lang")), 20).lower()
@@ -133,45 +142,55 @@ def _fill(soup, base_url: str, data: PageData, raw_html: str = "") -> None:
         data.canonical = urljoin(base, str(canonical["href"]).strip())[:2000]
     robots = _meta_content(soup, ("robots",), lower=True)
     data.meta_robots = frozenset(token.strip() for token in re.split(r"[,\s]+", robots) if token.strip())
+    return base
 
-    for tag in soup.find_all("iframe", src=True):
-        if len(data.embeds) < 20:
-            data.embeds.append(urljoin(base, str(tag["src"]).strip())[:500])
 
-    data.forms = [_form_info(form, base) for form in soup.find_all("form")[:50]]
+def _take_contact_href(href: str, data: PageData) -> bool:
+    """`mailto:`, `tel:` i adresy ukryte przez Cloudflare trafiają do osobnych list (True = href zużyty)."""
+    lowered = href.lower()
+    if lowered.startswith("mailto:"):
+        data.mailtos.append(href[:500])
+        return True
+    if lowered.startswith("tel:"):
+        data.tels.append(href[:100])
+        return True
+    if "/cdn-cgi/l/email-protection#" in lowered:
+        hexa = href.split("#", 1)[1]
+        if re.fullmatch(r"[0-9a-fA-F]{4,200}", hexa or ""):
+            data.cfemails.append(hexa)
+        return True
+    return False
 
+
+def _link_from_anchor(anchor, href: str, base: str) -> Link:
+    rel = anchor.get("rel") or []
+    rel = rel if isinstance(rel, list) else str(rel).split()
+    return Link(href=urljoin(base, href)[:2000], text=collapse(anchor.get_text(" ", strip=True), MAX_ANCHOR),
+                where=_location(anchor), nofollow="nofollow" in [item.lower() for item in rel])
+
+
+def _collect_links_and_contacts(soup, base: str, data: PageData) -> None:
     seen = 0
     for anchor in soup.find_all(["a", "area"], href=True):
         href = str(anchor["href"]).strip()
-        lowered = href.lower()
-        if lowered.startswith("mailto:"):
-            data.mailtos.append(href[:500])
+        if _take_contact_href(href, data):
             continue
-        if lowered.startswith("tel:"):
-            data.tels.append(href[:100])
-            continue
-        if "/cdn-cgi/l/email-protection#" in lowered:
-            hexa = href.split("#", 1)[1]
-            if re.fullmatch(r"[0-9a-fA-F]{4,200}", hexa or ""):
-                data.cfemails.append(hexa)
-            continue
-        if not href or lowered.startswith(_SKIP_SCHEMES):
+        if not href or href.lower().startswith(_SKIP_SCHEMES):
             continue
         if seen >= MAX_LINKS_PER_PAGE:
             data.truncated = True
             break
         seen += 1
-        rel = anchor.get("rel") or []
-        rel = rel if isinstance(rel, list) else str(rel).split()
-        data.links.append(Link(href=urljoin(base, href)[:2000], text=collapse(anchor.get_text(" ", strip=True), MAX_ANCHOR),
-                               where=_location(anchor), nofollow="nofollow" in [item.lower() for item in rel]))
+        data.links.append(_link_from_anchor(anchor, href, base))
     for tag in soup.find_all(attrs={"data-cfemail": True}):
         hexa = str(tag.get("data-cfemail") or "")
         if re.fullmatch(r"[0-9a-fA-F]{4,200}", hexa):
             data.cfemails.append(hexa)
 
-    # Tekst: dopiero po zebraniu sygnałów (usuwamy script/iframe itd.), bloki oddzielamy nowymi liniami,
-    # a elementy liniowe sklejamy — "<span>info</span>@<span>firma.pl</span>" musi zostać jednym adresem.
+
+def _collect_text(soup, data: PageData) -> None:
+    """Tekst: dopiero po zebraniu sygnałów (usuwamy script/iframe itd.), bloki oddzielamy nowymi liniami,
+    a elementy liniowe sklejamy — "<span>info</span>@<span>firma.pl</span>" musi zostać jednym adresem."""
     for tag in soup.find_all(_STRIP_TAGS):
         tag.decompose()
     for br in soup.find_all("br"):

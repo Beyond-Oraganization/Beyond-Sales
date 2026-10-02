@@ -206,16 +206,36 @@ class CompanyCrawler:
 
     def _visit(self, company: Company, item: dict) -> None:
         is_start = item["source"] == "start"
+        if self._skip_unfetched(company, item, is_start):
+            return
+        got = self.fetch.get(company, item["url"], "html", is_start)
+        self._raise_for_failed_page(got, is_start)
+        first_hop = got.hops[0][1] if got.hops else None
+        if got.kind in ("foreign", "robots_skip", "known", "bad"):
+            note = {"foreign": f"obca domena: {got.target}", "robots_skip": "przekierowanie na adres zabroniony w robots.txt",
+                    "known": f"→ {got.url}", "bad": got.message}[got.kind]
+            self._save(company, self.pipeline.plain(item, st.STRONA_PRZEKIEROWANIE, http_status=first_hop, bytes=0, error=note[:500]))
+            return
+        if got.hops:
+            self._save(company, self.pipeline.plain(item, st.STRONA_PRZEKIEROWANIE, http_status=first_hop, bytes=0, error=f"→ {got.url}"[:500]))
+        self._store_page(company, item, got, is_start)
+
+    def _skip_unfetched(self, company: Company, item: dict, is_start: bool) -> bool:
+        """Strony, których nie pobieramy (zabronione w robots.txt, za głęboko): zapisuje wpis i zwraca True."""
         if not company.require_rules().allowed(path_query(item["url"])):
             if is_start:
                 raise Finish(st.FIRMA_ZABLOKOWANA, "robots_disallow", "robots.txt zabrania strony głównej")
             self._save(company, self.pipeline.plain(item, st.STRONA_POMINIETO_ROBOTS, counts=False, error="robots.txt"))
-            return
+            return True
         if item["depth"] > self.rc.settings.depth:
             self._save(company, self.pipeline.plain(item, st.STRONA_POMINIETO_LIMIT, counts=False, error="głębokość"))
-            return
+            return True
+        return False
 
-        got = self.fetch.get(company, item["url"], "html", is_start)
+    @staticmethod
+    def _raise_for_failed_page(got: Got, is_start: bool) -> None:
+        """Zamienia nieudane pobranie w `Finish` (stop, limit czasu; dla strony głównej także przekierowania na obcą
+        domenę albo zabroniony adres). Pozostałe wyniki wracają do wywołującego."""
         if got.kind == "interrupted":
             raise Finish(st.FIRMA_W_KOLEJCE, "stop_uzytkownika")
         if got.kind == "limit_czasu":
@@ -229,27 +249,19 @@ class CompanyCrawler:
                 raise Finish(st.FIRMA_ZABLOKOWANA, "robots_disallow", "przekierowanie strony głównej na zabroniony adres")
             raise Finish(st.FIRMA_BLAD, "brak_strony_glownej", got.message)
 
-        first_hop = got.hops[0][1] if got.hops else None
-        if got.kind in ("foreign", "robots_skip", "known", "bad"):
-            note = {"foreign": f"obca domena: {got.target}", "robots_skip": "przekierowanie na adres zabroniony w robots.txt",
-                    "known": f"→ {got.url}", "bad": got.message}[got.kind]
-            self._save(company, self.pipeline.plain(item, st.STRONA_PRZEKIEROWANIE, http_status=first_hop, bytes=0, error=note[:500]))
-            return
-
+    def _store_page(self, company: Company, item: dict, got: Got, is_start: bool) -> None:
+        """Klasyfikuje pobraną stronę, zapisuje ją i dokłada nowe linki do kolejki firmy."""
         res = got.response
-        final_item = item
-        if got.hops:
-            self._save(company, self.pipeline.plain(item, st.STRONA_PRZEKIEROWANIE, http_status=first_hop, bytes=0, error=f"→ {got.url}"[:500]))
-            final_item = {**item}
-        rec = self.pipeline.classify(company, final_item, got.url, res)
-        if is_start and rec.status != st.STRONA_POBRANO and rec.status != st.STRONA_DUPLIKAT:
-            raise Finish(st.PRZYCZYNA_STATUS.get(self.pipeline.failure_reason(res), st.FIRMA_BLAD), self.pipeline.failure_reason(res),
+        rec = self.pipeline.classify(company, item, got.url, res)
+        if is_start and rec.status not in (st.STRONA_POBRANO, st.STRONA_DUPLIKAT):
+            reason = self.pipeline.failure_reason(res)
+            raise Finish(st.PRZYCZYNA_STATUS.get(reason, st.FIRMA_BLAD), reason,
                          rec.error or f"strona główna: {res.status or res.error}")
         self._save(company, rec)
         company.trap.record(got.url, rec.status == st.STRONA_POBRANO and len(rec.text or "") >= MIN_USEFUL_TEXT)
         for link in rec.links:
             company.push({"url": link.url, "url_hash": link.url_hash, "depth": link.depth, "priorytet": link.priority,
-                      "source": link.source})
+                          "source": link.source})
 
     def _save(self, company: Company, rec: PageRecord) -> int:
         page_id = self.rc.store.save_result(company.id, self.rc.run_id, rec)

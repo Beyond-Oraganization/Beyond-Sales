@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import os
+from collections import Counter
 
 from perno import settings as cfg
 from perno.services.seed import driverzy as de
@@ -47,6 +48,88 @@ DRIVERZY_COLUMNS = [
 ]
 
 
+def _dossier_file(dossiers: dict, row_number) -> str:
+    return os.path.basename(dossiers[row_number]["path"]) if row_number else ""
+
+
+def _customer_row(company: dict, display_name: str, suffix: str, row_number, dossiers: dict) -> dict:
+    """Firma, która już jest klientem: wiersz informacyjny, bez treści maila."""
+    return {
+        "row_number": row_number or "",
+        "company_display_name": display_name,
+        "name_suffix_raw": suffix,
+        "contact_person_guess": "",
+        "contact_person_confidence": "none",
+        "website": company["website"],
+        "email": "",
+        "email_source": "",
+        "tag": company["tag"],
+        "mode": "",
+        "subject": "", "obs": "", "pitch": "", "channel_summary": "",
+        "already_customer": "true",
+        "already_customer_note": company["note"],
+        "needs_manual_copy": "false",
+        "source_dossier_file": _dossier_file(dossiers, row_number),
+    }
+
+
+def _prospect_row(company: dict, display_name: str, suffix: str, row_number, dossiers: dict) -> dict:
+    """Firma z treścią w tablicy JS; brakujący e-mail uzupełniamy z karty firmy w dossier."""
+    contact_guess, contact_conf = ee.guess_contact_person(suffix)
+    email, email_source = company["email"], "js"
+    dossier_text = ee.read_dossier_text(dossiers[row_number]["path"]) if row_number else ""
+    if not email and dossier_text:
+        backfilled = ee.extract_karta_firmy_email(dossier_text)
+        if backfilled:
+            email, email_source = backfilled, "dossier"
+    if not email:
+        email_source = "none"
+    return {
+        "row_number": row_number or "",
+        "company_display_name": display_name,
+        "name_suffix_raw": suffix,
+        "contact_person_guess": contact_guess,
+        "contact_person_confidence": contact_conf,
+        "website": company["website"],
+        "email": email,
+        "email_source": email_source,
+        "tag": company["tag"],
+        "mode": company["mode"],
+        "subject": company["subject"],
+        "obs": company["obs"],
+        "pitch": company["pitch"],
+        "channel_summary": company["channel_summary"],
+        "already_customer": "false",
+        "already_customer_note": "",
+        "needs_manual_copy": "false",
+        "source_dossier_file": _dossier_file(dossiers, row_number),
+    }
+
+
+def _dossier_only_row(row_number: int, info: dict) -> dict:
+    """Dossier bez wpisu w tablicy JS (brak ręcznie napisanej treści): „wymaga uzupełnienia treści”."""
+    dossier_text = ee.read_dossier_text(info["path"])
+    display_name = ee.split_name(ee.extract_h1_name(dossier_text) or info["slug_norm"].title())[0]
+    email = ee.extract_karta_firmy_email(dossier_text)
+    return {
+        "row_number": row_number,
+        "company_display_name": display_name,
+        "name_suffix_raw": "",
+        "contact_person_guess": "",
+        "contact_person_confidence": "none",
+        "website": ee.extract_karta_firmy_website(dossier_text),
+        "email": email,
+        "email_source": "dossier" if email else "none",
+        "tag": "",
+        "mode": "Panstwo",
+        "subject": "", "obs": "", "pitch": "", "channel_summary": "",
+        "already_customer": "false",
+        "already_customer_note": "",
+        "needs_manual_copy": "true",
+        "source_dossier_file": os.path.basename(info["path"]),
+    }
+
+
 def build_eventy_rows() -> list[dict]:
     with open(EVENTY_HTML, encoding="utf-8") as handle:
         html_text = handle.read()
@@ -55,91 +138,16 @@ def build_eventy_rows() -> list[dict]:
 
     rows = []
     matched_dossier_rows = set()
-
-    for c in companies:
-        display_name, suffix = ee.split_name(c["name"])
-        row_number = ee.match_dossier(c["name"], dossiers)
+    for company in companies:
+        display_name, suffix = ee.split_name(company["name"])
+        row_number = ee.match_dossier(company["name"], dossiers)
         if row_number:
             matched_dossier_rows.add(row_number)
+        build = _customer_row if company["already_customer"] else _prospect_row
+        rows.append(build(company, display_name, suffix, row_number, dossiers))
 
-        if c["already_customer"]:
-            rows.append({
-                "row_number": row_number or "",
-                "company_display_name": display_name,
-                "name_suffix_raw": suffix,
-                "contact_person_guess": "",
-                "contact_person_confidence": "none",
-                "website": c["website"],
-                "email": "",
-                "email_source": "",
-                "tag": c["tag"],
-                "mode": "",
-                "subject": "", "obs": "", "pitch": "", "channel_summary": "",
-                "already_customer": "true",
-                "already_customer_note": c["note"],
-                "needs_manual_copy": "false",
-                "source_dossier_file": os.path.basename(dossiers[row_number]["path"]) if row_number else "",
-            })
-            continue
-
-        contact_guess, contact_conf = ee.guess_contact_person(suffix)
-        email, email_source = c["email"], "js"
-        dossier_text = ""
-        if row_number:
-            dossier_text = ee.read_dossier_text(dossiers[row_number]["path"])
-        if not email and dossier_text:
-            backfilled = ee.extract_karta_firmy_email(dossier_text)
-            if backfilled:
-                email, email_source = backfilled, "dossier"
-        if not email:
-            email_source = "none"
-
-        rows.append({
-            "row_number": row_number or "",
-            "company_display_name": display_name,
-            "name_suffix_raw": suffix,
-            "contact_person_guess": contact_guess,
-            "contact_person_confidence": contact_conf,
-            "website": c["website"],
-            "email": email,
-            "email_source": email_source,
-            "tag": c["tag"],
-            "mode": c["mode"],
-            "subject": c["subject"],
-            "obs": c["obs"],
-            "pitch": c["pitch"],
-            "channel_summary": c["channel_summary"],
-            "already_customer": "false",
-            "already_customer_note": "",
-            "needs_manual_copy": "false",
-            "source_dossier_file": os.path.basename(dossiers[row_number]["path"]) if row_number else "",
-        })
-
-    # Dossier istnieją, ale nie mają jeszcze wpisu w tablicy JS (brak ręcznie
-    # napisanej treści) — dodajemy je ze statusem "wymaga uzupełnienia treści".
-    for row_number, info in sorted(dossiers.items()):
-        if row_number in matched_dossier_rows:
-            continue
-        dossier_text = ee.read_dossier_text(info["path"])
-        display_name = ee.split_name(ee.extract_h1_name(dossier_text) or info["slug_norm"].title())[0]
-        rows.append({
-            "row_number": row_number,
-            "company_display_name": display_name,
-            "name_suffix_raw": "",
-            "contact_person_guess": "",
-            "contact_person_confidence": "none",
-            "website": ee.extract_karta_firmy_website(dossier_text),
-            "email": ee.extract_karta_firmy_email(dossier_text),
-            "email_source": "dossier" if ee.extract_karta_firmy_email(dossier_text) else "none",
-            "tag": "",
-            "mode": "Panstwo",
-            "subject": "", "obs": "", "pitch": "", "channel_summary": "",
-            "already_customer": "false",
-            "already_customer_note": "",
-            "needs_manual_copy": "true",
-            "source_dossier_file": os.path.basename(info["path"]),
-        })
-
+    rows.extend(_dossier_only_row(row_number, info) for row_number, info in sorted(dossiers.items())
+                if row_number not in matched_dossier_rows)
     rows.sort(key=lambda r: (r["row_number"] == "", r["row_number"]))
     return rows
 
@@ -183,7 +191,6 @@ def main() -> None:
         print(f"  Niepewna osoba kontaktowa (warto sprawdzić ręcznie): {len(low_conf)}")
         print(f"      -> {', '.join(r['company_display_name'] for r in low_conf)}")
 
-    from collections import Counter
     fit_counts = Counter(r["fit_confidence"] for r in driverzy_rows)
     print(f"\n=== Driverzy ICP3 ({DRIVERZY_OUT}) ===")
     print(f"  Razem wierszy: {len(driverzy_rows)}")
