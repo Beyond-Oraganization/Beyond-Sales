@@ -139,6 +139,13 @@ forbidden_modules = ["perno.services", "perno.web", "perno.cli"]
 ignore_imports = ["perno.db.__main__ -> perno.cli.dbcheck"]  # `python -m perno.db` to tylko skrót do polecenia z cli/
 
 [[tool.importlinter.contracts]]
+name = "SQL tylko w adapterach: usługi, WWW i CLI nie importują sqlalchemy"
+type = "forbidden"
+source_modules = ["perno.services", "perno.web", "perno.cli"]
+forbidden_modules = ["sqlalchemy"]
+allow_indirect_imports = true  # liczą się tylko bezpośrednie importy (adaptery oczywiście używają sqlalchemy)
+
+[[tool.importlinter.contracts]]
 name = "usługi nie zależą od WWW ani CLI"
 type = "forbidden"
 source_modules = ["perno.services"]

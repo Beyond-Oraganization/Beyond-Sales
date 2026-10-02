@@ -17,9 +17,7 @@ from datetime import datetime
 from typing import Optional
 from urllib.parse import urlsplit
 
-import sqlalchemy as sa
-
-from perno.db import Database, DbError, InvalidValue, format_value, from_api, maile
+from perno.db import Database, DbError, InvalidValue, format_value, from_api
 from perno.domain import countries
 from perno.domain import statuses as st
 from perno.scraper.urls import host_key
@@ -59,18 +57,12 @@ def backup_table(db: Database, directory: str, label: str, now: Optional[datetim
     while os.path.exists(path):  # dwie kopie w tej samej sekundzie nie mogą się nadpisać — pierwsza jest stanem sprzed zmian
         counter += 1
         path = os.path.join(directory, f"Maile_{stamp}_przed-{label}_{counter}.csv")
-    with db.engine.connect() as conn:
-        present = [column["name"] for column in sa.inspect(conn).get_columns(maile.name)]
-        # kolumny z typami z definicji tabeli (daty zapisują się tak samo na MySQL i sqlite); nieznane — jako tekst
-        selected = [maile.c[name] if name in maile.c else sa.column(name) for name in present]
-        result = conn.execute(sa.select(*selected).select_from(maile).order_by(maile.c.id))
-        names = list(result.keys())
-        tmp = path + ".tmp"
-        with open(tmp, "w", newline="", encoding="utf-8") as handle:
-            writer = csv.writer(handle)
-            writer.writerow(names)
-            for row in result:
-                writer.writerow([format_value(value) for value in row])
+    tmp = path + ".tmp"
+    with db.dump_table() as (names, rows), open(tmp, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(names)
+        for row in rows:
+            writer.writerow([format_value(value) for value in row])
     os.replace(tmp, path)
     return path
 
@@ -138,14 +130,13 @@ def import_firms(db: Database, rows: list, segment: str, *, dry_run: bool = Fals
     if segment not in st.SEGMENT_ORDER:
         raise FirmsError(f"Nieznany segment: {segment!r} (dozwolone: {', '.join(st.SEGMENT_ORDER)}).")
     result = ImportResult(segment=segment, dry_run=dry_run)
-    with db.engine.begin() as conn:
+    with db.transaction() as conn:
         existing: dict[str, str] = {}
-        for found in conn.execute(sa.select(maile.c.id, maile.c.website)):
-            key = domain_key(found.website)
+        for found in db.id_website_pairs(conn):
+            key = domain_key(found["website"])
             if key:
-                existing.setdefault(key, found.id)
-        in_segment = [r.id for r in conn.execute(sa.select(maile.c.id).where(maile.c.segment == segment))]
-        sequence = _next_sequence(in_segment, segment)
+                existing.setdefault(key, found["id"])
+        sequence = _next_sequence(db.segment_ids(conn, segment), segment)
 
         seen, prepared, problems = set(), [], []
         for row in rows:
@@ -229,32 +220,30 @@ def assign_profiles(db: Database, entries: list, *, overwrite: bool = False, dry
     result = AssignResult(dry_run=dry_run)
     stamp = (now or db.now())
     matched = set()
-    with db.engine.begin() as conn:
-        rows = conn.execute(sa.select(maile.c.id, maile.c.website, maile.c.country, maile.c.city, maile.c.address)).all()
-        for row in rows:
-            key = domain_key(row.website)
+    with db.transaction() as conn:
+        for row in db.profile_rows(conn):
+            key = domain_key(row["website"])
             entry = by_domain.get(key)
             if entry is None:
-                result.rows_without_entry.append(row.id)
+                result.rows_without_entry.append(row["id"])
                 continue
             matched.add(key)
             changes = {}
             for name in PROFILE_FIELDS:
                 proposed = entry.get(name) or None
-                current = getattr(row, name)
+                current = row[name]
                 if not proposed or current == proposed:
                     continue
                 if current and not overwrite:
-                    result.kept.append((row.id, name, current, proposed))
+                    result.kept.append((row["id"], name, current, proposed))
                     continue
                 changes[name] = proposed
             if changes:
-                result.updated.append((row.id, changes))
+                result.updated.append((row["id"], changes))
             else:
                 result.unchanged += 1
         if result.updated and not dry_run:
-            for row_id, changes in result.updated:
-                conn.execute(sa.update(maile).where(maile.c.id == row_id).values(**changes, updated_at=stamp))
+            db.update_rows(conn, result.updated, stamp)
     result.unmatched_domains = sorted(set(by_domain) - matched)
     return result
 

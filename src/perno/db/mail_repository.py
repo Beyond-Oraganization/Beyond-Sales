@@ -7,6 +7,7 @@ listę wysyłki) są w `perno.domain.mail_rules`; tu zostaje wyłącznie ich wyk
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Callable, Iterable, Iterator, Mapping, Optional
 
@@ -169,6 +170,28 @@ class MailRepository:
             for row in conn.execute(stmt).mappings():
                 found[row["id"]] = dict(row)
         return found
+
+    def id_website_pairs(self, conn) -> list:
+        """`[{id, website}]` wszystkich wierszy — do rozpoznawania firm po domenie przy imporcie."""
+        return [dict(r) for r in conn.execute(sa.select(maile.c.id, maile.c.website)).mappings()]
+
+    def segment_ids(self, conn, segment: str) -> list:
+        return [r.id for r in conn.execute(sa.select(maile.c.id).where(maile.c.segment == segment))]
+
+    def profile_rows(self, conn) -> list:
+        """`[{id, website, country, city, address}]` — dane o firmie do uzupełniania kraju, miasta i adresu."""
+        return [dict(r) for r in conn.execute(
+            sa.select(maile.c.id, maile.c.website, maile.c.country, maile.c.city, maile.c.address)).mappings()]
+
+    @contextmanager
+    def dump_table(self):
+        """`(nazwy kolumn, wiersze)` całej tabeli w kolejności id — także z kolumnami, których definicja w kodzie jeszcze
+        nie zna (baza sprzed uaktualnienia schematu). Kolumny mają typy z definicji tabeli, nieznane idą jako tekst."""
+        with self.engine.connect() as conn:
+            present = [column["name"] for column in sa.inspect(conn).get_columns(maile.name)]
+            selected = [maile.c[name] if name in maile.c else sa.column(name) for name in present]
+            result = conn.execute(sa.select(*selected).select_from(maile).order_by(maile.c.id))
+            yield list(result.keys()), result
 
     # ---- zapis --------------------------------------------------------
 
