@@ -11,7 +11,7 @@ import json
 import sys
 import traceback
 from dataclasses import dataclass, field
-from typing import BinaryIO, Callable, Mapping, Optional
+from typing import BinaryIO, Callable, Optional
 
 from lib import config as cfg
 from lib import db as dbmod
@@ -137,7 +137,7 @@ class App:
         except (dbmod.DbUnavailable, *dbmod.DB_ERRORS):
             traceback.print_exc(file=sys.stderr)
             resp = error_response(503, "Baza danych jest niedostępna. Sprawdź, czy MySQL działa (python3 -m lib.db --check).")
-        except Exception:
+        except Exception:  # noqa: BLE001 — granica HTTP: nieoczekiwany błąd to 500, szczegóły w terminalu serwera
             traceback.print_exc(file=sys.stderr)
             resp = error_response(500, "Wewnętrzny błąd serwera (szczegóły w terminalu, w którym działa server.py).")
         resp.headers = {**SECURITY_HEADERS, **resp.headers}

@@ -10,7 +10,6 @@ import sqlalchemy as sa
 
 from lib import bulk
 from lib import db as dbmod
-from lib import statuses as st
 from lib.db import InvalidValue
 from tests.fixtures import FakeClock, make_db, put, sample_row
 

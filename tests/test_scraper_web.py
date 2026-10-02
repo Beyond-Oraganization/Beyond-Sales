@@ -8,7 +8,6 @@ from unittest import mock
 
 import sqlalchemy as sa
 
-from lib import config as cfg
 from lib.pages import skaper
 from lib.scraper import statuses as st
 from lib.scraper.contacts import Contact
@@ -16,7 +15,7 @@ from lib.scraper.schema import firmy
 from lib.scraper.store import LinkRecord, PageRecord, Store
 from lib.scraper.urls import url_hash
 from tests.fixtures import put, sample_row
-from tests.test_web import HOSTS, SECRET, PORT, WebCase, write_config
+from tests.test_web import SECRET, WebCase, write_config
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

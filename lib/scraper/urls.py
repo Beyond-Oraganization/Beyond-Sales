@@ -107,7 +107,7 @@ def is_platform(host: str) -> bool:
 
 
 def url_hash(url: str) -> str:
-    return hashlib.sha1(url.encode("ascii")).hexdigest()
+    return hashlib.sha1(url.encode("ascii"), usedforsecurity=False).hexdigest()
 
 
 # ---- normalizacja ------------------------------------------------------

@@ -272,7 +272,7 @@ def build_export(db: dbmod.Database, spec: ExportSpec, now: Optional[datetime] =
     if spec.fmt not in CONTENT_TYPES:
         raise ExportError(f"Nieznany format: {spec.fmt!r}.")
     columns = resolve_columns(spec)
-    out = tempfile.TemporaryFile()
+    out = tempfile.TemporaryFile()  # noqa: SIM115 — plik zamykamy po wysłaniu odpowiedzi albo przy błędzie (niżej)
     try:
         rows = (_write_csv if spec.fmt == "csv" else _write_xlsx)(db, spec, columns, out)
         length = out.tell()

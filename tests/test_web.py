@@ -14,7 +14,7 @@ import sqlalchemy.exc as sa_exc
 import server
 from lib import app as appmod
 from lib import layout
-from lib.app import MAX_BODY, App, HttpError, Request, json_response
+from lib.app import MAX_BODY, App, Request, json_response
 from lib.pages import PAGES
 from lib.pages.base import Page
 from tests.fixtures import FakeSmtp, make_db, put, sample_row

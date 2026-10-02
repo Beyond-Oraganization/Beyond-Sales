@@ -3,8 +3,6 @@ from __future__ import annotations
 import csv
 import io
 import json
-import re
-import tempfile
 import tracemalloc
 import unittest
 from datetime import datetime

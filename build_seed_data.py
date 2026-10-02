@@ -49,7 +49,8 @@ DRIVERZY_COLUMNS = [
 
 
 def build_eventy_rows() -> list[dict]:
-    html_text = open(EVENTY_HTML, encoding="utf-8").read()
+    with open(EVENTY_HTML, encoding="utf-8") as handle:
+        html_text = handle.read()
     companies = ee.parse_js_companies(html_text)
     dossiers = ee.list_dossiers(EVENTY_DOSSIERS_DIR)
 
@@ -191,7 +192,7 @@ def main() -> None:
     print(f"  fit_confidence: high={fit_counts['high']}, medium={fit_counts['medium']}, low={fit_counts['low']}")
     low_fit = [r for r in driverzy_rows if r["fit_confidence"] == "low"]
     if low_fit:
-        print(f"  Niskie dopasowanie (już mają płatność online, przejrzyj przed wysyłką):")
+        print("  Niskie dopasowanie (już mają płatność online, przejrzyj przed wysyłką):")
         print(f"      -> {', '.join(r['company_display_name'] for r in low_fit)}")
 
 

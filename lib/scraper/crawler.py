@@ -33,8 +33,7 @@ from lib.scraper.politeness import GlobalGate, HostGate, IpLimiter, RealClock, d
 from lib.scraper.settings import (FRONTIER_MEMORY_CAP, HEARTBEAT_EVERY, MAX_DISCOVERED_PER_FIRM, MAX_REDIRECTS,
                                   ScanSettings)
 from lib.scraper.store import LeaseLost, LinkRecord, PageRecord, Store, compress_html
-from lib.scraper.urls import (TrapGuard, host_key, normalize_url, page_class, priority, site_key, static_reject,
-                              url_hash)
+from lib.scraper.urls import (TrapGuard, host_key, normalize_url, page_class, priority, site_key, url_hash)
 
 ROBOTS_TTL = timedelta(hours=24)
 REDIRECT_CODES = (301, 302, 303, 307, 308)
@@ -597,7 +596,7 @@ class Crawler:
             return self._plain(item, st.STRONA_BLAD, url, bytes=len(res.body), error=f"parsowanie: {data.error}",
                                encoding=encoding, **base)
         basis = data.text if len(data.text) >= SHORT_TEXT_FOR_HASH else html_text
-        digest = hashlib.sha1(basis.encode("utf-8", "ignore")).hexdigest()
+        digest = hashlib.sha1(basis.encode("utf-8", "ignore"), usedforsecurity=False).hexdigest()
         common = dict(bytes=len(res.body), encoding=encoding, title=data.title or None,
                       description=data.description or None, content_hash=digest, **base)
         if digest in ctx.content:

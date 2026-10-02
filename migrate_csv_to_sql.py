@@ -198,7 +198,7 @@ def cmd_migrate(args) -> int:
     existing = db.count_rows()
     if existing:
         raise MigrationError(
-            f"Tabela maile nie jest pusta ({existing} wierszy) — odmawiam nadpisania historii.\n"
+            f"Tabela maile nie jest pusta ({existing} wierszy) — odmawiam nadpisania historii.\n"  # noqa: S608 — komunikat, nie SQL
             "Jeśli to świadomy powrót do stanu z CSV, opróżnij ją ręcznie w kliencie MySQL:\n"
             "    DELETE FROM maile;")
 

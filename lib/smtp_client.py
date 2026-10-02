@@ -28,7 +28,7 @@ class SmtpClient:
         if self._conn is not None:
             try:
                 self._conn.quit()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110 — błąd zamykania połączenia nie może przesłonić wyniku wysyłki
                 pass
 
     def send(self, message: EmailMessage) -> None:

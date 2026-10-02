@@ -27,7 +27,7 @@ import sys
 import sqlalchemy as sa
 
 from lib import config as cfg
-from lib import dashboard, firms, forms, localize, templating
+from lib import dashboard, firms, localize, templating
 from lib import statuses as st
 from lib.config import load_config
 from lib.db import Database, maile, DbError
@@ -132,7 +132,7 @@ def build_updates(db: Database, entries: list, sender_name: str, include_pending
     for entry in entries:
         rid = entry.get("id", "?")
         def fail(msg):
-            errors.append(f"{rid}: {msg}")
+            errors.append(f"{rid}: {msg}")  # noqa: B023 — wywoływane w tej samej iteracji, rid nie zdąży się zmienić
         missing = [k for k in REQUIRED if not str(entry.get(k) or "").strip()]
         if missing:
             fail("brak pól: " + ", ".join(missing)); continue

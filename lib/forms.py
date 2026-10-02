@@ -21,7 +21,7 @@ FORMS = {
     },
 }
 
-SIGNATURE_TOKEN = "[Imię i nazwisko]"
+SIGNATURE_TOKEN = "[Imię i nazwisko]"  # noqa: S105 — tekst zastępczy podpisu w szablonie, nie hasło
 
 
 def conjugate(mode: str) -> dict:

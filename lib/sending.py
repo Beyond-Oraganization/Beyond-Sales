@@ -79,7 +79,7 @@ def send_row(
     except KeyboardInterrupt:
         db.mark_error(row_id, "Przerwano (Ctrl+C) — sprawdź folder Wysłane, zanim ponowisz.")
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — każdy błąd budowy/wysyłki wiadomości zapisujemy jako status „Błąd” z komunikatem
         reason = str(exc) or type(exc).__name__
         return SendResult("error", db.mark_error(row_id, reason), reason)
 

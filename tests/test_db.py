@@ -6,7 +6,6 @@ import os
 import tempfile
 import threading
 import unittest
-from datetime import timedelta
 
 from sqlalchemy.dialects import mysql
 from sqlalchemy.schema import CreateIndex, CreateTable

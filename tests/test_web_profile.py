@@ -8,7 +8,6 @@ import re
 import tempfile
 
 from lib import dashboard
-from lib import statuses as st
 from tests.fixtures import put, sample_row
 from tests.test_web import WebCase
 

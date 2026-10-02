@@ -18,7 +18,7 @@ from lib import db as dbmod
 from lib import firms
 from lib import statuses as st
 from lib.firms import FirmsError, assign_profiles, domain_key, import_firms, profile_report, read_import_csv, read_profile_csv
-from tests.fixtures import FakeClock, make_db, old_database, put, sample_row
+from tests.fixtures import make_db, old_database, put, sample_row
 
 
 def write_csv(path: str, header: list, rows: list, bom: bool = False) -> str:

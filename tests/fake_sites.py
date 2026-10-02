@@ -14,7 +14,7 @@ import unittest
 import zlib
 from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Callable, Optional
+from typing import Optional
 from unittest import mock
 
 LOCAL_HOSTS = ("127.0.0.1", "::1", "localhost")

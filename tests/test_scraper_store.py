@@ -57,7 +57,7 @@ class StoreCase(unittest.TestCase):
     def firma(self, firma_id: int) -> dict:
         return self.store.get_firma(firma_id)
 
-    def claimed(self, firma_id: int = None, run_id: int = None):
+    def claimed(self, firma_id: int | None = None, run_id: int | None = None):
         """Zajmij firmę w nowym przebiegu; zwraca (firma, run_id)."""
         run_id = run_id or self.store.start_run({})
         self.store.enqueue([firma_id] if firma_id else None)

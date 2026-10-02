@@ -10,7 +10,6 @@ from sqlalchemy.dialects import mysql, sqlite
 
 from lib import db as dbmod
 from lib import legacy_csv
-from lib import statuses as st
 from lib.db import InvalidValue, add_column_statements, from_api
 from tests.fixtures import make_db, old_database, put, sample_row
 

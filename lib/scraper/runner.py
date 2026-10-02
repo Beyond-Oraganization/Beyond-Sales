@@ -44,7 +44,7 @@ class RunLogger:
         self.path = path
         self.echo = echo
         self._lock = threading.Lock()
-        self._file = open(path, "a", encoding="utf-8", buffering=1) if path else None
+        self._file = open(path, "a", encoding="utf-8", buffering=1) if path else None  # noqa: SIM115 — zamykany w close()
 
     def __call__(self, message: str) -> None:
         line = f"{datetime.now():%H:%M:%S} {message}"
@@ -114,7 +114,7 @@ def execute_run(store: Store, settings: ScanSettings, run_id: int, *, only_ids: 
     crawler = crawler_factory(store, settings, run_id, log=log, only_ids=only_ids, stop_event=stop_event, **crawler_kwargs)
     try:
         result = crawler.run()
-    except BaseException as exc:  # noqa: BLE001 — przebieg musi zostać zamknięty nawet po wyjątku
+    except BaseException as exc:  # przebieg musi zostać zamknięty nawet po wyjątku (poniżej wyjątek jest rzucany dalej)
         log(f"BŁĄD KRYTYCZNY: {type(exc).__name__}: {exc}")
         _finish(store, run_id, st.RUN_BLAD, {"blad": f"{type(exc).__name__}: {exc}"}, log)
         raise
@@ -140,7 +140,7 @@ def spawn_detached(run_id: int, config_path: str) -> tuple:
     argv = [sys.executable, "-u", os.path.join(cfg.BASE_DIR, "scrape.py"), "--config", config_path,
             "run", "--run-id", str(int(run_id))]
     with open(path, "ab") as logfile:
-        proc = subprocess.Popen(argv, cwd=cfg.BASE_DIR, stdin=subprocess.DEVNULL, stdout=logfile, stderr=subprocess.STDOUT,
+        proc = subprocess.Popen(argv, cwd=cfg.BASE_DIR, stdin=subprocess.DEVNULL, stdout=logfile, stderr=subprocess.STDOUT,  # noqa: S603 — argv to lista zaufanych wartości, bez powłoki
                                 start_new_session=True, close_fds=True)
     threading.Thread(target=proc.wait, name=f"reap-{proc.pid}", daemon=True).start()  # bez zombie
     return proc.pid, path

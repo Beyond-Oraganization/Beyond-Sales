@@ -18,9 +18,9 @@ Polecenia: seed | dodaj URL | run | status | stop | purge. Ustawienia domyślne:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import threading
+from typing import Optional
 
 from lib import config as cfg
 from lib.config import ConfigError, load_config
@@ -76,7 +76,7 @@ def open_store(args) -> tuple:
     return config, store
 
 
-def settings_from(args, config: dict, stored: dict = None) -> ScanSettings:
+def settings_from(args, config: dict, stored: Optional[dict] = None) -> ScanSettings:
     params = dict(stored or {})
     for name, *_ in SETTING_FLAGS:
         value = getattr(args, name, None)
