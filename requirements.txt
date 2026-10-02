@@ -1,5 +1,7 @@
+# Zależności uruchomieniowe (źródłem prawdy jest pyproject.toml; ten plik zostaje dla instalacji bez uv).
 SQLAlchemy>=2.0,<2.1
 PyMySQL[rsa]>=1.1,<2
-openpyxl>=3.1
-Pillow>=10
+openpyxl>=3.1,<4
+Pillow>=10,<13
 beautifulsoup4>=4.12,<5
+lxml>=5,<7  # szybszy parser HTML, używany od fazy 4.4 planu przebudowy

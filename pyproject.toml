@@ -1,0 +1,117 @@
+[project]
+name = "perno"
+version = "0.1.0"
+description = "Wysyłka maili B2B, skraper stron firm i panel w przeglądarce"
+requires-python = ">=3.12"
+dependencies = [
+    "SQLAlchemy>=2.0,<2.1",
+    "PyMySQL[rsa]>=1.1,<2",
+    "openpyxl>=3.1,<4",
+    "Pillow>=10,<13",
+    "beautifulsoup4>=4.12,<5",
+    "lxml>=5,<7",  # szybszy parser HTML, używany od fazy 4.4 planu przebudowy
+]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest>=8",
+    "pytest-cov",
+    "pytest-xdist",
+    "import-linter",
+    "pip-audit",
+    "pytest-timeout>=2.4.0",
+]
+
+[tool.uv]
+# Faza 0: tylko środowisko z zależnościami. Faza 1 przechodzi na układ src/perno (package = true).
+package = false
+
+# ---------------------------------------------------------------------------------------------
+# Linter. Reguły łapiące błędy (F, B, BLE, S, C90, PLR) są egzekwowane od razu; reguły stylu,
+# których naruszenia już istnieją, są wyłączone poniżej wraz z liczbą wystąpień w chwili
+# wprowadzenia (faza 0) i wracają stopniowo w fazach 1-3 (każda jako osobny commit).
+# ---------------------------------------------------------------------------------------------
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["backup", "logs", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "BLE", "S", "C90", "PLR0912", "PLR0913", "PLR0915", "T20", "RUF"]
+ignore = [
+    "E501",    # 255x przy 120; brak formatera, długie komentarze po polsku — nie egzekwujemy
+    "I001",    # 10x; import-y przepisuje faza 1, wtedy włączamy i uruchamiamy `ruff --fix`
+    "UP035", "UP037", "UP045", "UP017", "UP041", "UP012",  # ~175x; modernizacja typów (Optional[X] -> X | None) po fazie 1
+    "S311",    # random służy do jittera i opóźnień, nie do kryptografii
+    "RUF001", "RUF002", "RUF003",  # polskie cudzysłowy typograficzne w tekstach i docstringach
+    "RUF005", "RUF059", "RUF007", "RUF021", "B007", "B905", "E702", "E731",  # styl, ~50x; przegląd w fazie 3
+    "SIM102", "SIM105", "SIM109", "SIM113", "SIM117", "SIM905",             # styl, ~12x; przegląd w fazie 3
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Skrypty CLI drukują wynik dla człowieka; biblioteka przechodzi na logging w fazie 3.4.
+"server.py" = ["T201"]
+"send_emails.py" = ["T201"]
+"scrape.py" = ["T201"]
+"firmy.py" = ["T201"]
+"wypelnij.py" = ["T201"]
+"migrate_csv_to_sql.py" = ["T201"]
+"build_seed_data.py" = ["T201"]
+"lib/db.py" = ["T201", "B008"]            # `python -m lib.db --check`; RowFilter to niezmienna dataclass
+"lib/sending.py" = ["T201"]               # ostrzeżenie o wysłanym mailu bez zapisu statusu (faza 3.4)
+"lib/app.py" = ["T201"]                   # komunikat przy błędzie odświeżenia index.html (faza 2.7)
+"lib/scraper/runner.py" = ["T201"]        # RunLogger drukuje linie logu (faza 4.11)
+"lib/exporter.py" = ["RUF009"]            # RowFilter() jako domyślna wartość pola: niezmienna dataclass
+"tests/**" = ["S104", "S105", "S106", "S107", "S603", "RUF012", "PLR0912", "PLR0913", "PLR0915", "C901"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 26    # ratchet: 26 -> 15 -> 10 (faza 2.6); dziś największa funkcja (Fetcher._read_body) ma 26
+
+[tool.ruff.lint.pylint]
+max-args = 14          # ratchet: 14 -> 8 -> 6 (faza 2.5/2.6); dziś największy konstruktor ma 14
+max-branches = 30      # ratchet: 30 -> 15 -> 12
+max-statements = 70    # ratchet: 70 -> 60 -> 50
+
+# ---------------------------------------------------------------------------------------------
+# Typy. Moduły bez błędów są sprawdzane w całości od razu; moduły z istniejącymi błędami (baza z fazy 0:
+# 118 błędów w 20 modułach) mają `ignore_errors` i wracają do kontroli po refaktoryzacji (fazy 2-3).
+# Wiele błędów ma jedną przyczynę: `Optional` bez zawężenia w crawler.py, brak atrybutów `bulk_log` i
+# `skraper_store` na App (znikają w fazie 2.1), `**_OPTS` w schema.py (typ słownika).
+# ---------------------------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+files = ["lib", "server.py", "send_emails.py", "scrape.py", "firmy.py", "wypelnij.py",
+         "migrate_csv_to_sql.py", "build_seed_data.py"]
+ignore_missing_imports = true
+follow_imports = "silent"
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = [
+    "lib.scraper.schema",       # 36
+    "lib.scraper.crawler",      # 21
+    "lib.db",                   # 18
+    "lib.scraper.store",        # 8
+    "lib.smtp_client",          # 5
+    "lib.scraper.robots",       # 5
+    "lib.scraper.fetcher",      # 5
+    "lib.image_prep",           # 4
+    "lib.mime_builder",         # 3
+    "lib.scraper.urls",         # 2
+    "lib.pages.skaper",         # 2
+    "lib.pages.wysylka", "lib.sending", "lib.firms", "lib.config", "lib.bulk",
+    "lib.scraper.settings", "lib.scraper.politeness", "lib.scraper.contacts",
+    "server",                   # 1
+]
+ignore_errors = true
+
+# Testy to `unittest.TestCase`; działają też przez `python -m unittest discover -s tests -t .` (README).
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "slow: wolne testy (prawdziwe odliczanie czasu, podprocesy); szybka warstwa: pytest -m 'not slow'",
+]

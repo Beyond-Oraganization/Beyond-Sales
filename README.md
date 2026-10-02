@@ -21,6 +21,16 @@ cd Wysylka
 python3 -m pip install --user -r requirements.txt
 ```
 
+**Środowisko deweloperskie (zalecane): Python 3.13 + narzędzia jakości.** Systemowy Python 3.9 jest po końcu wsparcia, a jego
+LibreSSL nie obsługuje TLS 1.3 (skraper kończył takie strony błędem TLS). Projekt ma więc własne środowisko zarządzane przez
+[uv](https://docs.astral.sh/uv/) (`brew install uv`):
+
+```bash
+uv sync                      # tworzy .venv z Pythonem 3.13 i zależnościami (pyproject.toml, uv.lock)
+.venv/bin/python server.py   # panel z tego środowiska; to samo dotyczy pozostałych skryptów
+scripts/check.sh             # ruff + mypy + testy (po zmianach w kodzie); --fast pomija wolne testy
+```
+
 ## 2. Baza danych (raz)
 
 W kliencie MySQL jako administrator (`mysql -u root -p` — wpisz polecenia interaktywnie, nie przez `-e`,
