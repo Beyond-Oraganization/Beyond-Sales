@@ -14,7 +14,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Iterable, Optional
 from urllib.parse import urlsplit
 
 from perno.db import Database, DbError, InvalidValue, format_value, from_api
@@ -31,7 +31,7 @@ class FirmsError(DbError):
     pass
 
 
-def domain_key(url) -> Optional[str]:
+def domain_key(url: object) -> Optional[str]:
     """Domena firmy: małe litery, bez `www.` i portu; None, gdy z adresu nie da się jej wyciągnąć."""
     text = str(url or "").strip()
     if not text:
@@ -118,7 +118,7 @@ def read_import_csv(path: str) -> list:
     return rows
 
 
-def _next_sequence(ids, segment: str) -> int:
+def _next_sequence(ids: Iterable[str], segment: str) -> int:
     pattern = re.compile(rf"^{re.escape(segment)}-n(\d+)$")
     numbers = [int(m.group(1)) for m in (pattern.match(i) for i in ids) if m]
     return max(numbers, default=0) + 1

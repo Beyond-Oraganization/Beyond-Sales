@@ -5,9 +5,10 @@ from __future__ import annotations
 import csv
 import os
 from datetime import datetime
+from typing import Sequence
 
 from perno import settings as cfg
-from perno.db import EmptyDatabase
+from perno.db import Database, EmptyDatabase
 from perno.domain import forms, templating
 from perno.domain import statuses as st
 from perno.mailer import mime_builder
@@ -88,7 +89,7 @@ SEGMENTS = {
 }
 
 
-def refresh_segments(db, segments, sender_name: str, regenerate_pending: bool = False,
+def refresh_segments(db: Database, segments: Sequence[str], sender_name: str, regenerate_pending: bool = False,
                      allow_empty: bool = False) -> dict:
     """Generuje brakujące wiersze dla segmentów i zapisuje je w bazie.
 

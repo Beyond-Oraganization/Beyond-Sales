@@ -113,7 +113,7 @@ def _build_lookup() -> dict:
 _LOOKUP = _build_lookup()
 
 
-def normalize_country(value) -> Optional[str]:
+def normalize_country(value: object) -> Optional[str]:
     """Kod ISO z nazwy lub kodu ("Polska", "poland", "UK", "de"…). Nieznane lub puste → None."""
     if value is None:
         return None
@@ -125,12 +125,12 @@ def normalize_country(value) -> Optional[str]:
     return _LOOKUP.get(_fold(text))
 
 
-def country_name(code) -> str:
+def country_name(code: Optional[str]) -> str:
     """Nazwa po polsku dla kodu; pusta, gdy kod jest pusty lub nieznany."""
     return COUNTRY_NAMES.get(str(code or "").strip().upper(), "")
 
 
-def flag(code) -> str:
+def flag(code: Optional[str]) -> str:
     """Flaga jako emoji (dwa wskaźniki regionalne); pusta dla nieznanego kodu."""
     code = str(code or "").strip().upper()
     if code not in COUNTRY_NAMES:

@@ -92,7 +92,7 @@ def _read_template(segment: str, language: str) -> str:
         return handle.read()
 
 
-def _plan_entry(entry: Mapping, row: Mapping, scraped: set, sender_name: str):
+def _plan_entry(entry: Mapping, row: Mapping, scraped: set, sender_name: str) -> PlannedUpdate | str:
     """`PlannedUpdate` albo komunikat błędu (tekst po „id: ”) dla jednego wpisu z pliku."""
     language = localize.language_for(row["country"])
     if language is None:

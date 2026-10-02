@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Optional
+
 STATUS_PENDING = "do_wyslania"
 STATUS_SENDING = "wysylanie"
 STATUS_SENT = "wyslano"
@@ -48,7 +51,7 @@ PROTECTED_FROM_REGENERATION = (STATUS_SENT, STATUS_SENDING, STATUS_REPLIED, STAT
 SEGMENT_ORDER = ("eventy", "driverzy")
 
 
-def resolve_sent_at(new_status, current_sent_at, now):
+def resolve_sent_at(new_status: str, current_sent_at: Optional[datetime], now: datetime) -> Optional[datetime]:
     """Data wysłania po ręcznej zmianie statusu — jedna reguła dla edycji pojedynczej i zbiorczej.
 
     „Wysłano" zachowuje istniejącą datę, a gdy jej brak, ustawia `now`. Pozostałe statusy z `KEEPS_SENT_AT`

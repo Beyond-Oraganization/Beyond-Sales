@@ -35,7 +35,7 @@ def prepare_inline_image(
             "Pillow nie jest zainstalowane. Zainstaluj: pip3 install pillow"
         ) from exc
 
-    img = Image.open(src_path)
+    img: Image.Image = Image.open(src_path)
     if img.mode not in ("RGB", "L"):
         background = Image.new("RGB", img.size, "white")
         mask = img.split()[-1] if img.mode == "RGBA" else None
@@ -44,10 +44,10 @@ def prepare_inline_image(
 
     if img.width > max_width:
         new_height = round(img.height * max_width / img.width)
-        img = img.resize((max_width, new_height), Image.LANCZOS)
+        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
 
     buf = io.BytesIO()
-    img.convert("P", palette=Image.ADAPTIVE, colors=256).save(buf, format="PNG", optimize=True)
+    img.convert("P", palette=Image.Palette.ADAPTIVE, colors=256).save(buf, format="PNG", optimize=True)
     data, subtype = buf.getvalue(), "png"
 
     if len(data) > max_bytes:

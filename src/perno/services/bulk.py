@@ -14,7 +14,7 @@ from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Mapping, Optional
+from typing import Any, Iterator, Mapping, Optional
 
 from perno.db import Database, DbError, InvalidValue, RowNotFound, from_api
 from perno.domain import countries, mail_rules
@@ -176,7 +176,8 @@ def analyze(found: Mapping, request: BulkRequest, now: datetime) -> Plan:
             plan.skipped.append((row_id, "not_ready"))
             continue
 
-        before, after = {}, {}
+        before: dict[str, Any] = {}
+        after: dict[str, Any] = {}
         if request.status is not None and request.status != row["status"]:
             sent_at = st.resolve_sent_at(request.status, row["sent_at"], now)
             before["status"], after["status"] = row["status"], request.status
@@ -255,7 +256,7 @@ class UndoLog:
                      "count": len(item.changes)} for item in reversed(self._items)]
 
     @contextmanager
-    def exclusive_undo(self):
+    def exclusive_undo(self) -> Iterator[None]:
         """Cofanie jednej operacji naraz — dwa równoległe kliknięcia nie cofną tego samego dwa razy."""
         with self._undo_lock:
             yield
