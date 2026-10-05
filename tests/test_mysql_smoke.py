@@ -77,6 +77,17 @@ class MysqlSmokeTests(unittest.TestCase):
         self.assertEqual(self.info["backend"], "mysql")
         self.assertIn("STRICT", self.info["sql_mode"])
 
+    def test_search_collation_is_checked_and_a_binary_collation_is_reported(self):
+        self.assertEqual(self.database.check_connection()["search_warning"], "")
+        with self.database.engine.begin() as conn:
+            conn.execute(sa.text("ALTER TABLE maile MODIFY company VARCHAR(255) COLLATE utf8mb4_bin"))
+        warning = self.database.check_connection()["search_warning"]
+        self.assertIn("company (utf8mb4_bin)", warning)
+        self.assertIn("CONVERT TO CHARACTER SET", warning)
+        with self.database.engine.begin() as conn:
+            conn.execute(sa.text("ALTER TABLE maile MODIFY company VARCHAR(255) COLLATE utf8mb4_0900_ai_ci"))
+        self.assertEqual(self.database.check_connection()["search_warning"], "")
+
     def test_utf8mb4_and_long_bodies_roundtrip(self):
         body = "Zażółć gęślą jaźń 🔗 — " * 5000
         self.put(sample_row(1, company="Łódź 🚀", body_html=body, body_text=body))

@@ -94,6 +94,8 @@ def build_app(config_path: str) -> App:
     recovered = db.recover_stale_claims()
     if recovered:
         print(f"UWAGA: zawieszone wysyłki oznaczono jako błąd (sprawdź folder Wysłane): {', '.join(recovered)}")
+    if info["search_warning"]:
+        print(f"UWAGA: {info['search_warning']}")
     if info["row_count"] == 0:
         print("UWAGA: baza jest pusta. Jeśli masz historię w Maile.csv, uruchom najpierw migrate_csv_to_sql.py — "
               "„Odśwież dane” w panelu odmówi generowania do pustej bazy.")

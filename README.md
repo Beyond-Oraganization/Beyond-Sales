@@ -20,13 +20,15 @@ index.html           wynik dashboard.py; nie jest odświeżany po każdej zmiani
 
 Układ kodu (`src/perno/`); zależności idą tylko „w dół", pilnuje tego `lint-imports` w `scripts/check.sh`:
 
-- `domain/` — czysta logika bez bazy i sieci: statusy, reguły wierszy (`mail_rules`), filtr (`rowfilter`), kraje, szablony;
-- `db/` — tabela `maile`: schemat, kodek JSON, migracje (tylko dodawanie kolumn), repozytorium i fasada `Database`;
+- `domain/` — czysta logika bez bazy i sieci: statusy, reguły wierszy (`mail_rules`), filtr (`rowfilter`), wyszukiwarka
+  i polska kolejność (`search`), stan listy z panelu (`listing`), kraje, szablony;
+- `db/` — tabela `maile`: schemat, kodek JSON, migracje (tylko dodawanie kolumn), repozytorium i fasada `Database`
+  oraz zapytania listy w panelu (`listing_sql`: wyszukiwanie i sortowanie, `listing_queries`: strona, liczniki, id widoku);
 - `mailer/` — SMTP i MIME;
 - `scraper/` — skraper: `store/` (magazyn podzielony na role), `crawler` (fasada) z `scheduler`, `company_crawl`,
   `page_fetch`, `page_pipeline`, a także `fetcher`, `politeness`, `extract`, `contacts`, `urls`, `runner`;
 - `services/` — reguły biznesowe wspólne dla panelu i terminala: wysyłka, generowanie i uzupełnianie treści,
-  zmiany zbiorcze, eksport, import firm, sterowanie skanowaniem, podgląd statyczny;
+  lista firm w panelu (`listing`), zmiany zbiorcze, eksport, import firm, sterowanie skanowaniem, podgląd statyczny;
 - `web/` — serwer: `app` (routing i zabezpieczenia), `context` (zależności stron), `errors` (wyjątki → kody HTTP),
   `pages/` (strony panelu i ich pliki JS/CSS);
 - `cli/` — punkty wejścia (argumenty i wypisywanie wyniku); `settings.py` — jedyny odczyt `config.env` i zmiennych środowiska.
@@ -145,6 +147,9 @@ różnice są dwie: **liczby w tekście sortują się znak po znaku** („Firma 
 oraz wyszukiwarka na MySQL nie znajdzie pojedynczej litery ukrytej wewnątrz rzadkiego znaku (np. samo „e” w „Æ”, bo baza
 trzyma `æ`, `œ`, `ß` i `þ` jako osobne litery; frazy „ae”, „oe”, „ss” i „th” działają). Losowy test porównawczy z dawną listą
 w przeglądarce (3200 stanów filtrów na wierszach z `ß æ œ ø ł ü` i polskimi znakami) zgadzał się w 100% na sqlite i w 99,9% na MySQL.
+
+Wyszukiwanie bez ogonków i wielkości liter opiera się na kolacji kolumn MySQL (`utf8mb4_0900_ai_ci`, tak jak tworzy je program);
+gdyby tabela miała inną, `python3 -m perno.db --check` i start panelu ostrzegają, a polecenie naprawcze podaje komunikat.
 
 - **Szybkie widoki z licznikami**: Wszystkie, Gotowe do wysłania, Błędy, Bez e-maila, Mają e-mail bez treści, Wysłane
   dziś, Wysłane do firm spoza PL, Odpowiedzi, Nie kontaktować, Zaimportowane, Bez kraju, Bez miasta.

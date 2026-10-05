@@ -106,6 +106,20 @@ class DbCheckTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Schemat jest aktualny", out)
 
+    def test_a_search_collation_warning_is_printed_when_the_database_reports_one(self):
+        self.run_cli("--init")
+        real = dbmod.Database.check_connection
+
+        def with_warning(database):
+            return {**real(database), "search_warning": "kolumny maile mają złą kolację"}
+
+        with mock.patch.object(dbmod.Database, "check_connection", with_warning):
+            code, out, _ = self.run_cli("--check")
+        self.assertEqual(code, 0)
+        self.assertIn("UWAGA: kolumny maile mają złą kolację", out)
+        _, quiet, _ = self.run_cli("--check")
+        self.assertNotIn("kolację", quiet)  # sqlite nie ma tej kolacji do sprawdzenia
+
     def test_a_configuration_problem_is_a_message_not_a_traceback(self):
         with mock.patch.dict(os.environ, {cfg.ENV_DB_URL: ""}):
             code, _, err = self.run_cli("--check")
@@ -143,6 +157,14 @@ class BuildAppTests(unittest.TestCase):
         app, out = self.build()
         self.assertIn("baza jest pusta", out)
         self.assertEqual([page.key for page in app.ctx.pages], ["wysylka", "eksport", "skaper"])
+
+    def test_the_search_collation_warning_is_shown_at_start(self):
+        put(self.database, sample_row(1))
+        real = dbmod.Database.check_connection
+        with mock.patch.object(dbmod.Database, "check_connection",
+                               lambda database: {**real(database), "search_warning": "zła kolacja kolumn"}):
+            _, out = self.build()
+        self.assertIn("UWAGA: zła kolacja kolumn", out)
 
     def test_a_populated_database_starts_silently(self):
         put(self.database, sample_row(1))

@@ -48,6 +48,8 @@ def main(argv: Optional[list] = None) -> int:
     print(f"sql_mode: {info['sql_mode']}")
     if info["backend"] == "mysql" and "STRICT" not in (info["sql_mode"] or ""):
         print("UWAGA: tryb SQL nie jest ścisły (brak STRICT_TRANS_TABLES) — zbyt długie dane mogą być cicho ucinane.")
+    if info["search_warning"]:
+        print(f"UWAGA: {info['search_warning']}")
     print(f"Tabela maile: {'jest, wierszy: ' + str(info['row_count']) if info['table_exists'] else 'jeszcze nie istnieje'}")
     return 0
 

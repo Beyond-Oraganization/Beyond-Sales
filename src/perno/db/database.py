@@ -16,6 +16,24 @@ from perno.db.mail_repository import MailRepository
 from perno.db.schema import maile
 from perno.settings import Environment
 
+# Kolumny, po których szuka wyszukiwarka w panelu (`db.listing_sql.haystack`).
+SEARCH_COLUMNS = ("id", "company", "contact_person", "email", "website", "country", "city", "address", "description")
+
+
+def search_collation_warning(conn) -> str:
+    """Wyszukiwarka w panelu pomija wielkość liter i znaki diakrytyczne dzięki kolacji kolumn MySQL (`*_ai_ci`): z inną
+    kolacją „lodz” przestaje znajdować „Łódź”. Dane są nietknięte, ale warto o tym wiedzieć; pusty tekst = wszystko w porządku."""
+    rows = conn.execute(sa.text(
+        "SELECT COLUMN_NAME, COLLATION_NAME FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'maile' AND COLLATION_NAME IS NOT NULL")).all()
+    wrong = sorted(f"{name} ({collation})" for name, collation in rows
+                   if name in SEARCH_COLUMNS and "_ai_ci" not in collation.lower())
+    if not wrong:
+        return ""
+    return ("kolumny tabeli maile mają kolację bez „_ai_ci”, więc wyszukiwarka w panelu nie pominie ogonków ani wielkości liter: "
+            + ", ".join(wrong) + ". Naprawa (po kopii zapasowej): ALTER TABLE maile CONVERT TO CHARACTER SET utf8mb4 "
+            "COLLATE utf8mb4_0900_ai_ci;")
+
 
 class Database(MailRepository):
     def __init__(self, engine: Engine, clock: Optional[Callable[[], datetime]] = None):
@@ -80,6 +98,8 @@ class Database(MailRepository):
                     conn.execute(sa.select(sa.func.count()).select_from(maile)).scalar()
                     if info["table_exists"] else None
                 )
+                info["search_warning"] = (
+                    search_collation_warning(conn) if self.backend == "mysql" and info["table_exists"] else "")
                 return info
         except DB_ERRORS as exc:
             reason = str(getattr(exc, "orig", exc))[:300]
