@@ -20,9 +20,9 @@ from perno.db import Database, DbError, InvalidValue, RowNotFound, from_api
 from perno.domain import countries, mail_rules
 from perno.domain import statuses as st
 
-MAX_BULK_IDS = 20_000  # zapis 20 tys. firm trwa ok. 2 s na MySQL (zmiany grupowane po `ID_CHUNK`), podgląd ułamek sekundy
+MAX_BULK_IDS = 50_000  # tyle, ile można zaznaczyć naraz; zapis 29 tys. firm trwa ok. 2 s na MySQL (zmiany grupowane po `ID_CHUNK`)
 UNDO_LIMIT = 20
-UNDO_MAX_ROWS = 60_000  # tyle zmienionych wierszy łącznie trzyma dziennik cofania (migawka 20 tys. firm to ok. 22 MB w pamięci)
+UNDO_MAX_ROWS = 100_000  # tyle zmienionych wierszy łącznie trzyma dziennik cofania (migawka 50 tys. firm to ok. 57 MB w pamięci)
 DATA_FIELDS = ("country", "city", "address")
 LISTED_IDS = 20  # tyle id pokazujemy przy każdym ostrzeżeniu i pominięciu (reszta tylko w liczbie)
 

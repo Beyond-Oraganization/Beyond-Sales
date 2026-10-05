@@ -171,12 +171,12 @@ gdyby tabela miała inną, `python3 -m perno.db --check` i start panelu ostrzega
   więc plik nie jest ograniczony liczbą id), **Cofnij** i **Wyślij gotowe**
   (zaznaczone ∩ gotowe; przed wysyłką pada informacja, ile pominięto, oraz ostrzeżenie o firmach spoza Polski, bo szablony
   są po polsku).
-- **Zbiorcza zmiana** (do 20 000 firm naraz) zawsze pokazuje najpierw podgląd: ile firm się zmieni, ile jest bez zmian,
+- **Zbiorcza zmiana** (do 50 000 firm naraz) zawsze pokazuje najpierw podgląd: ile firm się zmieni, ile jest bez zmian,
   które pominięto i dlaczego (np. „Wysyłanie…” albo „Do wysłania” bez e-maila/treści). Zmiany, których skutków nie widać
   na pierwszy rzut oka, wymagają zaznaczenia „Rozumiem”: powrót firmy na listę wysyłki (data wysłania znika — możliwy
   ponowny mail), ręczne „Wysłano” bez daty, zdjęcie „Nie kontaktować”. Zapis jest atomowy (jedna transakcja, wiersze
   blokowane w kolejności id).
-- **Cofnij** pamięta ostatnie 20 zbiorczych zmian (najwyżej 60 000 zmienionych wierszy łącznie, starsze odpadają pierwsze)
+- **Cofnij** pamięta ostatnie 20 zbiorczych zmian (najwyżej 100 000 zmienionych wierszy łącznie, starsze odpadają pierwsze)
   **w pamięci serwera** (znikają po jego restarcie). Cofnięcie przywraca
   tylko pola, które nadal mają wartość ustawioną przez tę operację — późniejsze ręczne zmiany zostają i są zgłaszane.
 
