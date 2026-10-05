@@ -99,6 +99,8 @@ def filter_clauses(flt: RowFilter) -> list:
     clauses += day_range(maile.c.generated_at, flt.generated_from, flt.generated_to)
     if flt.search:
         clauses += search_clauses(flt.search)
+    if flt.ready:
+        clauses += [maile.c.status.in_(st.SENDABLE_STATUSES), trimmed_filled(maile.c.email), filled(maile.c.body_html)]
     return clauses
 
 

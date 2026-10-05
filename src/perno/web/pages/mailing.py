@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from perno.services import bulk, generation, sending
+from perno.services import bulk, generation, listing, sending
 from perno.settings import smtp_configured
 from perno.web import layout
 from perno.web.context import AppContext
@@ -24,6 +24,25 @@ def render(ctx: AppContext) -> str:
 def api_maile(req: Request, ctx: AppContext) -> Response:
     """`?light=1` zwraca wiersze bez treści maili (z `has_body`) — treść pobiera się osobno przez `/api/maile/row`."""
     return json_response({"rows": ctx.db.fetch_all(light=req.arg("light") == "1")})
+
+
+def api_list(req: Request, ctx: AppContext) -> Response:
+    """Jedna strona listy z licznikami: `{state, page, size, ids?, counts?, totals?, presets?}` (patrz `services.listing`)."""
+    return json_response(listing.list_view(ctx.db, listing.parse_list_request(req.json)))
+
+
+def api_list_ids(req: Request, ctx: AppContext) -> Response:
+    """Id wierszy bieżącego widoku w jego kolejności (do „zaznacz wszystkie pasujące”, „pierwsze N”, „gotowe do wysłania”)."""
+    return json_response(listing.view_ids(ctx.db, req.json))
+
+
+def api_selection(req: Request, ctx: AppContext) -> Response:
+    """Podsumowanie zaznaczenia: ile firm, ile gotowych do wysyłki, ile z zagranicy, ile poza bieżącym filtrem."""
+    return json_response(listing.selection_summary(ctx.db, req.json))
+
+
+def api_selected_emails(req: Request, ctx: AppContext) -> Response:
+    return json_response(listing.selected_emails(ctx.db, req.json))
 
 
 def api_maile_row(req: Request, ctx: AppContext) -> Response:
@@ -108,6 +127,10 @@ PAGE = Page(
     routes={
         ("GET", "/api/maile"): api_maile,
         ("GET", "/api/maile/row"): api_maile_row,
+        ("POST", "/api/mailing/list"): api_list,
+        ("POST", "/api/mailing/ids"): api_list_ids,
+        ("POST", "/api/mailing/selection"): api_selection,
+        ("POST", "/api/mailing/emails"): api_selected_emails,
         ("POST", "/api/bulk-update"): api_bulk_update,
         ("POST", "/api/bulk-undo"): api_bulk_undo,
         ("GET", "/api/bulk-log"): api_bulk_log,

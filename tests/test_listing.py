@@ -12,8 +12,9 @@ import os
 import unittest
 
 from perno import db as dbmod
-from perno.domain.listing import DEFAULT_SORT, LIST_FACETS, parse_state, ready_filter, without_facet
+from perno.domain.listing import DEFAULT_SORT, LIST_FACETS, parse_state, without_facet
 from perno.domain.rowfilter import RowFilter
+from perno.services import listing
 from tests.fixtures import make_db, put, sample_row
 from tests.test_mysql_smoke import SKIP_REASON, TEST_DB, resolve_test_url
 
@@ -73,15 +74,41 @@ class VectorChecks:
                     got = self.database.facet_counts(without_facet(query.flt, facet), facet)
                     self.assertEqual(got, case["facets"][facet])
 
+    def test_service_pages_and_counters_match_the_vectors(self):
+        """Usługa (strona, suma, liczniki; na MySQL zapytania idą równolegle) daje to samo co zapytania po kolei."""
+        for case in self.vectors["cases"]:
+            with self.subTest(case["name"]):
+                request = listing.parse_list_request({"state": case["state"], "page": 2, "size": 3, "counts": True, "totals": True})
+                result = listing.list_view(self.database, request)
+                pages = max(1, -(-len(case["ids"]) // 3))
+                page = min(2, pages)
+                self.assertEqual([row["id"] for row in result["rows"]], case["ids"][(page - 1) * 3:page * 3])
+                self.assertEqual((result["total"], result["page"], result["pages"]), (len(case["ids"]), page, pages))
+                self.assertEqual(result["totals"]["all"], len(self.vectors["rows"]))
+
+    def test_overview_gives_the_total_and_every_counter_from_one_pass(self):
+        for case in self.vectors["facets"]:
+            with self.subTest(case["state"]):
+                query = parse_state(case["state"])
+                overview = self.database.overview(query.flt)
+                self.assertEqual({facet: overview[facet] for facet in LIST_FACETS}, case["facets"])
+                self.assertEqual(overview["total"], self.database.count_matching(query.flt))
+
+    def test_overview_total_equals_the_number_of_matching_rows_for_every_state(self):
+        for case in self.vectors["cases"]:
+            with self.subTest(case["name"]):
+                self.assertEqual(self.database.overview(parse_state(case["state"]).flt)["total"], len(case["ids"]))
+
     def test_quick_view_counts_match_the_browser_implementation(self):
         presets = self.vectors["presets"]
         counts = self.database.match_counts([parse_state(preset["state"]).flt for preset in presets])
         self.assertEqual(counts, [preset["count"] for preset in presets])
 
-    def test_the_ready_filter_is_the_ready_quick_view(self):
+    def test_the_ready_flag_selects_exactly_the_ready_quick_view(self):
         ready = next(preset for preset in self.vectors["presets"] if preset["key"] == "ready")
-        self.assertEqual(self.database.count_matching(ready_filter()), ready["count"])
-        self.assertEqual(parse_state(ready["state"]).flt, ready_filter())
+        self.assertEqual(self.database.count_matching(RowFilter(ready=True)), ready["count"])
+        view = parse_state(ready["state"]).flt
+        self.assertEqual(self.database.list_ids(view, DEFAULT_SORT), self.database.list_ids(RowFilter(ready=True), DEFAULT_SORT))
 
     def test_only_selected_rows_keep_the_view_order_not_the_order_of_the_ids(self):
         chosen = ("eventy-010", "driverzy-018", "eventy-001")

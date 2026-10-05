@@ -13,7 +13,6 @@ from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any, Mapping, Optional
 
-from perno.domain import statuses as st
 from perno.domain.rowfilter import ALL_ROWS, ORIGINS, RowFilter
 from perno.domain.search import SEARCH_FIELDS, parse_query
 
@@ -33,11 +32,6 @@ class ListQuery:
     """Co pokazać na liście: filtr wierszy i kolejność (`klucz`, `-klucz` albo „default”)."""
     flt: RowFilter = ALL_ROWS
     sort: str = DEFAULT_SORT
-
-
-def ready_filter() -> RowFilter:
-    """Firmy gotowe do wysyłki: status „Do wysłania” lub „Błąd”, jest e-mail i jest treść maila."""
-    return RowFilter(statuses=st.SENDABLE_STATUSES, has_email=True, has_body=True)
 
 
 def _string_list(value: Any) -> tuple:

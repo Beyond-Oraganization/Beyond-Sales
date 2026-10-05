@@ -1,10 +1,12 @@
 """SQL widoku listy w panelu: wyszukiwarka, kolejność sortowania i pomocnicze wyrażenia warunków.
 
 Wyszukiwanie liczy się w bazie, bez dodatkowej kolumny: `LIKE` po złożonym tekście kilku pól przeszukuje 50 tys. wierszy
-w kilka milisekund (zmierzone na MySQL 9.6), a kolumna pochodna wymagałaby pilnowania w każdej ścieżce zapisu. Złożenie
-liter (`domain.search.fold`) każda baza robi po swojemu: sqlite wołanym z Pythona `perno_fold` (dokładnie ta sama funkcja
-co w testach wektorów), MySQL kolacją `utf8mb4_0900_ai_ci` (akcenty i wielkość liter znikają same) plus `REPLACE` dla liter,
-które kolacja uznaje za osobne (ß, æ, œ, þ, ı).
+w ok. 130 ms (zmierzone na MySQL 9.6), a kolumna pochodna wymagałaby pilnowania w każdej ścieżce zapisu. Złożenie liter
+(`domain.search.fold`) każda baza robi po swojemu: sqlite wołanym z Pythona `perno_fold` (dokładnie ta sama funkcja co w
+testach wektorów), a MySQL kolacją `utf8mb4_0900_ai_ci` (akcenty i wielkość liter znikają same). Kolacja traktuje jako
+osobne litery ß, æ, œ i þ, więc dla fraz zawierających `ss`, `ae`, `oe` albo `th` tekst jest dodatkowo przepuszczany przez
+`REPLACE`; robimy to tylko wtedy, bo każdy `REPLACE` kosztuje na 50 tys. wierszy kilkadziesiąt milisekund. Jedyna litera, której
+MySQL nie złoży (turecka ı), nie występuje w danych firm i nie jest obsługiwana.
 """
 
 from __future__ import annotations
@@ -21,14 +23,21 @@ from perno.domain.listing import SORT_KEYS
 from perno.domain.search import SearchTerms, pl_sort_key
 
 MYSQL_PL_COLLATION = "utf8mb4_pl_0900_ai_ci"
-_MYSQL_EXTRA_FOLDS = (("ß", "ss"), ("æ", "ae"), ("œ", "oe"), ("þ", "th"), ("ı", "i"))
+# Litery, które kolacja MySQL uznaje za osobne: (złożenie w zapytaniu, litera w tekście). REPLACE jest potrzebny tylko wtedy,
+# gdy szukana fraza zawiera dane złożenie.
+_MYSQL_EXPANSIONS = (("ss", "ß"), ("ae", "æ"), ("oe", "œ"), ("th", "þ"))
 
 
 class Folded(FunctionElement):
-    """Tekst złożony tak jak `domain.search.fold`: małe litery i bez znaków diakrytycznych."""
+    """Tekst złożony tak jak `domain.search.fold`: małe litery i bez znaków diakrytycznych. `letters` to litery, które
+    MySQL ma osobno i trzeba je złożyć jawnie (pusta krotka = wystarczy sama kolacja)."""
     type = sa.String()
-    inherit_cache = True
+    inherit_cache = False
     name = "perno_fold"
+
+    def __init__(self, text, letters: tuple = ()):
+        super().__init__(text)
+        self.letters = letters
 
 
 @compiles(Folded)
@@ -43,10 +52,18 @@ def _folded_sqlite(element, compiler, **kw):
 
 @compiles(Folded, "mysql")
 def _folded_mysql(element, compiler, **kw):
-    sql = f"lower({compiler.process(element.clauses, **kw)})"
-    for source, target in _MYSQL_EXTRA_FOLDS:  # REPLACE rozróżnia wielkość liter, dlatego najpierw lower()
-        sql = f"replace({sql}, '{source}', '{target}')"
+    sql = compiler.process(element.clauses, **kw)
+    if not element.letters:
+        return sql  # kolacja utf8mb4_0900_ai_ci sama pomija wielkość liter i akcenty
+    sql = f"lower({sql})"  # REPLACE rozróżnia wielkość liter
+    for letter, replacement in element.letters:
+        sql = f"replace({sql}, '{letter}', '{replacement}')"
     return sql
+
+
+def _letters_for(term: str) -> tuple:
+    """Litery do jawnego złożenia w MySQL dla danej frazy: tylko te, których fraza mogłaby szukać."""
+    return tuple((letter, sequence) for sequence, letter in _MYSQL_EXPANSIONS if sequence in term)
 
 
 def _joined(*parts):
@@ -83,10 +100,12 @@ def search_clauses(terms: SearchTerms) -> list:
     """Warunki WHERE: każde słowo z `include` musi wystąpić w tekście pola, żadne z `exclude` nie może."""
     if not terms:
         return []
-    text = Folded(haystack(terms.field))
-    found = [text.contains(term, autoescape=True) for term in terms.include]
-    absent = [sa.not_(text.contains(term, autoescape=True)) for term in terms.exclude]
-    return found + absent
+    text = haystack(terms.field)
+
+    def contains(term: str):
+        return Folded(text, _letters_for(term)).contains(term, autoescape=True)
+
+    return [contains(term) for term in terms.include] + [sa.not_(contains(term)) for term in terms.exclude]
 
 
 # ---- kolejność ------------------------------------------------------------------------------------------------------

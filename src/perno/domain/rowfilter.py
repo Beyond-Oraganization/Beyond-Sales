@@ -31,9 +31,20 @@ class RowFilter:
     generated_from: Optional[date] = None
     generated_to: Optional[date] = None
     search: Optional[SearchTerms] = None  # wyszukiwarka (słowa, „frazy”, -wykluczenia) w wybranym polu
+    ready: bool = False  # tylko firmy gotowe do wysyłki: status „Do wysłania”/„Błąd”, jest e-mail i treść maila
     # Jawna lista wierszy. None = bez ograniczenia, () = żaden. Wynik idzie w kolejności `ids` (nie w domyślnej),
     # więc plik może wyglądać tak jak lista na ekranie; id, których nie ma w bazie, są pomijane.
     ids: Optional[tuple] = None
+
+
+def country_selected(selected: tuple, key: str) -> bool:
+    """Czy kraj (kod albo `NO_COUNTRY`) mieści się w wyborze z filtra krajów; pusty wybór = każdy. To samo, co warunek SQL
+    `db.queries._country_clause`, tylko dla pojedynczej wartości (liczniki grupują wiersze w bazie, a wybór stosują w pamięci)."""
+    if not selected:
+        return True
+    if key in selected:
+        return True
+    return FOREIGN_COUNTRY in selected and key not in (NO_COUNTRY, HOME_COUNTRY)
 
 
 ALL_ROWS = RowFilter()  # bez ograniczeń; niezmienny, więc bezpieczny jako wartość domyślna argumentów
