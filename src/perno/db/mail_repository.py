@@ -8,7 +8,7 @@ listę wysyłki) są w `perno.domain.mail_rules`; tu zostaje wyłącznie ich wyk
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Callable, Iterable, Iterator, Mapping, Optional
 
 import sqlalchemy as sa
@@ -114,6 +114,18 @@ class MailRepository(ListingQueries):
         )
         with self.engine.connect() as conn:
             return conn.execute(stmt).scalar() or 0
+
+    def sent_counts_by_day(self, first: date, last: date) -> dict:
+        """Ile maili wysłano w każdym dniu od `first` do `last` włącznie (dni bez wysyłki nie mają wpisu). Liczy tak jak
+        `sent_today_count`: status z `KEEPS_SENT_AT` i data wysłania w tym dniu."""
+        stmt = sa.select(maile.c.sent_at).where(
+            maile.c.status.in_(st.KEEPS_SENT_AT), maile.c.sent_at >= datetime(first.year, first.month, first.day),
+            maile.c.sent_at < datetime(last.year, last.month, last.day) + timedelta(days=1))
+        counts: dict = {}
+        with self.engine.connect() as conn:
+            for (sent_at,) in conn.execute(stmt):
+                counts[sent_at.date()] = counts.get(sent_at.date(), 0) + 1
+        return counts
 
     def count_rows(self, flt: RowFilter = ALL_ROWS) -> int:
         clauses = filter_clauses(flt)
