@@ -120,6 +120,13 @@ class DbCheckTests(unittest.TestCase):
         _, quiet, _ = self.run_cli("--check")
         self.assertNotIn("kolację", quiet)  # sqlite nie ma tej kolacji do sprawdzenia
 
+    def test_a_failing_collation_query_does_not_break_the_check(self):
+        class Denied:
+            def execute(self, *args, **kwargs):
+                raise sa.exc.OperationalError("SELECT", {}, Exception("brak uprawnień do information_schema"))
+
+        self.assertEqual(dbmod.database.search_collation_warning(Denied()), "")
+
     def test_a_configuration_problem_is_a_message_not_a_traceback(self):
         with mock.patch.dict(os.environ, {cfg.ENV_DB_URL: ""}):
             code, _, err = self.run_cli("--check")

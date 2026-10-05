@@ -23,9 +23,12 @@ SEARCH_COLUMNS = ("id", "company", "contact_person", "email", "website", "countr
 def search_collation_warning(conn) -> str:
     """Wyszukiwarka w panelu pomija wielkość liter i znaki diakrytyczne dzięki kolacji kolumn MySQL (`*_ai_ci`): z inną
     kolacją „lodz” przestaje znajdować „Łódź”. Dane są nietknięte, ale warto o tym wiedzieć; pusty tekst = wszystko w porządku."""
-    rows = conn.execute(sa.text(
-        "SELECT COLUMN_NAME, COLLATION_NAME FROM information_schema.COLUMNS "
-        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'maile' AND COLLATION_NAME IS NOT NULL")).all()
+    try:
+        rows = conn.execute(sa.text(
+            "SELECT COLUMN_NAME, COLLATION_NAME FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'maile' AND COLLATION_NAME IS NOT NULL")).all()
+    except DB_ERRORS:  # to tylko diagnostyka: brak uprawnień do information_schema nie może zablokować startu panelu
+        return ""
     wrong = sorted(f"{name} ({collation})" for name, collation in rows
                    if name in SEARCH_COLUMNS and "_ai_ci" not in collation.lower())
     if not wrong:
