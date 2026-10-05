@@ -22,7 +22,8 @@ def render(ctx: AppContext) -> str:
 
 
 def api_maile(req: Request, ctx: AppContext) -> Response:
-    """`?light=1` zwraca wiersze bez treści maili (z `has_body`) — treść pobiera się osobno przez `/api/maile/row`."""
+    """Cała tabela naraz (do skryptów i testów; przy 50 tys. firm to 27 MB). Panel używa `POST /api/mailing/list`.
+    `?light=1` zwraca wiersze bez treści maili (z `has_body`) — treść pobiera się osobno przez `/api/maile/row`."""
     return json_response({"rows": ctx.db.fetch_all(light=req.arg("light") == "1")})
 
 

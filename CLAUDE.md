@@ -9,11 +9,13 @@ Plan przebudowy (fazy 0-5): `~/.claude/plans/przeanalizuj-dany-projekt-przeczyta
 - `scripts/check.sh` — ruff + mypy + testy; uruchom przed każdym commitem (`--fast` pomija testy `slow`)
 - `.venv/bin/python -m pytest tests/test_x.py -k nazwa` — pojedyncze testy
 - Panel: `.venv/bin/python server.py` (albo `perno-server`); baza demo: `PERNO_DB_URL=sqlite:////tmp/demo.db` (blokuje prawdziwy SMTP)
+- Prawdziwy MySQL do testów i pomiarów bez Twojej bazy: `scripts/scratch_mysql.sh start`, potem `PERNO_TEST_DB_URL="$(scripts/scratch_mysql.sh url)" .venv/bin/python -m pytest tests/test_mysql_smoke.py tests/test_listing.py` (bez `-n`); dane na skalę 50 tys. firm: `scripts/seed_synthetic.py` (tylko bazy `*_test`)
 
 ## Reguły
 - Nigdy nie wysyłaj prawdziwych maili ani nie łącz się z prawdziwą bazą w testach. Nie czytaj i nie wypisuj `config.env`.
 - Skraper: nie zmieniaj podłogi 1 s, obsługi robots.txt ani limitów na IP bez wyraźnej decyzji użytkownika.
 - Warstwy: `domain` (czysta logika) ← `services` ← `web`/`cli`; adaptery (db, mailer, scraper) wołane przez usługi; pilnuje tego `lint-imports`. Nie dopisuj SQL do handlerów stron, usług ani skryptów CLI: zapytania żyją w `db/` (repozytorium) i `scraper/store/` (role: companies, runs, queue, pages, read_models, retention).
+- Lista w panelu (Wysyłka, Eksport) jest liczona w bazie: `domain/listing.py` (stan z przeglądarki → `RowFilter`) → `db/listing_sql.py` i `db/listing_queries.py` → `services/listing.py` → `POST /api/mailing/*`. Nie filtruj, nie sortuj i nie licz wierszy w JS (`kit.js` to DOM, `listmodel.js` żądania i stan widoku). Zmiana semantyki filtra to zmiana SQL i wektorów `tests/listing_cases.json`; sprawdź ją na sqlite i na MySQL.
 - Handler strony: parsuje żądanie, woła usługę, zwraca JSON (≤ ~15 linii). Wyjątki mapuje na HTTP jedna tabela w `web/errors.py`; zależności strony bierze z `AppContext`, nigdy z atrybutów doklejanych do aplikacji.
 - `os.environ` i `config.env` czyta wyłącznie `settings.py` (`Environment`, `ConfigFile`, `SmtpSettings`); reszta dostaje wartości jawnie.
 - Zanim dodasz helper, sprawdź istniejące moduły (`domain/`, `services/`); duplikacja to najczęstszy błąd kodu z AI.

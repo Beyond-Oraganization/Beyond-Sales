@@ -141,14 +141,17 @@ Lista liczy się **w bazie**, a przeglądarka dostaje jedną stronę wierszy i l
 działa tak samo płynnie przy 400 i przy 50 000 firm (zmierzone na MySQL 9.6 z 50 000 syntetycznych wierszy,
 `scripts/seed_synthetic.py`: otwarcie panelu ok. 100 ms i 53 KB, zmiana strony lub sortowania 100–180 ms, filtr 150–210 ms,
 wyszukiwanie ok. 250 ms; wcześniej cała tabela, 27 MB i 2–3 s przy każdym wczytaniu). Funkcje są te same co dawniej;
-różnica jest jedna: **liczby w tekście sortują się znak po znaku** („Firma 10” przed „Firma 2”, tak jak w MySQL), a nie jak liczby.
+różnice są dwie: **liczby w tekście sortują się znak po znaku** („Firma 10” przed „Firma 2”, tak jak w MySQL), a nie jak liczby,
+oraz wyszukiwarka na MySQL nie znajdzie pojedynczej litery ukrytej wewnątrz rzadkiego znaku (np. samo „e” w „Æ”, bo baza
+trzyma `æ`, `œ`, `ß` i `þ` jako osobne litery; frazy „ae”, „oe”, „ss” i „th” działają). Losowy test porównawczy z dawną listą
+w przeglądarce (3200 stanów filtrów na wierszach z `ß æ œ ø ł ü` i polskimi znakami) zgadzał się w 100% na sqlite i w 99,9% na MySQL.
 
 - **Szybkie widoki z licznikami**: Wszystkie, Gotowe do wysłania, Błędy, Bez e-maila, Mają e-mail bez treści, Wysłane
   dziś, Wysłane do firm spoza PL, Odpowiedzi, Nie kontaktować, Zaimportowane, Bez kraju, Bez miasta.
 - **Filtry**: chipy statusów (klik = dodaj/zdejmij, liczniki uwzględniają pozostałe filtry), segment i kraj (wiele naraz,
   „Spoza Polski”, „Bez kraju”), „Więcej filtrów”: e-mail / treść / miasto / adres / wysłano (jest–brak), pochodzenie
   (z dossier / zaimportowane), zakresy dat wysłania i wygenerowania (skróty: dziś, 7 dni, 30 dni).
-- **Wyszukiwarka**: kilka słów = wszystkie muszą pasować, `-słowo` wyklucza, `"fraza dokładna"`; bez znaczenia wielkość liter
+- **Wyszukiwarka**: kilka słów = wszystkie muszą pasować (liczy się do 10 słów i do 10 wykluczeń), `-słowo` wyklucza, `"fraza dokładna"`; bez znaczenia wielkość liter
   i polskie znaki (`lodz` znajdzie „Łódź”); pole do wyboru (wszędzie / firma / e-mail / strona / kraj i adres / opis);
   kraj można wpisać po polsku („niemcy”).
 - **Sortowanie** po nagłówkach (kolejne kliknięcie: rosnąco → malejąco → domyślnie; polskie litery, puste na końcu),
@@ -382,7 +385,8 @@ wyniki wygenerowane z dawnej implementacji w przeglądarce) pilnuje, żeby SQL d
 (`filters.js`, `listmodel.js`, `selection.js` w `src/perno/web/pages/assets/`) sprawdzają testy w JavaScript
 (`tests/js/*.test.js`), które ten sam zestaw uruchamia przez Node.js 18+ (bez Node są pomijane; osobno:
 `node --test tests/js/*.test.js`); `tests/js/skaper_xss.test.js` uruchamia skrypt zakładki Skraper z wrogimi danymi
-(`<script>`, `onerror=`, `javascript:`) i pilnuje, żeby żadne nie stało się znacznikiem ani atrybutem. Dane do testów skali
+(`<script>`, `onerror=`, `javascript:`) i pilnuje, żeby żadne nie stało się znacznikiem ani atrybutem; `tests/js/kit_xss.test.js`
+robi to samo dla list (nazwy, segmenty i kraje w licznikach, wierszach i podsumowaniach z serwera). Dane do testów skali
 (50 000 firm) tworzy `scripts/seed_synthetic.py` (tylko w bazie `*_test`). Opcjonalny test
 na prawdziwym MySQL (tryb ścisły, utf8mb4, `FOR UPDATE`, strumieniowanie, zbiorcza zmiana z cofaniem i jednoczesne
 operacje bez zakleszczeń, filtry z `TRIM`/`CASE`, oraz tabele i zapytania skrapera: kolumny ASCII, upserty, BLOB,

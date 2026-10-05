@@ -84,6 +84,16 @@ class ListPageTests(ListingCase):
         self.assertEqual(data["total"], 2)
         self.assertEqual(self.list(ids=[])["rows"], [])
 
+    def test_the_first_page_is_the_default_and_the_limits_are_inclusive(self):
+        first = self.list(size=3)  # za mało wierszy na jedną stronę: przycięcie nie maskuje błędnej strony domyślnej
+        self.assertEqual((first["page"], first["pages"], self.ids(first)), (1, 4, ["eventy-001", "eventy-002", "eventy-003"]))
+        self.assertEqual(self.list(page=1, size=1)["rows"][0]["id"], "eventy-001")  # dolne granice page i size
+        self.assertEqual(len(self.list(size=listing.MAX_PAGE_SIZE)["rows"]), 10)  # górna granica size
+        ids = [f"x-{n}" for n in range(listing.MAX_LIST_IDS)]
+        self.assertEqual(len(listing.parse_ids(ids)), listing.MAX_LIST_IDS)  # dokładnie tyle id jeszcze wolno
+        self.assertEqual(len(listing.parse_list_request({"presets": [{}] * listing.MAX_PRESETS}).presets), listing.MAX_PRESETS)
+        self.assertEqual(len(listing.parse_strings(["s"] * 3 + [f"s{n}" for n in range(17)], "x")), 18)
+
     def test_garbage_in_the_state_means_no_restriction(self):
         data = self.list(state={"statuses": "blad", "sort": "; DROP TABLE", "origin": 7, "sentFrom": "2026-13-45", "q": 5})
         self.assertEqual(data["total"], 10)
@@ -115,6 +125,13 @@ class ViewIdsTests(ListingCase):
         self.assertEqual(self.data(self.call("POST", "/api/mailing/ids", {"ready": True}))["ids"], READY)
         narrowed = self.data(self.call("POST", "/api/mailing/ids", {"ready": True, "state": {"countries": ["PL"]}}))["ids"]
         self.assertEqual(narrowed, ["eventy-001", "eventy-006", "driverzy-008"])
+
+    def test_truncated_is_true_only_when_there_are_more_rows_than_the_limit(self):
+        shown = lambda limit: self.data(self.call("POST", "/api/mailing/ids", {"state": {"statuses": ["wyslano"]}, "limit": limit}))  # 3 wiersze
+        self.assertEqual((len(shown(2)["ids"]), shown(2)["truncated"]), (2, True))
+        self.assertEqual((len(shown(3)["ids"]), shown(3)["truncated"]), (3, False))  # dokładnie tyle, ile wynosi limit
+        self.assertEqual((len(shown(1)["ids"]), shown(1)["truncated"]), (1, True))  # dolna granica limitu
+        self.assertEqual(shown(listing.MAX_LIST_IDS)["truncated"], False)  # górna granica limitu
 
     def test_excluded_statuses_are_left_out_of_the_ids(self):
         ids = self.data(self.call("POST", "/api/mailing/ids", {"exclude_statuses": ["wyslano", "blad"]}))["ids"]

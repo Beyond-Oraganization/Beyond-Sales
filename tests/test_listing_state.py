@@ -5,7 +5,15 @@ from __future__ import annotations
 import unittest
 from datetime import date
 
-from perno.domain.listing import DEFAULT_SORT, MAX_LIST_ITEMS, MAX_QUERY_LENGTH, SORT_KEYS, parse_state, without_facet
+from perno.domain.listing import (
+    DEFAULT_SORT,
+    MAX_LIST_ITEMS,
+    MAX_QUERY_LENGTH,
+    MAX_SEARCH_TERMS,
+    SORT_KEYS,
+    parse_state,
+    without_facet,
+)
 from perno.domain.rowfilter import ALL_ROWS, RowFilter
 from perno.domain.search import SearchTerms
 
@@ -30,8 +38,8 @@ class StateParsingTests(unittest.TestCase):
             search=SearchTerms(("taxi berlin",), ("pies",), "company")))
 
     def test_lists_keep_only_distinct_short_non_empty_strings_up_to_the_limit(self):
-        flt = parse_state({"statuses": ["a", "a", "", 5, None, "x" * 65, "b"]}).flt
-        self.assertEqual(flt.statuses, ("a", "b"))
+        flt = parse_state({"statuses": ["a", "a", "", 5, None, "x" * 65, "b", "y" * 64]}).flt
+        self.assertEqual(flt.statuses, ("a", "b", "y" * 64))  # 64 znaki jeszcze przechodzą, 65 już nie
         many = [f"s{n}" for n in range(MAX_LIST_ITEMS + 20)]
         self.assertEqual(len(parse_state({"segments": many}).flt.segments), MAX_LIST_ITEMS)
         self.assertEqual(parse_state({"statuses": "blad", "countries": {"PL": 1}}).flt, ALL_ROWS)
@@ -52,6 +60,16 @@ class StateParsingTests(unittest.TestCase):
         self.assertEqual(len(search.include[0]), MAX_QUERY_LENGTH)
         self.assertEqual(parse_state({"q": "x", "qFields": "nie-ma"}).flt.search.field, "all")
         self.assertIsNone(parse_state({"q": 7}).flt.search)
+
+    def test_a_search_with_many_words_keeps_only_the_first_ones(self):
+        words = " ".join(f"s{n}" for n in range(MAX_SEARCH_TERMS + 15))
+        search = parse_state({"q": words}).flt.search
+        self.assertEqual(len(search.include), MAX_SEARCH_TERMS)
+        self.assertEqual(search.include[0], "s0")
+        excluded = parse_state({"q": " ".join(f"-s{n}" for n in range(MAX_SEARCH_TERMS + 15))}).flt.search
+        self.assertEqual((len(excluded.include), len(excluded.exclude)), (0, MAX_SEARCH_TERMS))
+        exact = parse_state({"q": " ".join(f"s{n}" for n in range(MAX_SEARCH_TERMS))}).flt.search
+        self.assertEqual(len(exact.include), MAX_SEARCH_TERMS)
 
     def test_unknown_origin_and_sort_fall_back_to_the_defaults(self):
         self.assertEqual(parse_state({"origin": "zewnetrzne"}).flt.origin, "")

@@ -5,8 +5,12 @@ w ok. 130 ms (zmierzone na MySQL 9.6), a kolumna pochodna wymagałaby pilnowania
 (`domain.search.fold`) każda baza robi po swojemu: sqlite wołanym z Pythona `perno_fold` (dokładnie ta sama funkcja co w
 testach wektorów), a MySQL kolacją `utf8mb4_0900_ai_ci` (akcenty i wielkość liter znikają same). Kolacja traktuje jako
 osobne litery ß, æ, œ i þ, więc dla fraz zawierających `ss`, `ae`, `oe` albo `th` tekst jest dodatkowo przepuszczany przez
-`REPLACE`; robimy to tylko wtedy, bo każdy `REPLACE` kosztuje na 50 tys. wierszy kilkadziesiąt milisekund. Jedyna litera, której
-MySQL nie złoży (turecka ı), nie występuje w danych firm i nie jest obsługiwana.
+`REPLACE`; robimy to tylko wtedy, bo każdy `REPLACE` kosztuje na 50 tys. wierszy kilkadziesiąt milisekund.
+
+Dwie różnice względem dawnego wyszukiwania w przeglądarce, obie dotyczą rzadkich liter: (1) fraza krótsza niż złożenie
+(np. samo „e”) nie znajdzie litery æ, bo w bazie jest ona osobną literą (w przeglądarce „Ærø” składało się do „aero”);
+(2) turecka ı nie jest składana. Losowy test różnicowy (1200 stanów, wiersze z ß, æ, œ, ø, ł, ü i polskimi znakami) zgadzał się
+w 99,9%, a jedyną rozbieżnością była pierwsza z nich.
 """
 
 from __future__ import annotations
@@ -66,12 +70,29 @@ def _letters_for(term: str) -> tuple:
     return tuple((letter, sequence) for sequence, letter in _MYSQL_EXPANSIONS if sequence in term)
 
 
+class Joined(FunctionElement):
+    """Teksty złączone pojedynczymi spacjami, jak `[a, b, c].join(' ')` po złożeniu spacji w dawnym `fold()`: puste i brakujące
+    (NULL) pola, także złożone z samych spacji, nie zostawiają podwójnych spacji, więc fraza „łódź limo” znajduje się także
+    wtedy, gdy między miastem a opisem jest puste pole adresu."""
+    type = sa.String()
+    inherit_cache = True
+    name = "perno_joined"
+
+
+@compiles(Joined)
+def _joined_default(element, compiler, **kw):
+    parts = [f"coalesce({compiler.process(part, **kw)}, '')" for part in element.clauses]
+    return " || ' ' || ".join(parts)  # sqlite: `perno_fold` zwija spacje później, więc podwójne nie przeszkadzają
+
+
+@compiles(Joined, "mysql")
+def _joined_mysql(element, compiler, **kw):
+    parts = [f"nullif(trim({compiler.process(part, **kw)}), '')" for part in element.clauses]
+    return f"concat_ws(' ', {', '.join(parts)})"
+
+
 def _joined(*parts):
-    """Teksty złączone spacjami; brakująca wartość (NULL) liczy się jak pusty tekst, tak jak `join(' ')` w przeglądarce."""
-    expression = sa.func.coalesce(parts[0], "")
-    for part in parts[1:]:
-        expression = expression + " " + sa.func.coalesce(part, "")
-    return expression
+    return Joined(*parts)
 
 
 def _country_name():

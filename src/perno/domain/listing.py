@@ -19,6 +19,7 @@ from perno.domain.search import SEARCH_FIELDS, parse_query
 SORT_KEYS = ("company", "city", "email", "segment", "status", "country", "generated_at", "sent_at")
 DEFAULT_SORT = "default"
 MAX_QUERY_LENGTH = 200
+MAX_SEARCH_TERMS = 10  # słów szukanych i osobno wykluczanych; każde to przejście po tabeli, więc setki słów nie mają sensu
 MAX_LIST_ITEMS = 100
 MAX_ITEM_LENGTH = 64
 _TRI = {"": None, "yes": True, "no": False}
@@ -62,8 +63,9 @@ def parse_state(payload: object) -> ListQuery:
     data: Mapping = payload if isinstance(payload, dict) else {}
     query = data.get("q")
     field = data.get("qFields")
-    terms = parse_query(query[:MAX_QUERY_LENGTH] if isinstance(query, str) else "",
-                        field if field in SEARCH_FIELDS else "all")
+    parsed = parse_query(query[:MAX_QUERY_LENGTH] if isinstance(query, str) else "",
+                         field if field in SEARCH_FIELDS else "all")
+    terms = replace(parsed, include=parsed.include[:MAX_SEARCH_TERMS], exclude=parsed.exclude[:MAX_SEARCH_TERMS])
     origin = data.get("origin")
     raw_sort = data.get("sort")
     sort = raw_sort if isinstance(raw_sort, str) and _SORT.match(raw_sort) else ""

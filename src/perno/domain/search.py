@@ -60,8 +60,9 @@ def parse_query(text: object, field: str = "all") -> SearchTerms:
 # `utf8mb4_pl_0900_ai_ci` w MySQL i `Intl.Collator('pl')` w przeglądarce; ten klucz daje tę samą kolejność w sqlite i dla
 # nazw krajów. Litery spoza alfabetu (ü, é…) liczą się jak ich podstawa (u, e…). Jak w UCA: spacje i znaki idą przed
 # cyframi, cyfry przed literami. Cyfry porównujemy znak po znaku („Firma 10” przed „Firma 2”, jak w MySQL), a nie jako liczby.
-_PL_ORDER = {ch: index for index, ch in enumerate("aąbcćdeęfghijklłmnńoópqrsśtuvwxyzźż")}
+_PL_ORDER = {ch: index for index, ch in enumerate("aąbcćdeęfghijklłmnńoópqrsśtuvwxyzźżþ")}  # þ na końcu, jak w ICU i MySQL
 _PL_LETTERS = frozenset("ąćęłńóśźż")
+_SORT_FOLDS = {ch: to for ch, to in _EXTRA_FOLDS.items() if ch not in _PL_ORDER}
 _SYMBOLS_FIRST, _DIGITS_NEXT = -2_000_000, -1_000_000
 
 
@@ -70,7 +71,7 @@ def pl_sort_key(text: Optional[str]) -> tuple:
     key = []
     for ch in unicodedata.normalize("NFC", (text or "").lower()):
         base = ch if ch in _PL_LETTERS else unicodedata.normalize("NFD", ch)[0]
-        base = _EXTRA_FOLDS.get(base, base) if base not in _PL_LETTERS else base
+        base = _SORT_FOLDS.get(base, base) if base not in _PL_LETTERS else base
         for piece in base:
             if piece in _PL_ORDER:
                 key.append(_PL_ORDER[piece])

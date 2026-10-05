@@ -46,10 +46,17 @@ class BehaviourTests(unittest.TestCase):
         self.assertEqual(fold("  Ærø   Øl "), "aero ol")
         self.assertEqual(fold(None), "")
 
+    def test_fold_strips_the_whole_combining_range_and_nothing_more(self):
+        self.assertEqual(fold("a\u0300\u036f"), "a")  # oba końce zakresu znaków łączących U+0300–U+036F
+        self.assertEqual(fold("a\u02ff"), "a\u02ff")  # tuż przed zakresem
+        self.assertEqual(fold("a\u0371"), "a\u0371")  # tuż za zakresem (mała litera grecka, nie znak łączący)
+
     def test_query_terms_and_field(self):
         terms = parse_query('"Taxi Berlin" -pies', "email")
         self.assertEqual(terms, SearchTerms(("taxi berlin",), ("pies",), "email"))
         self.assertTrue(terms)
+        self.assertTrue(parse_query("-pies"))  # same wykluczenia to też zapytanie
+        self.assertTrue(parse_query("kot"))
         self.assertFalse(parse_query("  "))
         self.assertEqual(parse_query("x", "nie-ma-takiego").field, "all")
 
@@ -57,6 +64,7 @@ class BehaviourTests(unittest.TestCase):
         words = ["Łotwa", "Litwa", "Malta", "Zambia", "Źródło", "Żuraw", "Ząb", "Ćma", "Czad", "Cypr", "Austria", "Ąkol"]
         expected = ["Austria", "Ąkol", "Cypr", "Czad", "Ćma", "Litwa", "Łotwa", "Malta", "Zambia", "Ząb", "Źródło", "Żuraw"]
         self.assertEqual(sorted(words, key=pl_sort_key), expected)
+        self.assertEqual(sorted(["Þór", "Żuraw", "Zebra", "Straße"], key=pl_sort_key), ["Straße", "Zebra", "Żuraw", "Þór"])  # þ za ż
 
     def test_polish_order_ignores_case_and_foreign_accents_but_keeps_digits_first(self):
         self.assertEqual(pl_sort_key("ŁÓDŹ"), pl_sort_key("łódź"))

@@ -4,19 +4,7 @@
 // w piaskownicy `vm` z atrapą DOM, a my zbieramy każdy HTML, który zapisał.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
-
-const ASSETS = path.join(__dirname, '../../src/perno/web/pages/assets');
-const read = (name) => fs.readFileSync(path.join(ASSETS, name), 'utf8');
-
-const EVIL = {
-  script: '<script>window.PWNED=1</script>',
-  img: '<img src=x onerror=window.PWNED=1>',
-  attr: '" onmouseover="window.PWNED=1" x="',
-  js: 'javascript:window.PWNED=1',
-};
+const {read, EVIL, createPage, attributeNames, settle, vm} = require('./support/dom.js');
 
 const META = {
   statuses: [{code: 'zakonczona', label: 'Zakończona', color: '#1a7f4b', count: 1}],
@@ -60,64 +48,8 @@ function respond(url) {
   return {};
 }
 
-// Atrapa DOM: każdy element to Proxy, które zapamiętuje HTML zapisany przez innerHTML / insertAdjacentHTML.
-function createPage() {
-  const written = [];
-  const elements = new Map();
-  const makeElement = () => {
-    const base = {
-      dataset: {}, style: {}, classList: {add() {}, remove() {}, toggle() {}}, value: '', checked: false,
-      disabled: false, textContent: '', className: '', children: [],
-    };
-    return new Proxy(base, {
-      get(target, prop) {
-        if (prop === 'insertAdjacentHTML') return (_where, html) => { written.push(String(html)); };
-        if (prop in target) return target[prop];
-        if (typeof prop === 'symbol') return undefined;
-        return () => makeElement();  // appendChild(), remove(), addEventListener(), closest() …
-      },
-      set(target, prop, value) {
-        if (prop === 'innerHTML' || prop === 'outerHTML') written.push(String(value));
-        target[prop] = value;
-        return true;
-      },
-    });
-  };
-  const cached = (key) => { if (!elements.has(key)) elements.set(key, makeElement()); return elements.get(key); };
-  const document = {
-    getElementById: (id) => cached('#' + id),
-    querySelector: (selector) => cached(selector),
-    createElement: () => makeElement(),
-    addEventListener() {},
-    body: makeElement(),
-  };
-  const sandbox = {
-    document, console, URLSearchParams, JSON, Math, Number, String, Set, Map, Object, Array, Promise,
-    setTimeout: () => 0, clearTimeout() {}, confirm: () => false,
-    fetch: async (url) => ({ok: true, status: 200, json: async () => respond(String(url))}),
-  };
-  return {written, context: vm.createContext(sandbox)};
-}
-
-
-// Nazwy atrybutów prawdziwych znaczników (z pominięciem tego, co siedzi w cudzysłowach wartości): zeskapowany tekst
-// `" onmouseover="…` wewnątrz title="…" nie jest atrybutem, a gdyby ucieczka zawiodła, byłby nim.
-const TAG = /<([a-z][a-z0-9-]*)((?:\s+[^\s"'<>\/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*\/?>/gi;
-const ATTRIBUTE = /([^\s"'<>\/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
-function attributeNames(html) {
-  const names = [];
-  for (const tag of html.matchAll(TAG)) {
-    for (const attribute of tag[2].matchAll(ATTRIBUTE)) names.push(attribute[1]);
-  }
-  return names;
-}
-
-async function settle() {
-  for (let i = 0; i < 30; i++) await new Promise((resolve) => setImmediate(resolve));
-}
-
 async function renderHostilePage() {
-  const page = createPage();
+  const page = createPage(respond);
   vm.runInContext(read('common.js') + '\n' + read('skaper.js'), page.context);
   await settle();
   vm.runInContext('expandedId = 1; renderRows();', page.context);  // rozwija szczegóły firmy (loadDetail)
@@ -143,7 +75,7 @@ test('adresy nie-http(s) nie trafiają do href', async () => {
 });
 
 test('bezpieczne adresy http(s) dostają rel=noopener', async () => {
-  const page = createPage();
+  const page = createPage(respond);
   vm.runInContext(read('common.js') + '\n' + read('skaper.js'), page.context);
   await settle();
   const link = vm.runInContext("linkTo('https://firma.example/kontakt?a=1&b=2', 'źródło')", page.context);
@@ -153,7 +85,7 @@ test('bezpieczne adresy http(s) dostają rel=noopener', async () => {
 });
 
 test('escapeHtml: pięć znaków specjalnych i wartości puste', () => {
-  const page = createPage();
+  const page = createPage(respond);
   vm.runInContext(read('common.js'), page.context);
   const escape = (value) => vm.runInContext(`escapeHtml(${JSON.stringify(value)})`, page.context);
   assert.equal(escape('<a href="x">\'&\'</a>'), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;');

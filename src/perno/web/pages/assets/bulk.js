@@ -2,7 +2,7 @@
 // eksport widoku/zaznaczonych i cofanie. Cała logika zmian jest na serwerze (/api/bulk-update, /api/bulk-undo);
 // tu tylko pokazujemy podgląd (dry-run), prosimy o potwierdzenie i odświeżamy listę.
 function createBulkUI(o) {
-  const K = PernoKit, F = PernoFilters;
+  const K = PernoKit;
   const els = o.els, ctx = o.ctx, selection = o.selection, view = o.view;
   const SKIP_TEXT = {
     not_found: 'nie ma ich już w bazie',
