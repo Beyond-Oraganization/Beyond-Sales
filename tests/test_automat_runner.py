@@ -187,12 +187,26 @@ class TickTests(RunnerCase):
         with mock.patch.object(self.store, "recover_dead_runs", return_value=[]), self.assertRaises(DaemonActive):
             other.start()
 
+    def test_summary_warns_when_the_queue_does_not_fit_the_horizon(self):
+        self.rows(10)
+        self.arm(daily_cap=2, horizon_days=1)
+        self.runner.start()
+        for _ in range(2):
+            self.runner.tick()
+            self.clock.advance(seconds=45)
+        self.runner.tick()
+        text = self.events(ev.EVENT_DAILY_SUMMARY)[0]["tresc"]
+        self.assertIn("W kolejce zostało: 8.", text)
+        self.assertIn("Przy tym tempie koniec około 09.10.2026 (4 dni wysyłki).", text)
+        self.assertIn("nie zmieści całej kolejki", text)
+
     def test_stuck_claims_are_reported_at_start(self):
         self.rows(1, status="wysylanie")
         self.clock.advance(minutes=30)
         self.runner.start()
         self.assertEqual(self.status_of(1), "blad")
         self.assertEqual(self.notified("email"), ["Automat: sprawdź folder Wysłane"])
+        self.assertIn("eventy-001", self.events(ev.EVENT_STUCK_ROW)[0]["tresc"])
 
 
 class FailureTests(RunnerCase):
@@ -348,6 +362,14 @@ class LoopTests(RunnerCase):
         self.runner.run_forever(stop)
         self.assertIsNone(self.store.active_run())
         self.assertEqual(self.guard.calls[-1], "release")
+
+    def test_run_forever_ticks_before_sleeping(self):
+        stop = threading.Event()
+        naps = []
+        self.runner.d.sleep = lambda s: (naps.append(s), stop.set())
+        self.runner.run_forever(stop)
+        self.assertEqual(naps, [ar.TICK_SECONDS])
+        self.assertEqual((self.store.latest_run() or {})["statystyki"]["powod"], "not_armed")
 
     def test_sleep_notes_gaps_and_beats(self):
         self.runner.start()
