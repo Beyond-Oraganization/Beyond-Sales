@@ -20,6 +20,7 @@ dependencies = [
 perno-server = "perno.cli.server:main"
 perno-send = "perno.cli.send:main"
 perno-scrape = "perno.cli.scrape:main"
+perno-automat = "perno.cli.automat:main"
 perno-firms = "perno.cli.firms:main"
 perno-enrich = "perno.cli.enrich:main"
 perno-migrate = "perno.cli.migrate:main"

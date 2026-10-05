@@ -18,6 +18,7 @@ from perno.db.automat_store import AutomatState, AutomatStore
 from perno.domain import automat_events as ev
 from perno.domain import automat_rules as ar
 from perno.domain.rowfilter import FOREIGN_COUNTRY, HOME_COUNTRY, NO_COUNTRY, country_selected
+from perno.notify import Notifier
 from perno.notify.factory import build_notifier
 from perno.services import sending
 from perno.services.automat_log import EventLog
@@ -75,16 +76,20 @@ def notify_settings(config: Mapping) -> NotifySettings:
         return NotifySettings()
 
 
-def build_event_log(store: AutomatStore, db: Database, config: Mapping, smtp_factory: Optional[Callable] = None) -> EventLog:
-    """Dziennik zdarzeń z kanałami z config.env (kanał e-mail tylko przy kompletnym SMTP)."""
+def notifier_from_config(config: Mapping, smtp_factory: Optional[Callable] = None) -> Notifier:
+    """Notifier z kanałami z config.env (kanał e-mail tylko przy kompletnym SMTP)."""
     from_addr, factory = "", None
     try:
         mailer = sending.build_mailer(config, smtp_factory=smtp_factory)
         from_addr, factory = mailer.sender.address, mailer.smtp_factory
     except ConfigError:
         pass
-    notifier = build_notifier(notify_settings(config), smtp_factory=factory, from_addr=from_addr)
-    return EventLog(store, notifier, db.now)
+    return build_notifier(notify_settings(config), smtp_factory=factory, from_addr=from_addr)
+
+
+def build_event_log(store: AutomatStore, db: Database, config: Mapping, smtp_factory: Optional[Callable] = None) -> EventLog:
+    """Dziennik zdarzeń z kanałami z config.env."""
+    return EventLog(store, notifier_from_config(config, smtp_factory), db.now)
 
 
 # ---- zmiany stanu ---------------------------------------------------------------------------------------------------

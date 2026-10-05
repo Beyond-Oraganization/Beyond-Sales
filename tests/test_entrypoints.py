@@ -12,7 +12,7 @@ from importlib import import_module
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT_SCRIPTS = ("server.py", "send_emails.py", "scrape.py", "firmy.py", "wypelnij.py", "migrate_csv_to_sql.py",
-                "build_seed_data.py", "dashboard.py")
+                "build_seed_data.py", "dashboard.py", "automat.py")
 
 
 def read(name: str) -> str:
