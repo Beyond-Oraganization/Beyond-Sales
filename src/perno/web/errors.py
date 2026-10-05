@@ -9,8 +9,10 @@ from __future__ import annotations
 from typing import Optional
 
 from perno.db import EmptyDatabase, InvalidValue, RowLocked, RowNotFound
+from perno.domain.automat_rules import SettingsInvalid
 from perno.scraper.settings import SettingsError
 from perno.scraper.store import DomainTaken, FirmaBusy, InvalidFirma, NotFound, RunActive
+from perno.services.automat_control import ArmRefused, StaleConfirmation
 from perno.services.bulk import AckRequired
 from perno.services.scan_control import ScanRequestError
 from perno.services.sending import DailyCapReached, NotSendable
@@ -20,8 +22,9 @@ from perno.web.http import HttpError, Response, error_response
 # (typy wyjątków, kod HTTP): komunikatem jest tekst wyjątku
 STATUS_BY_ERROR: tuple = (
     ((RowNotFound, NotFound), 404),
-    ((EmptyDatabase, RunActive, FirmaBusy, DomainTaken), 409),
-    ((InvalidValue, ConfigError, InvalidFirma, SettingsError, NotSendable, ScanRequestError), 400),
+    ((EmptyDatabase, RunActive, FirmaBusy, DomainTaken, StaleConfirmation), 409),
+    ((InvalidValue, ConfigError, InvalidFirma, SettingsError, NotSendable, ScanRequestError,
+      SettingsInvalid, ArmRefused), 400),
     ((DailyCapReached,), 429),
 )
 

@@ -248,7 +248,7 @@ def doctor_lines(ctx: Context) -> list:
         lines.append(("UWAGA", "projekt leży w Desktop/Documents: LaunchAgent może dostać odmowę dostępu (macOS TCC). "
                                 "Jeśli log logs/automat_launchd.log pokazuje „Operation not permitted”, nadaj Pythonowi "
                                 "Pełny dostęp do dysku albo przenieś projekt."))
-    if os.environ.get(cfg.ENV_DB_URL) and not os.environ.get(cfg.ENV_ALLOW_REAL_SMTP):
+    if not cfg.Environment.from_environ().real_smtp_allowed:
         lines.append(("UWAGA", "PERNO_DB_URL blokuje prawdziwy SMTP"))
     return lines
 

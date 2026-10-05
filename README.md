@@ -111,6 +111,8 @@ Otwiera `http://localhost:8765/` (serwer słucha wyłącznie na `127.0.0.1`). Me
   polami technicznymi: identyfikator, tag, liczba prób…) albo ręczny wybór. Komórki zaczynające się od `= + - @` są
   zabezpieczone przed wykonaniem jako formuły.
 
+- **Automat** — wysyłka w tle przez kilka dni: limity, plan, stan demona, prognoza i dziennik. Szczegóły w sekcji 5a.
+
 - **Skraper** — firmy do przeskanowania, start/stop przebiegu, postęp na żywo, a po kliknięciu w firmę: znalezione
   kontakty (e-maile, telefony, profile firmowe w social media, formularze), pobrane strony i `robots.txt`.
   Szczegóły w sekcji 5.
@@ -321,6 +323,61 @@ i przejrzyj log oraz szczegóły firmy w panelu. Pilotaż na firmach klientów d
 **Testowanie bez internetu.** Zestaw testów używa lokalnego „internetu” (jeden serwer udający wiele witryn) i blokuje
 każde połączenie poza `127.0.0.1`. Do uruchomień demo i testów procesów służą zmienne `PERNO_SKRAPER_ALLOW_PRIVATE=1`
 (zezwala na adresy lokalne) i `PERNO_SKRAPER_HOSTS=a.test=127.0.0.1` (mapowanie nazw); drugiej nie da się użyć bez pierwszej.
+
+## 5a. Automat wysyłki (`automat.py` i zakładka „Automat”)
+
+Wysyła maile **sam, przez kilka dni**: tylko w wybranych dniach tygodnia i godzinach, do dziennego limitu, z losowymi
+odstępami. Robi to osobny proces (demon), więc zamknięcie karty, panelu czy terminala niczego nie przerywa.
+
+**Jak to działa.**
+- Demon (`python3 automat.py run`) uruchamia **launchd** po każdym zalogowaniu i po awarii (`install` zakłada LaunchAgenta
+  `pl.perno.automat`; `uninstall` go zdejmuje). Działa stale, ale wysyła tylko wtedy, gdy plan jest **uzbrojony** (Start).
+- Co ~30 s sprawdza plan i wysyła najwyżej jeden mail: pierwszy „Do wysłania” z adresem i treścią, w kolejności panelu,
+  w wybranym segmencie i krajach. Wiersze w statusie „Błąd” nie są ponawiane automatycznie.
+- Każdy mail idzie tą samą drogą co z panelu (zajęcie wiersza w bazie), więc ręczna wysyłka obok automatu nie zrobi
+  duplikatu, a dzienny limit liczy się z bazy — razem z ręcznymi wysyłkami.
+- **Zaległości nie są nadrabiane.** Jeśli Mac spał albo był wyłączony, automat nie wyśle „podwójnej porcji”: wznawia w oknie
+  i do dziennego limitu, a pominięte dni zgłasza w powiadomieniu.
+
+**Limity są zapamiętane** (w bazie, tabela `automat_stan`) do czasu zmiany: dzienny limit, dni, okno godzin, odstępy,
+segment, kraje (domyślnie wszystkie), horyzont planu (domyślnie 5 dni) i próg pauzy po błędach (domyślnie 3 z rzędu).
+Zmiana limitów przy uzbrojonym planie go **rozbraja**. **Start zawsze pyta o potwierdzenie**: pokazuje zapisane wartości,
+datę ich ostatniej zmiany, liczbę maili w kolejce i ile z nich jedzie do firm spoza Polski; trzeba zaznaczyć „Sprawdziłem
+limity” (w terminalu wpisać „tak”). Po horyzoncie plan sam się kończy — potwierdzasz od nowa.
+
+```
+python3 automat.py limits --daily-cap 40 --window 9:00-15:00 --days pn-pt --horizon 3   # zapis (bez flag: pokazuje)
+python3 automat.py doctor        # gotowość: SMTP, powiadomienia, LaunchAgent, demon, zasilanie
+python3 automat.py test-notify   # próbne powiadomienie każdym kanałem
+python3 automat.py install       # demon po zalogowaniu
+python3 automat.py start         # limity + kolejka + pytanie, potem uzbrojenie
+python3 automat.py status | pause | resume | stop | uninstall | print-pmset
+```
+
+**Błędy.** Błąd logowania, limit nadawcy albo odrzucenie jako spam wstrzymują automat od razu; inne błędy (sieć) po
+zadanej serii z rzędu; błąd adresata (nie istnieje) nie wstrzymuje. Gdy mail wyszedł, a baza nie zapisała statusu,
+automat wstrzymuje się i prosi o sprawdzenie folderu „Wysłane” — nie wysyłaj wtedy ponownie.
+
+**Powiadomienia** (zdarzenie → kanały: macOS / telefon przez [ntfy](https://docs.ntfy.sh/) / e-mail do siebie):
+podsumowanie dnia (wszystkie), koniec planu lub pusta kolejka (wszystkie), pauza po błędach i „sprawdź Wysłane”
+(wszystkie), pominięty dzień i awaria bazy (macOS + telefon), start planu i wznowienia (tylko macOS). Konfiguracja w
+`config.env` (wszystkie klucze opcjonalne): `NTFY_TOPIC` (długi, losowy sekret — kto go zna, może czytać i pisać),
+`NTFY_SERVER`, `NOTIFY_EMAIL`, `NOTIFY_MACOS=false`, `HEALTHCHECK_URL`. Zmianę kluczy zobaczy demon po ponownym
+uruchomieniu (`python3 automat.py install`). Powiadomienia systemowe wymagają jednorazowej zgody — uruchom
+`test-notify` z Terminala. Do telefonu nie idą adresy e-mail odbiorców, tylko nazwy firm i ogólne komunikaty.
+
+**Czego nie da się zagwarantować (MacBook).** Zamknięcie klapy na baterii usypia Maca i wysyłka stoi do wybudzenia.
+Demon trzyma `caffeinate` tylko w oknie wysyłki (Mac nie zaśnie z bezczynności) i ostrzega o baterii, ale po zamknięciu
+klapy nic nie poradzi: zostaw klapę otwartą i podłącz zasilacz. `print-pmset` pokazuje polecenie wybudzania Maca przed
+oknem (wymaga `sudo`; sam go nie uruchamiam). LaunchAgent startuje po **zalogowaniu**, nie po samym włączeniu zasilania
+(przy FileVault trzeba wpisać hasło). **Wyłączony lub uśpiony Mac nikogo nie powiadomi**, więc ustaw `HEALTHCHECK_URL`
+(np. darmowe healthchecks.io: harmonogram co 5–10 min w oknie wysyłki, tolerancja kilkanaście minut) — demon pinguje
+adres co 5 minut w oknie, a usługa zaalarmuje, gdy pingi znikną. Projekt leży w `Desktop`: jeśli `logs/automat_launchd.log`
+pokaże „Operation not permitted”, nadaj Pythonowi z `.venv` Pełny dostęp do dysku (Ustawienia → Prywatność i
+ochrona) albo przenieś projekt poza Desktop/Documents.
+
+**Języki.** Treści maili są dziś generowane tylko po polsku, także dla firm spoza Polski; filtr krajów w limitach pozwala
+wysyłać automatem tylko do wybranych krajów (np. `--countries PL`).
 
 ## 6. Terminal (`send_emails.py`)
 

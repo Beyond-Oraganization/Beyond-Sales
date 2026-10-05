@@ -11,8 +11,10 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional, Sequence
 
 from perno.db import Database
+from perno.db.automat_store import AutomatStore
 from perno.scraper.store import Store
-from perno.services import sending
+from perno.services import automat_control, sending
+from perno.services.automat_log import EventLog
 from perno.services.bulk import UndoLog
 from perno.settings import ConfigFile
 from perno.web.page import Page
@@ -44,6 +46,13 @@ def open_scan_store(db: Database) -> Store:
     return store
 
 
+def open_automat_store(db: Database) -> AutomatStore:
+    """Magazyn automatu wysyłki na bazie panelu; jeden na aplikację, tabele zakładane od razu."""
+    store = AutomatStore(db)
+    store.ensure_schema()
+    return store
+
+
 @dataclass
 class AppContext:
     db: Database
@@ -52,9 +61,20 @@ class AppContext:
     undo_log: UndoLog = field(default_factory=UndoLog)  # jeden dziennik cofania na aplikację (w pamięci serwera)
     smtp_factory: Optional[Callable] = None  # wstrzykiwana atrapa w testach; None = z config.env
     scan_store: Lazy[Store] = field(init=False)
+    automat_store: Lazy[AutomatStore] = field(init=False)
+    automat_probes: automat_control.Probes = field(default_factory=automat_control.Probes)
 
     def __post_init__(self) -> None:
         self.scan_store = Lazy(lambda: open_scan_store(self.db))
+        self.automat_store = Lazy(lambda: open_automat_store(self.db))
+
+    def notify_channels(self) -> list:
+        """Kanały powiadomień z kompletnym ustawieniem w config.env (macos, ntfy, email)."""
+        return automat_control.notify_settings(self.config.load()).configured_channels()
+
+    def automat_log(self) -> EventLog:
+        """Dziennik zdarzeń automatu z kanałami powiadomień z aktualnego config.env."""
+        return automat_control.build_event_log(self.automat_store.get(), self.db, self.config.load(), self.smtp_factory)
 
     def mailer(self) -> sending.Mailer:
         """Dane wysyłki z aktualnego config.env (rzuca `ConfigError`, gdy brakuje danych SMTP)."""
