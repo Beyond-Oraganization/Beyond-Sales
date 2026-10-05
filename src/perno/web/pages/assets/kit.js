@@ -1,11 +1,11 @@
 // Wspólny interfejs list firm: pasek filtrów (szybkie widoki, chipy statusów, wyszukiwarka, kraj/segment,
 // dodatkowe filtry, zapisane widoki), sortowanie, paginacja i zaznaczanie (menu, Shift+klik, „tylko zaznaczone”).
-// Logika siedzi w PernoFilters i PernoSelection (testowane w Node) — tu jest tylko DOM.
-// Strona podaje wiersze, sposób rysowania komórek i kontenery; kit zarządza resztą i zgłasza zmiany przez onChange.
+// Wiersze, sumy i liczniki przychodzą z serwera (PernoListModel); stan filtrów to PernoFilters, a zaznaczenie — zbiór id
+// (PernoSelection). Całą logikę testują testy w Node, tu jest tylko DOM.
+// Strona podaje sposób rysowania komórek i kontenery; kit zarządza resztą i zgłasza zmiany przez onChange.
 (function (root) {
   'use strict';
-  const F = root.PernoFilters;
-  const SIZES = [50, 100, 200, 0];  // 0 = wszystkie
+  const F = root.PernoFilters, M = root.PernoListModel;
   const PREFIX = 'perno.';
 
   // ---- pamięć przeglądarki (może być zablokowana albo pusta — strona działa i bez niej) ----------
@@ -66,67 +66,52 @@
   // opts: key (przestrzeń w pamięci przeglądarki), ctx (PernoFilters.createContext), selection (PernoSelection),
   //       filtersEl, tableEl, tbodyEl, pagerEl, selectEl, emptyEl (kontenery ze strony),
   //       cells(row) → HTML komórek <td>, decorate(tr, row), detail(row) → <tr> pod wierszem lub null,
-  //       canSelect(row), rowClass(row), rowClickToggles, selectItems [{label, run({filtered, ordered, selection})}],
-  //       defaultSize, onChange({reason, filtered, ordered, pageRows, state}).
+  //       canSelect(row), rowClass(row), rowClickToggles, defaultSize, lockedStatuses (statusy, których „zaznacz wszystkie”
+  //       pomija, np. „wysylanie”), selectItems [{label, run({ids, selection})}] (dodatkowe pozycje menu „Zaznacz”),
+  //       onChange({reason: 'data' | 'selection' | 'summary'}), onError(komunikat).
 
   function createListView(opts) {
     const ctx = opts.ctx, selection = opts.selection;
     const stateKey = 'state.' + opts.key;
     const defaultSize = opts.defaultSize === undefined ? 100 : opts.defaultSize;
     const canSelect = opts.canSelect || (() => true);
-    let rows = [], state = F.emptyState(), page = 1, size = defaultSize, onlySelected = false;
-    let filtered = [], ordered = [], pageRows = [];
+    const model = M.create({api: root.api, filters: F, ctx: ctx, selection: selection, defaultSize: defaultSize, urls: opts.urls});
     let bar = null, selectBar = null, searchTimer = null;
+    let drawn = '';          // podpis narysowanych wierszy: odświeżenie w tle nie przerysowuje tabeli bez potrzeby
+    let deferred = false;    // dane przyszły, gdy ktoś pisał w komórce: przerysujemy, gdy ją opuści
 
-    // ---- obliczenia
-    function compute() {
-      ctx.today = F.localDay();
-      filtered = onlySelected ? rows.filter((r) => selection.has(r.id)) : F.filterRows(rows, state, ctx);
-      ordered = F.sortRows(filtered, state.sort, ctx);
-      const pages = size === 0 ? 1 : Math.max(1, Math.ceil(ordered.length / size));
-      if (page > pages) page = pages;
-      pageRows = size === 0 ? ordered : ordered.slice((page - 1) * size, page * size);
-    }
-    const selectable = (list) => list.filter(canSelect).map((r) => r.id);
-    const pageSelectable = () => selectable(pageRows);
+    const pageRows = () => model.rows();
+    const selectable = (rows) => rows.filter(canSelect).map((r) => r.id);
+    const pageSelectable = () => selectable(pageRows());
+    const lockedFilter = () => (opts.lockedStatuses && opts.lockedStatuses.length ? {exclude_statuses: opts.lockedStatuses} : {});
+    function tell(message) { if (opts.onError) opts.onError(message); else root.alert(message); }
 
     // ---- stan w adresie i pamięci
     function parseSize(value) {
-      if (value === 'all') return 0;
       const n = parseInt(value, 10);
-      return SIZES.indexOf(n) !== -1 ? n : null;
+      return model.SIZES.indexOf(n) !== -1 ? n : null;
     }
     function restore() {
       const params = new URLSearchParams(root.location.search);
       if (Array.from(params.keys()).length) {
-        state = F.fromQuery(root.location.search);
-        page = Math.max(1, parseInt(params.get('page'), 10) || 1);
-        const s = parseSize(params.get('size'));
-        if (s !== null) size = s;
+        model.restore({state: F.fromQuery(root.location.search), page: parseInt(params.get('page'), 10) || 1, size: parseSize(params.get('size'))});
         return;
       }
       const saved = readStore(stateKey, null);
-      if (saved && typeof saved === 'object') {
-        state = F.normalizeState(saved.state);
-        if (SIZES.indexOf(saved.size) !== -1) size = saved.size;
-      }
+      if (saved && typeof saved === 'object') model.restore({state: saved.state, size: saved.size});
     }
     function persist() {
-      const query = [F.toQuery(state), page > 1 ? 'page=' + page : '',
-        size !== defaultSize ? 'size=' + (size === 0 ? 'all' : size) : ''].filter(Boolean).join('&');
+      const page = model.getPage(), size = model.getSize();
+      const query = [F.toQuery(model.getState()), page > 1 ? 'page=' + page : '', size !== defaultSize ? 'size=' + size : ''].filter(Boolean).join('&');
       try { root.history.replaceState(null, '', root.location.pathname + (query ? '?' + query : '')); } catch (err) { /* np. file:// */ }
-      writeStore(stateKey, {state: state, size: size});
+      writeStore(stateKey, {state: model.getState(), size: size});
     }
 
     // ---- zmiany stanu
     function applyState(next, keepSort) {
-      const sort = keepSort ? state.sort : undefined;
-      state = F.normalizeState(sort === undefined ? next : Object.assign({}, next, {sort: sort}));
-      page = 1;
-      onlySelected = false;
-      render('filters');
+      model.setState(keepSort ? Object.assign({}, next, {sort: model.getState().sort}) : next);
     }
-    function patch(part) { state = F.normalizeState(Object.assign({}, state, part)); page = 1; render('filters'); }
+    const patch = (part) => model.patch(part);
 
     // ---- pasek filtrów
     const TRI_OPTIONS = '<option value="">dowolny</option><option value="yes">jest</option><option value="no">brak</option>';
@@ -187,7 +172,7 @@
       });
       bar.statuses.addEventListener('click', (e) => {
         const b = e.target.closest('button[data-status]');
-        if (b) patch({statuses: toggled(state.statuses, b.dataset.status)});
+        if (b) patch({statuses: toggled(model.getState().statuses, b.dataset.status)});
       });
       bar.search.addEventListener('input', () => {
         clearTimeout(searchTimer);
@@ -195,10 +180,10 @@
       });
       bar.qfield.addEventListener('change', () => patch({qFields: bar.qfield.value}));
       bar.segmentsPop.panel.addEventListener('change', (e) => {
-        if (e.target.dataset.value !== undefined) patch({segments: toggled(state.segments, e.target.dataset.value)});
+        if (e.target.dataset.value !== undefined) patch({segments: toggled(model.getState().segments, e.target.dataset.value)});
       });
       bar.countriesPop.panel.addEventListener('change', (e) => {
-        if (e.target.dataset.value !== undefined) patch({countries: toggled(state.countries, e.target.dataset.value)});
+        if (e.target.dataset.value !== undefined) patch({countries: toggled(model.getState().countries, e.target.dataset.value)});
       });
       bar.moreToggle.addEventListener('click', () => {
         bar.more.hidden = !bar.more.hidden;
@@ -218,7 +203,7 @@
       bar.clear.addEventListener('click', () => applyState(F.emptyState(), true));
       bar.active.addEventListener('click', (e) => {
         const b = e.target.closest('button[data-clear]');
-        if (b) { state = F.clearPart(state, b.dataset.clear); page = 1; render('filters'); }
+        if (b) model.setState(F.clearPart(model.getState(), b.dataset.clear));
       });
       bar.viewsPop.panel.addEventListener('click', (e) => {
         const views = loadViews();
@@ -249,7 +234,7 @@
       const name = (input.value || '').trim().slice(0, 60);
       if (!name) { input.focus(); return; }
       const views = loadViews().filter((v) => v.name !== name);
-      views.push({name: name, state: state});
+      views.push({name: name, state: model.getState()});
       saveViews(views);
       renderViews();
     }
@@ -263,18 +248,23 @@
         '<button type="button" data-save>Zapisz</button></div>';
     }
 
+    // Pasek rysujemy z tego, co ostatnio przysłał serwer (liczniki bez filtra własnego pola), a stan filtrów (zaznaczone
+    // chipy, pola) — z bieżącego stanu, więc kliknięcie widać od razu, jeszcze przed odpowiedzią.
     function updateBar() {
-      const counts = (facet) => F.facetCounts(rows, state, ctx, facet);
+      const state = model.getState(), facets = model.facets(), only = model.isOnlySelected();
+      const totals = facets.totals, here = facets.overview || {statuses: {}, segments: {}, countries: {}};
       // szybkie widoki
-      const activePreset = onlySelected ? '' : F.presetKeyFor(state, ctx);
-      bar.presets.innerHTML = '<span class="kit-label">Widoki</span>' + F.presetCounts(rows, ctx).map((p) =>
-        `<button type="button" class="kit-pill${p.count === 0 ? ' is-zero' : ''}" data-preset="${p.key}" aria-pressed="${p.key === activePreset}"` +
-        `${p.hint ? ` title="${escapeHtml(p.hint)}"` : ''}>${escapeHtml(p.label)}<span class="n">${p.count}</span></button>`).join('');
+      const activePreset = only ? '' : F.presetKeyFor(state, ctx);
+      bar.presets.innerHTML = '<span class="kit-label">Widoki</span>' + F.PRESETS.map((p, i) => {
+        const n = facets.presets ? facets.presets[i] : null;
+        return `<button type="button" class="kit-pill${n === 0 ? ' is-zero' : ''}" data-preset="${p.key}" aria-pressed="${p.key === activePreset}"` +
+          `${p.hint ? ` title="${escapeHtml(p.hint)}"` : ''}>${escapeHtml(p.label)}${n === null ? '' : `<span class="n">${n}</span>`}</button>`;
+      }).join('');
       // statusy
-      const all = F.facetCounts(rows, F.emptyState(), ctx, 'statuses'), here = counts('statuses');
+      const all = totals ? totals.statuses : {};
       const codes = ctx.statusOrder.concat(Object.keys(all).filter((c) => ctx.statusOrder.indexOf(c) === -1));
       bar.statuses.innerHTML = '<span class="kit-label">Status</span>' + codes.filter((c) => all[c] || state.statuses.indexOf(c) !== -1).map((c) => {
-        const info = ctx.statusMeta[c] || [c, '#6b7280'], n = here[c] || 0, on = state.statuses.indexOf(c) !== -1;
+        const info = ctx.statusMeta[c] || [c, '#6b7280'], n = here.statuses[c] || 0, on = state.statuses.indexOf(c) !== -1;
         return `<button type="button" class="kit-chip${n === 0 ? ' is-zero' : ''}" data-status="${escapeHtml(c)}" aria-pressed="${on}" style="--chip:${escapeHtml(info[1])}">` +
           `<span class="kit-dot"></span>${escapeHtml(info[0])}<span class="n">${n}</span></button>`;
       }).join('');
@@ -282,20 +272,18 @@
       if (root.document.activeElement !== bar.search && bar.search.value !== state.q) bar.search.value = state.q;
       bar.qfield.value = state.qFields;
       // segmenty
-      const segCounts = counts('segments');
-      const segments = Object.keys(F.facetCounts(rows, F.emptyState(), ctx, 'segments'))
+      const segments = Object.keys(totals ? totals.segments : {})
         .sort((a, b) => (ctx.segmentOrder.indexOf(a) + 1 || 99) - (ctx.segmentOrder.indexOf(b) + 1 || 99) || a.localeCompare(b));
-      bar.segmentsPop.panel.innerHTML = segments.map((s) => option(s, s, segCounts[s] || 0, state.segments.indexOf(s) !== -1)).join('');
+      bar.segmentsPop.panel.innerHTML = segments.map((s) => option(s, s, here.segments[s] || 0, state.segments.indexOf(s) !== -1)).join('');
       setPopButton(bar.segmentsPop.btn, 'Segment', state.segments);
       // kraje
-      const coCounts = counts('countries');
-      const present = Object.keys(F.facetCounts(rows, F.emptyState(), ctx, 'countries')).filter((c) => c !== F.NO_COUNTRY && c !== F.FOREIGN);
+      const present = Object.keys(totals ? totals.countries : {}).filter((c) => c !== F.NO_COUNTRY && c !== F.FOREIGN);
       present.sort((a, b) => (a === 'PL' ? -1 : b === 'PL' ? 1 : (ctx.countryNames[a] || a).localeCompare(ctx.countryNames[b] || b, 'pl')));
       const sel = (c) => state.countries.indexOf(c) !== -1;
       bar.countriesPop.panel.innerHTML =
-        option(F.FOREIGN, 'Spoza Polski', coCounts[F.FOREIGN] || 0, sel(F.FOREIGN)) +
-        option(F.NO_COUNTRY, 'Bez kraju', coCounts[F.NO_COUNTRY] || 0, sel(F.NO_COUNTRY)) + '<hr>' +
-        present.map((c) => option(c, `${ctx.countryFlags[c] || ''} ${ctx.countryNames[c] || c}`.trim(), coCounts[c] || 0, sel(c))).join('');
+        option(F.FOREIGN, 'Spoza Polski', here.countries[F.FOREIGN] || 0, sel(F.FOREIGN)) +
+        option(F.NO_COUNTRY, 'Bez kraju', here.countries[F.NO_COUNTRY] || 0, sel(F.NO_COUNTRY)) + '<hr>' +
+        present.map((c) => option(c, `${ctx.countryFlags[c] || ''} ${ctx.countryNames[c] || c}`.trim(), here.countries[c] || 0, sel(c))).join('');
       setPopButton(bar.countriesPop.btn, 'Kraj', state.countries.map((c) => c === F.FOREIGN ? 'spoza PL' : c === F.NO_COUNTRY ? 'bez kraju' : c));
       // dodatkowe filtry
       bar.more.querySelectorAll('[data-field]').forEach((el) => { if (el.value !== state[el.dataset.field]) el.value = state[el.dataset.field]; });
@@ -303,11 +291,11 @@
       bar.moreToggle.classList.toggle('is-active', extra);
       // aktywne filtry i licznik
       const parts = F.describe(state, ctx);
-      bar.clear.hidden = !parts.length && !onlySelected;
-      bar.active.innerHTML = (onlySelected
+      bar.clear.hidden = !parts.length && !only;
+      bar.active.innerHTML = (only
         ? '<span class="muted">Pokazuję tylko zaznaczone — filtry są wstrzymane.</span>'
         : parts.map((d) => `<button type="button" class="kit-tag" data-clear="${d.part}" title="Usuń ten filtr">${escapeHtml(d.text)} ✕</button>`).join('')) +
-        `<span class="kit-count">${filtered.length} <span class="muted">z ${rows.length}</span></span>`;
+        `<span class="kit-count">${model.total()} <span class="muted">z ${totals ? totals.all : '…'}</span></span>`;
     }
     function option(value, label, n, checked) {
       return `<label class="kit-option${n === 0 ? ' is-zero' : ''}"><input type="checkbox" data-value="${escapeHtml(value)}"${checked ? ' checked' : ''}> ${escapeHtml(label)}<span class="n">${n}</span></label>`;
@@ -319,9 +307,9 @@
 
     // ---- tabela
     function renderTable() {
-      const tbody = opts.tbodyEl, frag = root.document.createDocumentFragment();
+      const tbody = opts.tbodyEl, frag = root.document.createDocumentFragment(), rows = pageRows();
       tbody.innerHTML = '';
-      pageRows.forEach((row) => {
+      rows.forEach((row) => {
         const tr = root.document.createElement('tr');
         const picked = selection.has(row.id);
         tr.className = 'kit-row' + (picked ? ' is-selected' : '') + (opts.rowClass ? ' ' + opts.rowClass(row) : '');
@@ -334,13 +322,13 @@
         if (extra) frag.appendChild(extra);
       });
       tbody.appendChild(frag);
-      const th = opts.tableEl.querySelectorAll('thead th[data-sort]');
-      th.forEach((cell) => {
-        const key = F.sortKeyOf(state.sort), on = cell.dataset.sort === key;
-        if (on) cell.setAttribute('aria-sort', state.sort.charAt(0) === '-' ? 'descending' : 'ascending');
+      const sort = model.getState().sort;
+      opts.tableEl.querySelectorAll('thead th[data-sort]').forEach((cell) => {
+        if (cell.dataset.sort === F.sortKeyOf(sort)) cell.setAttribute('aria-sort', sort.charAt(0) === '-' ? 'descending' : 'ascending');
         else cell.removeAttribute('aria-sort');
       });
-      if (opts.emptyEl) opts.emptyEl.hidden = pageRows.length > 0;
+      if (opts.emptyEl) { opts.emptyEl.textContent = 'Brak wierszy pasujących do filtrów.'; opts.emptyEl.hidden = rows.length > 0; }
+      drawn = JSON.stringify(rows);
       syncChecks();
     }
 
@@ -363,16 +351,15 @@
     // ---- paginacja
     function renderPager() {
       if (!opts.pagerEl) return;
-      const total = ordered.length, pages = size === 0 ? 1 : Math.max(1, Math.ceil(total / size));
-      const from = total === 0 ? 0 : (size === 0 ? 1 : (page - 1) * size + 1);
-      const to = size === 0 ? total : Math.min(total, page * size);
+      const total = model.total(), pages = model.pages(), page = model.getPage(), size = model.getSize();
+      const from = total === 0 ? 0 : (page - 1) * size + 1, to = Math.min(total, page * size);
       opts.pagerEl.innerHTML = `<div class="kit-pager"><span>${total ? `Wiersze ${from}–${to} z ${total}` : 'Brak wierszy'}</span>` +
         (pages > 1 ? `<span class="pages"><button type="button" data-page="1" ${page === 1 ? 'disabled' : ''} aria-label="Pierwsza strona">«</button>` +
           `<button type="button" data-page="${page - 1}" ${page === 1 ? 'disabled' : ''} aria-label="Poprzednia strona">‹</button>` +
           `<span>Strona <b>${page}</b> z ${pages}</span>` +
           `<button type="button" data-page="${page + 1}" ${page === pages ? 'disabled' : ''} aria-label="Następna strona">›</button>` +
           `<button type="button" data-page="${pages}" ${page === pages ? 'disabled' : ''} aria-label="Ostatnia strona">»</button></span>` : '') +
-        `<label>Na stronie <select data-size>${SIZES.map((n) => `<option value="${n}"${n === size ? ' selected' : ''}>${n === 0 ? 'wszystkie' : n}</option>`).join('')}</select></label></div>`;
+        `<label>Na stronie <select data-size>${model.SIZES.map((n) => `<option value="${n}"${n === size ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div>`;
     }
 
     // ---- pasek zaznaczania
@@ -398,60 +385,64 @@
       const q = (sel) => opts.selectEl.querySelector(sel);
       selectBar = {pop: q('.kit-pop'), menu: q('.kit-popover'), count: q('.kit-selcount'), only: q('[data-only]'), first: q('[data-first]')};
       popover(selectBar.pop.querySelector('button'), selectBar.menu);
-      selectBar.menu.addEventListener('click', (e) => {
-        const b = e.target.closest('button[data-act],button[data-extra]');
-        if (!b) return;
-        const api = {filtered: filtered, ordered: ordered, pageRows: pageRows, selection: selection, ctx: ctx};
-        if (b.dataset.extra !== undefined) opts.selectItems[parseInt(b.dataset.extra, 10)].run(api);
-        else if (b.dataset.act === 'page') selection.add(pageSelectable());
-        else if (b.dataset.act === 'all') selection.add(selectable(ordered));
-        else if (b.dataset.act === 'first') selection.addFirst(selectable(ordered), Math.max(1, parseInt(selectBar.first.value, 10) || 1));
-        else if (b.dataset.act === 'invert') selection.invert(selectable(ordered));
-        else if (b.dataset.act === 'unmatch') selection.remove(ordered.map((r) => r.id));
-        else if (b.dataset.act === 'clear') selection.clear();
-        closePopovers();
-        selectionChanged();
-      });
-      selectBar.only.addEventListener('change', () => {
-        onlySelected = selectBar.only.checked;
-        page = 1;
-        render('filters');
-      });
+      selectBar.menu.addEventListener('click', onSelectMenu);
+      selectBar.only.addEventListener('change', () => model.setOnlySelected(selectBar.only.checked));
     }
+
+    // Akcje, które potrzebują całego widoku (a nie tylko strony), pytają serwer o id w kolejności widoku.
+    async function onSelectMenu(e) {
+      const b = e.target.closest('button[data-act],button[data-extra]');
+      if (!b) return;
+      closePopovers();
+      const act = b.dataset.act;
+      try {
+        if (b.dataset.extra !== undefined) {
+          await opts.selectItems[parseInt(b.dataset.extra, 10)].run({ids: (extra) => model.viewIds(Object.assign({}, lockedFilter(), extra)), selection: selection});
+        } else if (act === 'page') {
+          selection.add(pageSelectable());
+        } else if (act === 'all' || act === 'invert') {
+          const found = await model.viewIds(lockedFilter());
+          if (act === 'all') selection.add(found.ids); else selection.invert(found.ids);
+          if (found.truncated) tell(`Objęto tylko pierwsze ${found.ids.length} firm — zawęź filtry, żeby objąć resztę.`);
+        } else if (act === 'first') {
+          const n = Math.max(1, parseInt(selectBar.first.value, 10) || 1);
+          selection.addFirst((await model.viewIds(Object.assign({limit: n}, lockedFilter()))).ids, n);
+        } else if (act === 'unmatch') {
+          selection.remove((await model.viewIds()).ids);
+        } else if (act === 'clear') {
+          selection.clear();
+        }
+      } catch (err) {
+        tell(err.message);
+      }
+      selectionChanged();
+    }
+
     function updateSelectBar() {
       if (!selectBar) return;
-      const counts = selection.counts(ordered.map((r) => r.id));
-      selectBar.count.textContent = counts.total
-        ? `Zaznaczono ${counts.total}` + (counts.outside ? ` (${counts.outside} poza widokiem)` : '')
-        : 'Nic nie zaznaczono';
-      const label = (act, text) => { selectBar.menu.querySelector(`[data-act="${act}"]`).textContent = text; };
+      const total = selection.size, summary = model.summary(), only = model.isOnlySelected();
+      let text = total ? `Zaznaczono ${total}` : 'Nic nie zaznaczono';
+      if (total && !only && summary && !model.summaryPending() && summary.in_view !== undefined && total > summary.in_view) {
+        text += ` (${total - summary.in_view} poza widokiem)`;
+      }
+      selectBar.count.textContent = text;
+      const label = (act, value) => { selectBar.menu.querySelector(`[data-act="${act}"]`).textContent = value; };
       label('page', `Zaznacz stronę (${pageSelectable().length})`);
-      label('all', `Zaznacz wszystkie pasujące (${selectable(ordered).length})`);
-      label('clear', `Wyczyść zaznaczenie (${counts.total})`);
+      label('all', `Zaznacz wszystkie pasujące (${model.total()})`);
+      label('clear', `Wyczyść zaznaczenie (${total})`);
       (opts.selectItems || []).forEach((item, i) => {
-        selectBar.menu.querySelector(`[data-extra="${i}"]`).textContent = typeof item.label === 'function' ? item.label({filtered: filtered, ordered: ordered, ctx: ctx}) : item.label;
+        selectBar.menu.querySelector(`[data-extra="${i}"]`).textContent = typeof item.label === 'function' ? item.label({total: model.total()}) : item.label;
       });
-      selectBar.menu.querySelector('[data-act="clear"]').disabled = counts.total === 0;
-      selectBar.only.checked = onlySelected;
-      selectBar.only.disabled = counts.total === 0 && !onlySelected;
+      selectBar.menu.querySelector('[data-act="clear"]').disabled = total === 0;
+      selectBar.only.checked = only;
+      selectBar.only.disabled = total === 0 && !only;
     }
 
     function selectionChanged() {
-      if (onlySelected) { render('selection'); return; }  // lista zależy od zaznaczenia
       syncChecks();
       updateSelectBar();
-      if (opts.onChange) opts.onChange({reason: 'selection', filtered: filtered, ordered: ordered, pageRows: pageRows, state: state});
-    }
-
-    // ---- całość
-    function render(reason) {
-      compute();
-      if (bar) updateBar();
-      renderTable();
-      renderPager();
-      updateSelectBar();
-      persist();
-      if (opts.onChange) opts.onChange({reason: reason || 'render', filtered: filtered, ordered: ordered, pageRows: pageRows, state: state});
+      model.selectionChanged();   // podsumowanie od nowa; w widoku „tylko zaznaczone” także lista
+      if (opts.onChange) opts.onChange({reason: 'selection'});
     }
 
     // ---- zdarzenia tabeli i paginacji
@@ -460,7 +451,7 @@
       head.insertAdjacentHTML('afterbegin', '<th class="kit-check"><input type="checkbox" class="kit-check-all" aria-label="Zaznacz stronę"></th>');
       head.addEventListener('click', (e) => {
         const th = e.target.closest('th[data-sort]');
-        if (th) { state = F.normalizeState(Object.assign({}, state, {sort: F.nextSort(state.sort, th.dataset.sort)})); page = 1; render('sort'); }
+        if (th) model.setSort(F.nextSort(model.getState().sort, th.dataset.sort));
       });
       head.querySelector('.kit-check-all').addEventListener('click', (e) => {
         const ids = pageSelectable();
@@ -469,8 +460,7 @@
         selectionChanged();
       });
       const toggleRow = (id, on, shift) => {
-        const order = pageSelectable();
-        if (shift) selection.range(order, id, on); else selection.toggle(id, on);
+        if (shift) selection.range(pageSelectable(), id, on); else selection.toggle(id, on);
         selectionChanged();
       };
       opts.tbodyEl.addEventListener('click', (e) => {
@@ -478,41 +468,85 @@
         if (box) { toggleRow(box.dataset.id, box.checked, e.shiftKey); return; }
         if (!opts.rowClickToggles || e.target.closest('a,button,input,select,textarea,label')) return;
         const tr = e.target.closest('tr.kit-row');
-        if (tr && canSelect(rows.find((r) => r.id === tr.dataset.id) || {})) toggleRow(tr.dataset.id, !selection.has(tr.dataset.id), e.shiftKey);
+        if (tr && canSelect(pageRows().find((r) => r.id === tr.dataset.id) || {})) toggleRow(tr.dataset.id, !selection.has(tr.dataset.id), e.shiftKey);
+      });
+      // Odświeżenie w tle (po edycji, wysyłce) nie może zabrać komórki, w której ktoś właśnie pisze.
+      opts.tbodyEl.addEventListener('focusout', () => {
+        if (!deferred) return;
+        setTimeout(() => { if (!editing()) { deferred = false; drawBody(); } }, 0);
       });
       if (opts.pagerEl) {
         opts.pagerEl.addEventListener('click', (e) => {
           const b = e.target.closest('button[data-page]');
-          if (b && !b.disabled) { page = parseInt(b.dataset.page, 10); render('page'); }
+          if (b && !b.disabled) model.goTo(parseInt(b.dataset.page, 10));
         });
         opts.pagerEl.addEventListener('change', (e) => {
-          if (e.target.matches('select[data-size]')) { size = parseInt(e.target.value, 10); page = 1; render('page'); }
+          if (e.target.matches('select[data-size]')) model.setSize(parseInt(e.target.value, 10));
         });
       }
     }
+
+    function editing() {
+      const el = root.document.activeElement;
+      return !!el && opts.tbodyEl.contains(el) && el.matches('input,textarea,select');
+    }
+    function drawBody() { renderTable(); updateSelectBar(); }
+
+    // ---- model → DOM
+    function onData() {
+      if (bar) updateBar();
+      renderPager();
+      if (JSON.stringify(pageRows()) !== drawn) {
+        if (editing()) deferred = true; else drawBody();
+      } else {
+        updateSelectBar();
+      }
+      persist();
+      if (opts.onChange) opts.onChange({reason: 'data'});
+    }
+    function setBusy(on) {
+      opts.tableEl.classList.toggle('is-loading', on);
+      opts.tableEl.setAttribute('aria-busy', String(on));
+    }
+    model.subscribe((type) => {
+      if (type === 'state') { persist(); if (bar) updateBar(); updateSelectBar(); }
+      else if (type === 'loading') setBusy(true);
+      else if (type === 'data') { setBusy(false); onData(); }
+      else if (type === 'error') {
+        setBusy(false);
+        if (opts.emptyEl) { opts.emptyEl.textContent = model.error(); opts.emptyEl.hidden = false; }
+        tell(model.error());
+      } else if (type === 'summary') {
+        updateSelectBar();
+        if (opts.onChange) opts.onChange({reason: 'summary'});
+      }
+    });
 
     // ---- start
     buildBar();
     buildSelectBar();
     wireTable();
     restore();
+    if (bar) updateBar();
+    updateSelectBar();
 
     return {
-      setRows(next) {
-        rows = next;
-        selection.prune(rows.map((r) => r.id));
-        render('data');
-      },
-      render: render,
-      getState: () => state,
+      start() { return model.load(); },
+      // Dane zmieniły się poza listą (edycja, zmiana zbiorcza, wysyłka): serwer liczy wszystko od nowa.
+      refresh() { return model.refresh(); },
+      // Zmieniony wiersz (np. po edycji pola) rysujemy od razu z danych, które już mamy; serwer dopowie resztę.
+      redraw() { drawBody(); },
+      pageRows: pageRows,
+      total: () => model.total(),
+      getState: () => model.getState(),
       applyState: applyState,
-      rows: () => rows,
-      filtered: () => filtered,
-      ordered: () => ordered,
-      orderedIds: () => ordered.map((r) => r.id),
-      pageRows: () => pageRows,
       selectionChanged: selectionChanged,
-      onlySelected: () => onlySelected
+      onlySelected: () => model.isOnlySelected(),
+      summary: () => model.summary(),
+      summaryPending: () => model.summaryPending(),
+      error: () => model.error(),
+      viewIds: (extra) => model.viewIds(extra),
+      exportScope: () => model.exportScope()
     };
   }
 

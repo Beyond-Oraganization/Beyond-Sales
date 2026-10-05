@@ -137,6 +137,12 @@ czyści. Ponowne generowanie treści (`--regenerate-pending`, „Odśwież dane�
 
 ### Filtry, zaznaczanie i zbiorcze zmiany (Wysyłka i Eksport)
 
+Lista liczy się **w bazie**, a przeglądarka dostaje jedną stronę wierszy i liczniki (`POST /api/mailing/list`), więc panel
+działa tak samo płynnie przy 400 i przy 50 000 firm (zmierzone na MySQL 9.6 z 50 000 syntetycznych wierszy,
+`scripts/seed_synthetic.py`: otwarcie panelu ok. 100 ms i 53 KB, zmiana strony lub sortowania 100–180 ms, filtr 150–210 ms,
+wyszukiwanie ok. 250 ms; wcześniej cała tabela, 27 MB i 2–3 s przy każdym wczytaniu). Funkcje są te same co dawniej;
+różnica jest jedna: **liczby w tekście sortują się znak po znaku** („Firma 10” przed „Firma 2”, tak jak w MySQL), a nie jak liczby.
+
 - **Szybkie widoki z licznikami**: Wszystkie, Gotowe do wysłania, Błędy, Bez e-maila, Mają e-mail bez treści, Wysłane
   dziś, Wysłane do firm spoza PL, Odpowiedzi, Nie kontaktować, Zaimportowane, Bez kraju, Bez miasta.
 - **Filtry**: chipy statusów (klik = dodaj/zdejmij, liczniki uwzględniają pozostałe filtry), segment i kraj (wiele naraz,
@@ -146,13 +152,15 @@ czyści. Ponowne generowanie treści (`--regenerate-pending`, „Odśwież dane�
   i polskie znaki (`lodz` znajdzie „Łódź”); pole do wyboru (wszędzie / firma / e-mail / strona / kraj i adres / opis);
   kraj można wpisać po polsku („niemcy”).
 - **Sortowanie** po nagłówkach (kolejne kliknięcie: rosnąco → malejąco → domyślnie; polskie litery, puste na końcu),
-  **paginacja** (50 / 100 / 200 / wszystkie). Stan widoku jest w adresie strony (można go zapisać w zakładkach) i
+  **paginacja** (50 / 100 / 200 / 500 wierszy na stronie). Stan widoku jest w adresie strony (można go zapisać w zakładkach) i
   zapamiętywany w przeglądarce; **„Widoki ▾”** zapisują własne zestawy filtrów (wspólne dla Wysyłki i Eksportu).
 - **Zaznaczanie**: checkboxy, Shift+klik (zakres), nagłówek (strona), menu „Zaznacz ▾” (strona, wszystkie pasujące,
   gotowe do wysłania, pierwsze N, odwróć, odznacz), „Pokaż tylko zaznaczone”; licznik „Zaznaczono 37 (5 poza widokiem)”.
-  Zaznaczenie przeżywa zmianę filtrów.
+  Zaznaczenie przeżywa zmianę filtrów, a „Zaznacz wszystkie pasujące” obejmuje cały widok (do 50 000 firm), nie tylko
+  bieżącą stronę; ile zaznaczonych jest gotowych do wysyłki, liczy serwer.
 - **Pasek akcji** (u dołu panelu Wysyłka): **Zmień status**, **Dane firmy…** (kraj / miasto / adres: „bez zmian”,
-  ustaw albo wyczyść), **Kopiuj e-maile**, **Eksportuj** (zaznaczone albo cały widok), **Cofnij** i **Wyślij gotowe**
+  ustaw albo wyczyść), **Kopiuj e-maile**, **Eksportuj** (zaznaczone albo cały widok: serwer wybiera wiersze po filtrach,
+  więc plik nie jest ograniczony liczbą id), **Cofnij** i **Wyślij gotowe**
   (zaznaczone ∩ gotowe; przed wysyłką pada informacja, ile pominięto, oraz ostrzeżenie o firmach spoza Polski, bo szablony
   są po polsku).
 - **Zbiorcza zmiana** (do 20 000 firm naraz) zawsze pokazuje najpierw podgląd: ile firm się zmieni, ile jest bez zmian,
@@ -367,12 +375,15 @@ Testy używają sqlite i atrapy SMTP — nie dotykają prawdziwej bazy ani poczt
 w `tests/__init__.py`). Czy testy naprawdę pilnują logiki, sprawdza kontrola mutacyjna: zmienia w kopii projektu po jednym
 operatorze i liczy, ile zmian wykryły testy (`.venv/bin/python scripts/mutation_check.py src/perno/domain/mail_rules.py
 tests/test_mail_rules.py tests/test_db.py`). Stan z fazy 3: `mail_rules` 100%, `bulk` 88%, `sending` 89%; przeżywają tylko
-zmiany bez wpływu na zachowanie (stałe limitów, flagi `frozen`) albo widoczne dopiero na MySQL. Logikę przeglądarki (filtry,
-wyszukiwarka, sortowanie, zaznaczanie — `src/perno/web/pages/assets/filters.js`, `selection.js`) sprawdzają testy w JavaScript
+zmiany bez wpływu na zachowanie (stałe limitów, flagi `frozen`) albo widoczne dopiero na MySQL. Filtry, wyszukiwarkę,
+sortowanie i liczniki liczy serwer; `tests/listing_cases.json` (28 wierszy, 74 stany filtrów, liczniki i szybkie widoki,
+wyniki wygenerowane z dawnej implementacji w przeglądarce) pilnuje, żeby SQL dawał dokładnie to samo na sqlite i na MySQL
+(`tests/test_listing.py`). Stan filtrów, model listy (żądania, sklejanie, spóźnione odpowiedzi) i zaznaczanie
+(`filters.js`, `listmodel.js`, `selection.js` w `src/perno/web/pages/assets/`) sprawdzają testy w JavaScript
 (`tests/js/*.test.js`), które ten sam zestaw uruchamia przez Node.js 18+ (bez Node są pomijane; osobno:
 `node --test tests/js/*.test.js`); `tests/js/skaper_xss.test.js` uruchamia skrypt zakładki Skraper z wrogimi danymi
-(`<script>`, `onerror=`, `javascript:`) i pilnuje, żeby żadne nie stało się znacznikiem ani atrybutem. Wspólne wektory `tests/filter_cases.json` pilnują,
-żeby filtry w przeglądarce i `RowFilter` na serwerze wybierały te same wiersze. Opcjonalny test
+(`<script>`, `onerror=`, `javascript:`) i pilnuje, żeby żadne nie stało się znacznikiem ani atrybutem. Dane do testów skali
+(50 000 firm) tworzy `scripts/seed_synthetic.py` (tylko w bazie `*_test`). Opcjonalny test
 na prawdziwym MySQL (tryb ścisły, utf8mb4, `FOR UPDATE`, strumieniowanie, zbiorcza zmiana z cofaniem i jednoczesne
 operacje bez zakleszczeń, filtry z `TRIM`/`CASE`, oraz tabele i zapytania skrapera: kolumny ASCII, upserty, BLOB,
 wyłączność dzierżawy między wątkami) wymaga bazy testowej. Najprościej uruchomić osobny, tymczasowy serwer MySQL, który

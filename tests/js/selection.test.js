@@ -69,37 +69,12 @@ test('invert działa tylko w obrębie podanych id', () => {
   assert.deepEqual(sorted(sel), ['b', 'd', 'z']);   // „z” poza widokiem zostaje
 });
 
-test('counts: ile zaznaczonych w widoku, a ile poza nim', () => {
-  const sel = S.create(['a', 'b', 'x', 'y', 'z']);
-  assert.deepEqual(sel.counts(['a', 'b', 'c']), {total: 5, inView: 2, outside: 3});
-  assert.deepEqual(sel.counts([]), {total: 5, inView: 0, outside: 5});
-  assert.deepEqual(S.create().counts(ORDER), {total: 0, inView: 0, outside: 0});
-});
-
 test('headerState: none / some / all dla bieżącej strony', () => {
   const sel = S.create(['a', 'b']);
   assert.equal(sel.headerState(['a', 'b']), 'all');
   assert.equal(sel.headerState(['a', 'c']), 'some');
   assert.equal(sel.headerState(['c', 'd']), 'none');
   assert.equal(sel.headerState([]), 'none');
-});
-
-test('prune wyrzuca id, których już nie ma, i zerwany początek zakresu', () => {
-  const sel = S.create();
-  sel.toggle('a');
-  sel.toggle('b');
-  sel.prune(['a', 'c']);
-  assert.deepEqual(sel.toArray(), ['a']);
-  sel.range(ORDER, 'd', true);                      // początek „b” zniknął → zwykłe kliknięcie
-  assert.deepEqual(sorted(sel), ['a', 'd']);
-  sel.prune(new Set(['d']));
-  assert.deepEqual(sel.toArray(), ['d']);
-});
-
-test('ordered: kolejność widoku, potem reszta', () => {
-  const sel = S.create(['x', 'c', 'a', 'y']);
-  assert.deepEqual(sel.ordered(['c', 'b', 'a', 'c']), ['c', 'a', 'x', 'y']);
-  assert.deepEqual(S.create().ordered(ORDER), []);
 });
 
 test('toArray zwraca kopię — zmiana wyniku nie rusza zaznaczenia', () => {

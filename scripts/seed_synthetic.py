@@ -4,8 +4,9 @@
     scripts/scratch_mysql.sh start
     .venv/bin/python scripts/seed_synthetic.py --db-url "$(scripts/scratch_mysql.sh url)" --rows 50000
 
-Baza musi mieć nazwę kończącą się na `_test`: skrypt kasuje i odtwarza w niej tabele `maile` i skrapera, więc nigdy
-nie wskazuj nim bazy produkcyjnej. Dane są losowe, ale powtarzalne (`--seed`) i mają rozmiary zbliżone do prawdziwych:
+Baza musi mieć nazwę kończącą się na `_test` (dla sqlite: nazwa pliku bez rozszerzenia, np. `/tmp/perno_demo_test.db`):
+skrypt kasuje i odtwarza w niej tabele `maile` i skrapera, więc nigdy nie wskazuj nim bazy produkcyjnej.
+Panel na takiej bazie demo: `PERNO_DB_URL=sqlite:////tmp/perno_demo_test.db .venv/bin/python server.py --no-browser`. Dane są losowe, ale powtarzalne (`--seed`) i mają rozmiary zbliżone do prawdziwych:
 treść HTML ok. 2,6 KB, tekst ok. 1,6 KB, polskie litery w nazwach (żeby sprawdzać wyszukiwanie bez ogonków), rozkład
 statusów i krajów jak w kampanii (większość „Do wysłania", dużo „Wysłano", reszta rzadsza).
 """
@@ -87,8 +88,11 @@ def main() -> int:
     args = parser.parse_args()
 
     url = sa.engine.make_url(args.db_url)
-    if not (url.database or "").endswith("_test"):
-        raise SystemExit("Nazwa bazy musi kończyć się na _test (skrypt kasuje w niej tabele).")
+    name = url.database or ""
+    if url.get_backend_name() == "sqlite":
+        name = os.path.splitext(os.path.basename(name))[0]  # plik demo: np. /tmp/perno_demo_test.db
+    if not name.endswith("_test"):
+        raise SystemExit("Nazwa bazy (albo pliku sqlite) musi kończyć się na _test: skrypt kasuje w niej tabele.")
     database = Database(make_engine(url))
     scraper_schema.skraper_metadata.drop_all(database.engine)
     maile.drop(database.engine, checkfirst=True)

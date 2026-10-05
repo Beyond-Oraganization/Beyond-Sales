@@ -10,8 +10,8 @@ from perno.domain import countries
 from perno.domain import statuses as st
 
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pages", "assets")
-# Wspólny interfejs list firm (panel Wysyłka i Eksport): logika filtrów/zaznaczania + DOM + style.
-KIT_JS = ("filters.js", "selection.js", "kit.js")
+# Wspólny interfejs list firm (panel Wysyłka i Eksport): stan filtrów, zaznaczanie, model listy (żądania do serwera) + DOM + style.
+KIT_JS = ("filters.js", "selection.js", "listmodel.js", "kit.js")
 KIT_CSS = ("kit.css",)
 
 

@@ -98,6 +98,8 @@ def api_send_one(req: Request, ctx: AppContext) -> Response:
 def api_regenerate(req: Request, ctx: AppContext) -> Response:
     sender_name = ctx.config.load().get("SENDER_NAME", "")
     result = generation.refresh_segments(ctx.db, ("eventy", "driverzy"), sender_name)
+    if req.json.get("rows") is False:  # panel sam wczytuje listę od serwera; wysyłanie całej tabeli byłoby marnotrawstwem
+        return json_response(result)
     return json_response({**result, "rows": ctx.db.fetch_all(light=req.json.get("light") is True)})
 
 

@@ -1,6 +1,6 @@
 // Zbiór zaznaczonych wierszy — sama logika, bez DOM (globalny PernoSelection na stronie, moduł w testach Node).
-// Zaznaczenie to zbiór id, który przeżywa zmianę filtrów i sortowania; „widok” to uporządkowana lista id,
-// które użytkownik widzi (po filtrach), a „strona” — jej bieżący wycinek.
+// Zaznaczenie to zbiór id, który przeżywa zmianę filtrów i sortowania. Wiersze „widoku” (po filtrach) zna serwer;
+// tu dostajemy od niego listy id (całego widoku albo jego początku), a „stronę” zna przeglądarka.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PernoSelection = factory();
@@ -47,34 +47,12 @@
         list.forEach(function (id) { if (ids.has(id)) ids.delete(id); else ids.add(id); });
       },
 
-      // Po odświeżeniu danych: wyrzuć zaznaczone id, których już nie ma.
-      prune: function (existing) {
-        var keep = existing instanceof Set ? existing : new Set(existing);
-        Array.from(ids).forEach(function (id) { if (!keep.has(id)) ids.delete(id); });
-        if (anchor !== null && !keep.has(anchor)) anchor = null;
-      },
-
-      // Ile zaznaczonych jest w widoku, a ile poza nim (ukrytych filtrem) — do licznika „Zaznaczono 37 (5 poza widokiem)”.
-      counts: function (viewIds) {
-        var inView = 0;
-        viewIds.forEach(function (id) { if (ids.has(id)) inView++; });
-        return {total: ids.size, inView: inView, outside: ids.size - inView};
-      },
-
       // Stan checkboxa w nagłówku dla podanych id (zwykle bieżąca strona): none / some / all.
       headerState: function (list) {
         if (!list.length) return 'none';
         var n = 0;
         list.forEach(function (id) { if (ids.has(id)) n++; });
         return n === 0 ? 'none' : n === list.length ? 'all' : 'some';
-      },
-
-      // Zaznaczone w kolejności widoku (do eksportu „zaznaczone”: plik ma wyglądać jak lista); id spoza widoku na końcu.
-      ordered: function (order) {
-        var seen = new Set(), out = [];
-        order.forEach(function (id) { if (ids.has(id) && !seen.has(id)) { seen.add(id); out.push(id); } });
-        ids.forEach(function (id) { if (!seen.has(id)) out.push(id); });
-        return out;
       }
     };
     return api;

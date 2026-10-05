@@ -14,12 +14,7 @@ function createBulkUI(o) {
   let pending = null;     // {changes, result} w otwartym oknie
   let busy = false;
 
-  const byId = () => new Map(view.rows().map((r) => [r.id, r]));
-  const selectedIds = () => selection.ordered(view.orderedIds());
-  function selectedRows() {
-    const map = byId();
-    return selectedIds().map((id) => map.get(id)).filter(Boolean);
-  }
+  const selectedIds = () => selection.toArray();
   const statusLabel = (code) => (ctx.statusMeta[code] || [code])[0];
   const firms = (n) => `${n} ${K.plural(n, 'firmę', 'firmy', 'firm')}`;
 
@@ -33,14 +28,20 @@ function createBulkUI(o) {
   }
 
   // ---- pasek akcji ---------------------------------------------------------------------------
+  // Ile zaznaczonych jest gotowych do wysyłki, wie serwer (zaznaczone firmy nie muszą być na bieżącej stronie);
+  // do czasu jego odpowiedzi pokazujemy „…” i nie pozwalamy wysłać.
+  function readyCount() {
+    const summary = view.summary();
+    return summary && !view.summaryPending() ? summary.ready : null;
+  }
   function refresh() {
     const total = selection.size;
-    const ready = selectedRows().filter((r) => F.isReady(r, ctx)).length;
+    const ready = readyCount();
     els.count.textContent = total ? `Zaznaczono ${total}` : 'Nic nie zaznaczono';
     [els.statusBtn, els.dataBtn, els.copyBtn].forEach((b) => { b.disabled = total === 0 || busy; });
-    els.sendBtn.textContent = `Wyślij gotowe (${ready})`;
-    els.sendBtn.disabled = ready === 0 || busy;
-    els.sendBtn.title = total && ready < total ? `${total - ready} zaznaczonych firm nie jest gotowych do wysyłki (status, e-mail albo treść)` : '';
+    els.sendBtn.textContent = `Wyślij gotowe (${ready === null ? '…' : ready})`;
+    els.sendBtn.disabled = !ready || busy;
+    els.sendBtn.title = total && ready !== null && ready < total ? `${total - ready} zaznaczonych firm nie jest gotowych do wysyłki (status, e-mail albo treść)` : '';
     if (undo) {
       els.undoBtn.hidden = false;
       els.undoBtn.textContent = `Cofnij: ${undo.label} · ${undo.at.slice(11, 16)}`;
@@ -56,7 +57,7 @@ function createBulkUI(o) {
       `<button type="button" class="item" data-status="${escapeHtml(code)}"><span class="status-menu-dot" style="background:${escapeHtml((ctx.statusMeta[code] || [code, '#6b7280'])[1])}"></span>${escapeHtml(statusLabel(code))}</button>`).join('');
   }
   function renderExportMenu(total) {
-    const n = view.orderedIds().length;
+    const n = view.total();
     els.exportMenu.innerHTML =
       `<button type="button" class="item" data-export="selected:xlsx" ${total ? '' : 'disabled'}>Zaznaczone (${total}) — XLSX</button>` +
       `<button type="button" class="item" data-export="selected:csv" ${total ? '' : 'disabled'}>Zaznaczone (${total}) — CSV</button><hr>` +
@@ -88,7 +89,8 @@ function createBulkUI(o) {
       html += '<div class="warning"><b>Uwaga:</b><ul>' + r.warnings.map((w) => `<li>${escapeHtml(w.message)}</li>`).join('') + '</ul></div>' +
         '<label class="ack"><input type="checkbox" id="bulkAck"> Rozumiem i chcę kontynuować</label>';
     }
-    const outside = selection.counts(view.orderedIds()).outside;
+    const summary = view.summary();
+    const outside = summary && !view.onlySelected() && !view.summaryPending() ? Math.max(0, selection.size - summary.in_view) : 0;
     if (outside) html += `<p class="muted">${firms(outside)} z zaznaczenia jest poza bieżącym filtrem — zmiana obejmie także ${outside === 1 ? 'ją' : 'je'}.</p>`;
     if (!r.changed) html += '<p class="muted">Nic się nie zmieni.</p>';
     return html;
@@ -208,13 +210,12 @@ function createBulkUI(o) {
     }
   }
   els.copyBtn.addEventListener('click', async () => {
-    const rows = selectedRows();
-    const emails = [...new Set(rows.map((r) => (r.email || '').trim()).filter(Boolean))];
-    if (!emails.length) { toast('Wśród zaznaczonych firm nie ma żadnego adresu e-mail.', 'error'); return; }
-    await copyText(emails.join(', '));
-    const without = rows.length - rows.filter((r) => (r.email || '').trim()).length;
-    toast(`Skopiowano ${emails.length} ${K.plural(emails.length, 'adres', 'adresy', 'adresów')} e-mail` +
-      (without ? ` (${firms(without)} bez adresu pominięto).` : '.'));
+    const {ok, data} = await api('/api/mailing/emails', {ids: selectedIds()});
+    if (!ok) { toast(data.error || 'Nie udało się pobrać adresów e-mail.', 'error'); return; }
+    if (!data.emails.length) { toast('Wśród zaznaczonych firm nie ma żadnego adresu e-mail.', 'error'); return; }
+    await copyText(data.emails.join(', '));
+    toast(`Skopiowano ${data.emails.length} ${K.plural(data.emails.length, 'adres', 'adresy', 'adresów')} e-mail` +
+      (data.without_email ? ` (${firms(data.without_email)} bez adresu pominięto).` : '.'));
   });
 
   els.exportMenu.addEventListener('click', async (e) => {
@@ -222,10 +223,11 @@ function createBulkUI(o) {
     if (!b || b.disabled) return;
     K.closePopovers();
     const [scope, format] = b.dataset.export.split(':');
-    const ids = scope === 'selected' ? selectedIds() : view.orderedIds();
+    // Zaznaczone idą jako id (serwer układa je jak listę na ekranie), cały widok jako stan filtrów i sortowania.
+    const rows = scope === 'selected' ? {ids: selectedIds(), sort: view.getState().sort} : view.exportScope();
     toast('Przygotowuję plik…');
     let result;
-    try { result = await downloadExport({format: format, delimiter: 'semicolon', ids: ids}); }
+    try { result = await downloadExport({format: format, delimiter: 'semicolon', ...rows}); }
     catch (err) { result = {ok: false, error: 'Nie udało się połączyć z serwerem.'}; }
     if (result.ok) toast(`Pobrano ${result.name} — ${result.rows} ${K.plural(result.rows, 'wiersz', 'wiersze', 'wierszy')}.`);
     else toast(result.error, 'error');

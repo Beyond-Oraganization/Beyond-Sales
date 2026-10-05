@@ -1,5 +1,8 @@
-// Filtry, wyszukiwarka, sortowanie i szybkie widoki listy firm — sama logika, bez DOM.
+// Stan filtrów listy firm, szybkie widoki, opis aktywnych filtrów i adres URL — sama logika, bez DOM.
 // Ten plik ładuje strona (jako globalny PernoFilters) i Node (testy: tests/js/filters.test.js).
+// Wiersze, wyszukiwanie, sortowanie i liczniki liczy serwer (perno.domain.listing → perno.db.listing_*, patrz
+// tests/listing_cases.json); tu zostaje to, co przeglądarka musi wiedzieć sama: jak wygląda stan, jak trafia do adresu URL
+// i zapisanych widoków oraz które szybkie widoki istnieją.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PernoFilters = factory();
@@ -8,13 +11,11 @@
 
   var NO_COUNTRY = '_none';      // firmy bez kraju
   var FOREIGN = '_foreign';      // firmy z krajem innym niż Polska
-  var HOME = 'PL';
   var TRI = ['', 'yes', 'no'];
   var ORIGINS = ['', 'dossier', 'import'];
   var QUERY_FIELDS = ['all', 'company', 'email', 'website', 'place', 'description'];
   var QUERY_FIELD_LABELS = {all: 'wszędzie', company: 'firma', email: 'e-mail', website: 'strona', place: 'kraj i adres', description: 'opis'};
   var ARRAY_KEYS = ['statuses', 'segments', 'countries'];
-  var IMPORT_ID = /-n\d+$/;      // id firm z importu (`eventy-n001`); firmy z dossier mają `eventy-051`
 
   // ---- stan filtra ------------------------------------------------------------------------
 
@@ -43,7 +44,8 @@
   }
 
   // Stan z adresu URL, localStorage albo zapisanego widoku bywa stary, ręcznie zmieniony albo zepsuty —
-  // przepuszczamy tylko znane pola o poprawnym typie, reszta wraca do wartości domyślnych.
+  // przepuszczamy tylko znane pola o poprawnym typie, reszta wraca do wartości domyślnych. Serwer robi to samo
+  // (perno.domain.listing.parse_state), bo dostaje ten stan w żądaniu.
   function normalizeState(input) {
     var s = emptyState();
     if (!input || typeof input !== 'object') return s;
@@ -83,35 +85,7 @@
     });
   }
 
-  function hasFilters(state) { return activeParts(state).length > 0; }
-
-  // ---- tekst: składanie liter, zapytanie ---------------------------------------------------
-
-  var EXTRA_FOLDS = {'ł': 'l', 'ø': 'o', 'ß': 'ss', 'æ': 'ae', 'œ': 'oe', 'đ': 'd', 'ð': 'd', 'þ': 'th', 'ı': 'i'};
-
-  // Małe litery, bez znaków diakrytycznych (ą→a, ł→l, ü→u, ß→ss…), pojedyncze spacje.
-  function fold(text) {
-    var s = String(text == null ? '' : text).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-    s = s.replace(/[łøßæœđðþı]/g, function (ch) { return EXTRA_FOLDS[ch]; });
-    return s.replace(/\s+/g, ' ').trim();
-  }
-
-  // „ala ma” kota -pies -"stary kot" → include: [ala ma, kota], exclude: [pies, stary kot].
-  // Niedomknięty cudzysłów obejmuje resztę tekstu; sam „-” jest ignorowany.
-  function parseQuery(text) {
-    var include = [], exclude = [];
-    var re = /(-?)"([^"]*)"?|(-?)([^\s"]+)/g, m;
-    var source = String(text == null ? '' : text);
-    while ((m = re.exec(source)) !== null) {
-      var negative = (m[2] !== undefined ? m[1] : m[3]) === '-';
-      var term = fold(m[2] !== undefined ? m[2] : m[4]);
-      if (!term || term === '-') continue;
-      (negative ? exclude : include).push(term);
-    }
-    return {include: include, exclude: exclude};
-  }
-
-  // ---- kontekst i pola wiersza -------------------------------------------------------------
+  // ---- dni i kontekst ----------------------------------------------------------------------
 
   function localDay(date) {
     var d = date || new Date();
@@ -141,114 +115,9 @@
     };
   }
 
-  function day(value) { return value ? String(value).slice(0, 10) : ''; }
-  function hasEmail(row) { return !!(row.email && String(row.email).trim()); }
-  function hasBody(row) { return row.has_body !== undefined ? !!row.has_body : !!row.body_html; }
-  function isImport(row) { return IMPORT_ID.test(row.id || ''); }
-  function isReady(row, ctx) { return ctx.sendable.indexOf(row.status) !== -1 && hasEmail(row) && hasBody(row); }
-
-  var haystackCache = typeof WeakMap === 'function' ? new WeakMap() : null;
-
-  function haystacks(row, ctx) {
-    var cached = haystackCache && haystackCache.get(row);
-    if (cached && cached.names === ctx.countryNames) return cached.value;
-    var country = row.country || '';
-    var place = [country, ctx.countryNames[country] || '', row.city, row.address].join(' ');
-    var company = [row.company, row.contact_person].join(' ');
-    var value = {
-      company: fold(company), email: fold(row.email), website: fold(row.website),
-      place: fold(place), description: fold(row.description)
-    };
-    value.all = fold([row.id, company, row.email, row.website, place, row.description].join(' '));
-    if (haystackCache) haystackCache.set(row, {names: ctx.countryNames, value: value});
-    return value;
-  }
-
-  function tri(mode, present) { return mode === '' || (mode === 'yes') === present; }
-
-  function inRange(value, from, to) {
-    if (!from && !to) return true;
-    var d = day(value);
-    if (!d) return false;  // wiersz bez daty nigdy nie mieści się w zakresie (tak samo jak NULL w SQL)
-    return (!from || d >= from) && (!to || d <= to);
-  }
-
-  function matchesCountry(row, selected) {
-    var code = row.country || '';
-    return selected.some(function (item) {
-      if (item === NO_COUNTRY) return code === '';
-      if (item === FOREIGN) return code !== '' && code !== HOME;
-      return code === item;
-    });
-  }
-
-  function matches(row, state, ctx, parsed) {
-    if (state.statuses.length && state.statuses.indexOf(row.status) === -1) return false;
-    if (state.segments.length && state.segments.indexOf(row.segment) === -1) return false;
-    if (state.countries.length && !matchesCountry(row, state.countries)) return false;
-    if (!tri(state.email, hasEmail(row))) return false;
-    if (!tri(state.body, hasBody(row))) return false;
-    if (!tri(state.city, !!(row.city && String(row.city).trim()))) return false;
-    if (!tri(state.address, !!(row.address && String(row.address).trim()))) return false;
-    if (!tri(state.sent, !!row.sent_at)) return false;
-    if (state.origin && (state.origin === 'import') !== isImport(row)) return false;
-    if (!inRange(row.sent_at, state.sentFrom, state.sentTo)) return false;
-    if (!inRange(row.generated_at, state.generatedFrom, state.generatedTo)) return false;
-    if (parsed.include.length || parsed.exclude.length) {
-      var text = haystacks(row, ctx)[state.qFields];
-      for (var i = 0; i < parsed.include.length; i++) if (text.indexOf(parsed.include[i]) === -1) return false;
-      for (var j = 0; j < parsed.exclude.length; j++) if (text.indexOf(parsed.exclude[j]) !== -1) return false;
-    }
-    return true;
-  }
-
-  // Wiersze pasujące do filtra, w kolejności wejściowej.
-  function filterRows(rows, state, ctx) {
-    var s = normalizeState(state), parsed = parseQuery(s.q);
-    return rows.filter(function (row) { return matches(row, s, ctx, parsed); });
-  }
-
-  // ---- sortowanie --------------------------------------------------------------------------
-
-  var collator = typeof Intl === 'object' && Intl.Collator ? new Intl.Collator('pl', {sensitivity: 'base', numeric: true}) : null;
-  function compareText(a, b) { return collator ? collator.compare(a, b) : (a < b ? -1 : a > b ? 1 : 0); }
-
-  var SORT_KEYS = {  // klucz → [wartość do porównania, rodzaj]
-    company: function (r) { return [r.company || '', 'text']; },
-    city: function (r) { return [r.city || '', 'text']; },
-    email: function (r) { return [r.email || '', 'text']; },
-    segment: function (r, ctx) {
-      var i = ctx.segmentOrder.indexOf(r.segment);
-      return [i === -1 ? 999 : i, 'number', r.segment];
-    },
-    status: function (r, ctx) {
-      var i = ctx.statusOrder.indexOf(r.status);
-      return [i === -1 ? 999 : i, 'number'];
-    },
-    country: function (r, ctx) { return [r.country ? (ctx.countryNames[r.country] || r.country) : '', 'text']; },
-    generated_at: function (r) { return [r.generated_at || '', 'iso']; },
-    sent_at: function (r) { return [r.sent_at || '', 'iso']; }
-  };
+  // ---- sortowanie (samo przełączanie; porządkuje serwer) -----------------------------------
 
   function sortKeyOf(sort) { return String(sort || '').replace(/^-/, ''); }
-
-  // 'default' zostawia kolejność serwera; 'klucz' rosnąco, '-klucz' malejąco; puste wartości zawsze na końcu.
-  function sortRows(rows, sort, ctx) {
-    var key = sortKeyOf(sort), pick = SORT_KEYS[key];
-    if (!pick) return rows.slice();
-    var dir = String(sort).charAt(0) === '-' ? -1 : 1;
-    var decorated = rows.map(function (row, index) { return {row: row, index: index, v: pick(row, ctx)}; });
-    decorated.sort(function (a, b) {
-      var ea = a.v[0] === '', eb = b.v[0] === '';
-      if (ea || eb) return ea && eb ? a.index - b.index : (ea ? 1 : -1);
-      var c;
-      if (a.v[1] === 'text') c = compareText(a.v[0], b.v[0]);
-      else if (a.v[1] === 'iso') c = a.v[0] < b.v[0] ? -1 : a.v[0] > b.v[0] ? 1 : 0;
-      else c = a.v[0] - b.v[0] || (a.v[2] && b.v[2] ? compareText(a.v[2], b.v[2]) : 0);
-      return c ? c * dir : a.index - b.index;
-    });
-    return decorated.map(function (d) { return d.row; });
-  }
 
   // Kolejne kliknięcia nagłówka: brak → rosnąco → malejąco → domyślnie.
   function nextSort(current, key) {
@@ -256,31 +125,9 @@
     return current === key ? '-' + key : 'default';
   }
 
-  // ---- liczniki ----------------------------------------------------------------------------
-
-  var FACET_VALUE = {
-    statuses: function (row) { return row.status; },
-    segments: function (row) { return row.segment; },
-    countries: function (row) { return row.country || NO_COUNTRY; }
-  };
-
-  // Ile wierszy ma każdą wartość pola (status/segment/kraj) przy pozostałych filtrach — ale bez filtra tego pola,
-  // żeby licznik przy nieaktywnym chipie mówił, ile wierszy doszłoby po jego kliknięciu.
-  function facetCounts(rows, state, ctx, facet) {
-    var s = normalizeState(state);
-    s[facet] = [];
-    var counts = {}, foreign = 0;
-    filterRows(rows, s, ctx).forEach(function (row) {
-      var value = FACET_VALUE[facet](row);
-      counts[value] = (counts[value] || 0) + 1;
-      if (facet === 'countries' && row.country && row.country !== HOME) foreign++;
-    });
-    if (facet === 'countries') counts[FOREIGN] = foreign;
-    return counts;
-  }
-
   // ---- szybkie widoki ----------------------------------------------------------------------
 
+  // Liczbę wierszy każdego widoku liczy serwer na życzenie (kolejność tej listy = kolejność liczb w odpowiedzi).
   var PRESETS = [
     {key: 'all', label: 'Wszystkie', state: function () { return {}; }},
     {key: 'ready', label: 'Gotowe do wysłania', hint: 'Status „Do wysłania” lub „Błąd”, jest e-mail i treść',
@@ -320,12 +167,6 @@
       if (sameFilters(state, presetState(PRESETS[i].key, ctx))) return PRESETS[i].key;
     }
     return '';
-  }
-
-  function presetCounts(rows, ctx) {
-    return PRESETS.map(function (p) {
-      return {key: p.key, label: p.label, hint: p.hint || '', count: filterRows(rows, presetState(p.key, ctx), ctx).length};
-    });
   }
 
   // ---- opis filtrów i adres URL ------------------------------------------------------------
@@ -393,10 +234,8 @@
   return {
     NO_COUNTRY: NO_COUNTRY, FOREIGN: FOREIGN, QUERY_FIELDS: QUERY_FIELDS, QUERY_FIELD_LABELS: QUERY_FIELD_LABELS,
     PRESETS: PRESETS, emptyState: emptyState, normalizeState: normalizeState, clearPart: clearPart,
-    activeParts: activeParts, hasFilters: hasFilters, fold: fold, parseQuery: parseQuery, localDay: localDay,
-    shiftDay: shiftDay, createContext: createContext, hasEmail: hasEmail, hasBody: hasBody, isImport: isImport,
-    isReady: isReady, filterRows: filterRows, sortRows: sortRows, nextSort: nextSort, sortKeyOf: sortKeyOf,
-    facetCounts: facetCounts, presetState: presetState, presetKeyFor: presetKeyFor, presetCounts: presetCounts,
+    activeParts: activeParts, localDay: localDay, shiftDay: shiftDay, createContext: createContext,
+    nextSort: nextSort, sortKeyOf: sortKeyOf, presetState: presetState, presetKeyFor: presetKeyFor,
     describe: describe, toQuery: toQuery, fromQuery: fromQuery
   };
 });

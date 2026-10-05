@@ -99,6 +99,7 @@
 .kit-table tbody tr.kit-row.is-selected{background:var(--row-hover);background:color-mix(in srgb,var(--accent) 9%,transparent);}
 .kit-table tbody td{padding:7px 10px;font-size:13px;vertical-align:middle;}
 .kit-table.row-toggle tbody tr.kit-row{cursor:pointer;}
+.kit-table.is-loading tbody{opacity:.55;transition:opacity .15s;}
 .kit-table .site-link{margin-left:6px;text-decoration:none;opacity:.7;}
 .kit-table .site-link:hover{opacity:1;}
 .kit-table .country-cell{white-space:nowrap;font-size:12.5px;}

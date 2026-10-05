@@ -1,6 +1,6 @@
 const F = PernoFilters, S = PernoSelection, K = PernoKit;
 const el = (id) => document.getElementById(id);
-const summary = el('summary'), download = el('download'), exportMsg = el('exportMsg');
+const summary_ = el('summary'), download = el('download'), exportMsg = el('exportMsg');
 
 const ctx = F.createContext({
   statusMeta: APP.statusMeta, sendable: APP.sendable, countries: APP.countries, segmentOrder: APP.segmentOrder,
@@ -46,9 +46,14 @@ function onViewChange(info){
   updateSummary();
 }
 
-function exportIds(){
-  const order = view.orderedIds();
-  return scope === 'selected' ? selection.ordered(order) : order;
+// Co wysłać serwerowi: zaznaczone jako id (układa je jak listę na ekranie) albo cały widok jako stan filtrów i sortowania —
+// przy 50 tys. firm nie przesyłamy listy id, serwer sam wybiera wiersze.
+function exportRows(){
+  return scope === 'selected' ? {ids: selection.toArray(), sort: view.getState().sort} : view.exportScope();
+}
+
+function exportCount(){
+  return scope === 'selected' ? selection.size : view.total();
 }
 
 function showMessage(text, kind){
@@ -57,20 +62,20 @@ function showMessage(text, kind){
 }
 
 function updateSummary(){
-  const order = view.orderedIds();
-  const counts = selection.counts(order);
-  el('scopeFilteredN').textContent = `(${order.length})`;
-  el('scopeSelectedN').textContent = `(${counts.total})`;
-  el('scopeSelected').disabled = counts.total === 0;
-  if (counts.total === 0 && scope === 'selected') setScope('filtered');
+  const matching = view.total(), selected = selection.size, summary = view.summary();
+  const outside = summary && !view.summaryPending() && !view.onlySelected() ? Math.max(0, selected - summary.in_view) : 0;
+  el('scopeFilteredN').textContent = `(${matching})`;
+  el('scopeSelectedN').textContent = `(${selected})`;
+  el('scopeSelected').disabled = selected === 0;
+  if (selected === 0 && scope === 'selected') setScope('filtered');
 
-  const n = scope === 'selected' ? counts.total : order.length;
+  const n = exportCount();
   let text = `Do pliku trafi ${n} ${K.plural(n, 'wiersz', 'wiersze', 'wierszy')}`;
-  if (scope === 'selected') text += counts.outside ? ` (zaznaczone; ${counts.outside} spoza bieżącego filtra)` : ' (zaznaczone)';
+  if (scope === 'selected') text += outside ? ` (zaznaczone; ${outside} spoza bieżącego filtra)` : ' (zaznaczone)';
   else text += ' (wszystkie pasujące do filtrów)';
-  summary.textContent = `${text}, kolumn: ${columns.size}.`;
-  if (n === 0) summary.textContent = 'Nie ma czego eksportować — zmień filtry albo zaznacz wiersze.';
-  else if (columns.size === 0) summary.textContent = 'Wybierz przynajmniej jedną kolumnę.';
+  summary_.textContent = `${text}, kolumn: ${columns.size}.`;
+  if (n === 0) summary_.textContent = 'Nie ma czego eksportować — zmień filtry albo zaznacz wiersze.';
+  else if (columns.size === 0) summary_.textContent = 'Wybierz przynajmniej jedną kolumnę.';
   download.disabled = busy || n === 0 || columns.size === 0;
 }
 
@@ -135,13 +140,14 @@ el('columnGroups').addEventListener('click', (e) => {
 
 // ---- dane ---------------------------------------------------------------------------------------
 
+function stampSnapshot(){
+  el('snapshot').textContent = `dane z ${new Date().toLocaleTimeString('pl-PL')}`;
+}
+
 async function loadRows(){
-  const {ok, data} = await apiGet('/api/maile?light=1');
-  if (!ok){ showMessage(data.error || 'Nie udało się wczytać listy firm.', 'error'); return false; }
-  view.setRows(data.rows);
-  const t = new Date();
-  el('snapshot').textContent = `dane z ${t.toLocaleTimeString('pl-PL')}`;
-  return true;
+  await view.refresh();
+  stampSnapshot();
+  return !view.error();
 }
 
 el('reload').addEventListener('click', async () => {
@@ -159,22 +165,22 @@ document.querySelectorAll('input[name=format]').forEach((i) => i.addEventListene
 document.querySelectorAll('input[name=delimiter]').forEach((i) => i.addEventListener('change', savePrefs));
 
 download.addEventListener('click', async () => {
-  const ids = exportIds();
-  if (!ids.length || !columns.size) return;
+  const n = exportCount();
+  if (!n || !columns.size) return;
   busy = true;
   showMessage('');
   download.textContent = 'Przygotowuję plik…';
   updateSummary();
   let result;
   try {
-    result = await downloadExport({format: format(), delimiter: delimiter(), ids, columns: [...columns]});
+    result = await downloadExport({format: format(), delimiter: delimiter(), ...exportRows(), columns: [...columns]});
   } catch (err) {
     result = {ok: false, error: 'Nie udało się połączyć z serwerem.'};
   }
   busy = false;
   download.textContent = 'Pobierz plik';
   if (result.ok){
-    const missing = ids.length - result.rows;
+    const missing = n - result.rows;
     showMessage(`Pobrano ${result.name} — ${result.rows} ${K.plural(result.rows, 'wiersz', 'wiersze', 'wierszy')}` +
       (missing > 0 ? `; ${missing} ${K.plural(missing, 'firmy', 'firm', 'firm')} z listy nie ma już w bazie.` : '.'), 'ok');
   } else {
@@ -185,11 +191,12 @@ download.addEventListener('click', async () => {
 
 async function init(){
   const {ok, data} = await apiGet('/api/export/meta');
-  if (!ok){ summary.textContent = data.error || 'Nie udało się wczytać danych.'; return; }
+  if (!ok){ summary_.textContent = data.error || 'Nie udało się wczytać danych.'; return; }
   META = data;
   loadPrefs();
   renderColumns();
-  await loadRows();
+  await view.start();
+  stampSnapshot();
   updateSummary();
 }
 

@@ -69,7 +69,7 @@ function cells(row){
 function decorate(tr, row){
   tr.querySelector('.company-cell').addEventListener('click', () => {
     expandedId = expandedId === row.id ? null : row.id;
-    view.render('detail');
+    view.redraw();
   });
   const siteLink = tr.querySelector('.site-link');
   if (siteLink) siteLink.addEventListener('click', e => e.stopPropagation());
@@ -87,22 +87,24 @@ const view = K.createListView({
   filtersEl: el('filterBar'), tableEl: el('listTable'), tbodyEl: el('listBody'),
   pagerEl: el('pager'), selectEl: el('selectBar'), emptyEl: el('emptyState'),
   canSelect: (row) => !isLocked(row),
+  lockedStatuses: ['wysylanie'],   // „zaznacz wszystkie pasujące” pomija wiersze, które właśnie wysyła program
   rowClass: (row) => isLocked(row) ? 'is-locked' : '',
   cells, decorate,
   detail: (row) => renderDetail(row),
   selectItems: [{
-    label: ({ordered}) => `Zaznacz gotowe do wysłania (${ordered.filter(r => F.isReady(r, ctx)).length})`,
-    run: ({ordered}) => selection.add(ordered.filter(r => F.isReady(r, ctx)).map(r => r.id)),
+    label: 'Zaznacz gotowe do wysłania',
+    run: async ({ids}) => { selection.add((await ids({ready: true})).ids); },
   }],
   onChange: () => { if (bulk) bulk.refresh(); },
+  onError: (message) => { if (bulk) bulk.toast(message, 'error'); else alert(message); },
 });
 
 // ---- zapis pól i rozwinięty wiersz ----------------------------------------------------------
 
-function rowById(id){ return view.rows().find(r => r.id === id); }
+function rowById(id){ return view.pageRows().find(r => r.id === id); }
 
 function replaceRow(row){
-  const rows = view.rows();
+  const rows = view.pageRows();
   const idx = rows.findIndex(r => r.id === row.id);
   row.has_body = !!row.body_html;
   if (idx !== -1) rows[idx] = row;
@@ -117,7 +119,8 @@ async function saveField(id, field, value){
   const {ok, data} = await api('/api/update-row', {id, [field]: value});
   if (data.row) replaceRow(data.row);
   if (!ok) alert(data.error || 'Nie udało się zapisać zmiany.');
-  view.render('edit');
+  view.redraw();    // od razu z tego, co zwrócił serwer…
+  view.refresh();   // …a liczniki i przynależność do filtra serwer policzy od nowa (wiersz może już nie pasować do widoku)
 }
 
 function countrySelect(row, lock){
@@ -137,7 +140,7 @@ async function loadDetail(id){
   } else {
     detailCache[id] = data.row;
   }
-  view.render('detail');
+  view.redraw();
 }
 
 function renderDetail(row){
@@ -188,10 +191,8 @@ function renderDetail(row){
 // ---- wczytywanie i odświeżanie --------------------------------------------------------------
 
 async function loadRows(){
-  const {ok, data} = await apiGet('/api/maile?light=1');
-  if (!ok){ alert(data.error || 'Nie udało się wczytać danych.'); return false; }
   Object.keys(detailCache).forEach(key => delete detailCache[key]);  // po przeładowaniu szczegóły mogą być nieaktualne
-  view.setRows(data.rows);
+  await view.refresh();
   return true;
 }
 
@@ -200,10 +201,9 @@ el('reloadBtn').addEventListener('click', async () => {
 });
 
 el('refreshBtn').addEventListener('click', async () => {
-  const {ok, data} = await api('/api/regenerate', {light: true});
+  const {ok, data} = await api('/api/regenerate', {rows: false});
   if (!ok){ alert(data.error || 'Nie udało się odświeżyć danych.'); return; }
-  Object.keys(detailCache).forEach(key => delete detailCache[key]);
-  view.setRows(data.rows);
+  await loadRows();
   const parts = Object.entries(data).filter(([key]) => key !== 'rows')
     .map(([segment, s]) => `${segment}: ${s.created} nowych, ${s.regenerated} przeliczonych`);
   logLine(`Odświeżono — ${parts.join('; ')}.`);
@@ -250,19 +250,18 @@ function describeOutcome(status, data){
   return `  POMINIĘTO: ${data.error || data.message || 'nic nie wysłano'}`;
 }
 
-// Gotowe do wysyłki: zaznaczone, w kolejności z ekranu, ze statusem „Do wysłania”/„Błąd” oraz e-mailem i treścią.
-function readyIds(){
-  const map = new Map(view.rows().map(r => [r.id, r]));
-  return selection.ordered(view.orderedIds()).filter(id => { const r = map.get(id); return r && F.isReady(r, ctx); });
+// Gotowe do wysyłki: zaznaczone, w kolejności widoku, ze statusem „Do wysłania”/„Błąd” oraz e-mailem i treścią — to
+// sprawdza serwer, bo zaznaczone firmy nie muszą być na bieżącej stronie.
+async function readyIds(){
+  const {ok, data} = await api('/api/mailing/selection', {ids: selection.toArray(), ready_ids: true, state: {sort: view.getState().sort}});
+  if (!ok){ alert(data.error || 'Nie udało się sprawdzić zaznaczonych firm.'); return null; }
+  return data.ready_ids;
 }
 
-function foreignWarning(ids){
-  const map = new Map(view.rows().map(r => [r.id, r]));
-  const counts = {};
-  ids.forEach(id => {
-    const code = (map.get(id) || {}).country;
-    if (code && code !== 'PL') counts[code] = (counts[code] || 0) + 1;
-  });
+async function foreignWarning(ids){
+  const {ok, data} = await api('/api/mailing/selection', {ids});
+  if (!ok) return '';
+  const counts = data.foreign || {};
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   if (!total) return '';
   const breakdown = Object.entries(counts).sort((a, b) => b[1] - a[1])
@@ -280,7 +279,8 @@ sendBtn.addEventListener('click', async () => {
   const remainingCap = Math.max(0, dailyCap - sentToday);
 
   const selectedCount = selection.size;
-  let ids = readyIds();
+  let ids = await readyIds();
+  if (ids === null) return;
   const notReady = selectedCount - ids.length;
   if (!ids.length){ alert('Żadna z zaznaczonych firm nie jest gotowa do wysyłki (potrzebny status „Do wysłania” lub „Błąd”, e-mail i treść).'); return; }
   if (ids.length > remainingCap){
@@ -291,7 +291,7 @@ sendBtn.addEventListener('click', async () => {
   if (!STATUS.smtp_configured){ alert('Brak hasła SMTP w config.env — uzupełnij je, zanim spróbujesz wysłać.'); return; }
   const lines = [`Wysyłam ${ids.length} maili z konta ${STATUS.smtp_user || '?'}.`];
   if (notReady > 0) lines.push(`Pominę ${notReady} zaznaczonych firm, które nie są gotowe do wysyłki (status, e-mail albo treść).`);
-  const foreign = foreignWarning(ids);
+  const foreign = await foreignWarning(ids);
   if (foreign) lines.push(foreign);
   lines.push('Kontynuować?');
   if (!confirm(lines.join('\n\n'))) return;
@@ -302,7 +302,7 @@ sendBtn.addEventListener('click', async () => {
   for (let i = 0; i < ids.length; i++){
     const id = ids[i];
     const row = rowById(id);
-    logLine(`Wysyłam ${id} (${row ? row.company : '?'})…`);
+    logLine(`Wysyłam ${id}${row ? ` (${row.company})` : ''}…`);
     let stop = false;
     try {
       const {status, data} = await api('/api/send-one', {id, daily_cap: dailyCap});
@@ -313,13 +313,14 @@ sendBtn.addEventListener('click', async () => {
       logLine(`  BŁĄD sieci: ${err}`);
     }
     selection.remove([id]);
-    view.render('send');
+    view.redraw();
     if (stop) break;
     if (i < ids.length - 1) await sleep((delayMin + Math.random() * (delayMax - delayMin)) * 1000);
   }
   logLine('Gotowe.');
   sending = false;
-  await loadStatus();
+  view.selectionChanged();
+  await Promise.all([loadStatus(), view.refresh()]);
   if (bulk) bulk.refresh();
 });
 
@@ -337,4 +338,4 @@ bulk = createBulkUI({
 });
 setupColumns();
 loadStatus();
-loadRows().then(() => bulk.loadUndo());
+view.start().then(() => bulk.loadUndo());

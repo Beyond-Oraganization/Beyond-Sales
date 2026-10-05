@@ -45,9 +45,14 @@ start() {
     fi
     # Gniazdo podajemy jako ścieżkę względną (cd do $DIR): ścieżki gniazd mają limit ~100 znaków, a katalog bywa głęboko.
     # --mysqlx=OFF nie zajmuje portu 33060 (zwykle ma go już Twój serwer), a własne gniazdo nie koliduje z /tmp/mysql.sock.
-    (cd "$DIR" && nohup "$MYSQLD" --no-defaults --basedir="$BASEDIR" --datadir="$DIR/data" --port="$PORT" \
-        --bind-address=127.0.0.1 --mysqlx=OFF --socket=m.sock --pid-file="$DIR/mysqld.pid" --log-error="$DIR/error.log" \
-        --innodb-buffer-pool-size=512M --max-connections=300 --secure-file-priv=NULL >"$DIR/out.log" 2>&1 &)
+    # W tle idzie wyłącznie mysqld z przekierowanymi deskryptorami; gdyby `&` objęło też `cd`, podpowłoka trzymałaby
+    # standardowe wyjście wywołującego (np. narzędzia albo potoku) aż do zatrzymania serwera.
+    (
+        cd "$DIR" || exit 1
+        nohup "$MYSQLD" --no-defaults --basedir="$BASEDIR" --datadir="$DIR/data" --port="$PORT" \
+            --bind-address=127.0.0.1 --mysqlx=OFF --socket=m.sock --pid-file="$DIR/mysqld.pid" --log-error="$DIR/error.log" \
+            --innodb-buffer-pool-size=512M --max-connections=300 --secure-file-priv=NULL >"$DIR/out.log" 2>&1 </dev/null &
+    )
     for _ in $(seq 1 60); do
         if alive; then
             client -e "CREATE DATABASE IF NOT EXISTS $DATABASE CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
