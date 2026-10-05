@@ -375,6 +375,7 @@ mysqldump -u perno_app -p --single-transaction --no-tablespaces --skip-triggers 
 ```bash
 scripts/check.sh                                       # ruff + mypy + kontrakty warstw + testy z progiem pokrycia (ok. 1 min)
 scripts/check.sh --fast                                # bez wolnych testów: szybka pętla przy refaktoryzacji
+scripts/check.sh --mysql                               # dodatkowo testy na prawdziwym MySQL (tymczasowy serwer, patrz niżej)
 .venv/bin/python -m pytest tests/test_x.py -k nazwa    # pojedyncze testy
 .venv/bin/python -m unittest discover -s tests -t . -v # to samo bez pytest
 ```

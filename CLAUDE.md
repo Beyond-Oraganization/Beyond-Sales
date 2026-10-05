@@ -9,7 +9,7 @@ Plan przebudowy (fazy 0-5): `~/.claude/plans/przeanalizuj-dany-projekt-przeczyta
 - `scripts/check.sh` — ruff + mypy + testy; uruchom przed każdym commitem (`--fast` pomija testy `slow`)
 - `.venv/bin/python -m pytest tests/test_x.py -k nazwa` — pojedyncze testy
 - Panel: `.venv/bin/python server.py` (albo `perno-server`); baza demo: `PERNO_DB_URL=sqlite:////tmp/demo.db` (blokuje prawdziwy SMTP)
-- Prawdziwy MySQL do testów i pomiarów bez Twojej bazy: `scripts/scratch_mysql.sh start`, potem `PERNO_TEST_DB_URL="$(scripts/scratch_mysql.sh url)" .venv/bin/python -m pytest tests/test_mysql_smoke.py tests/test_listing.py` (bez `-n`); dane na skalę 50 tys. firm: `scripts/seed_synthetic.py` (tylko bazy `*_test`)
+- Prawdziwy MySQL do testów i pomiarów bez Twojej bazy: `scripts/check.sh --mysql` (tymczasowy serwer, testy dymne i wektory listy) albo ręcznie `scripts/scratch_mysql.sh start` + `PERNO_TEST_DB_URL="$(scripts/scratch_mysql.sh url)" .venv/bin/python -m pytest -p no:xdist tests/test_mysql_smoke.py tests/test_listing.py`; dane na skalę 50 tys. firm: `scripts/seed_synthetic.py` (tylko bazy `*_test`)
 
 ## Reguły
 - Nigdy nie wysyłaj prawdziwych maili ani nie łącz się z prawdziwą bazą w testach. Nie czytaj i nie wypisuj `config.env`.
