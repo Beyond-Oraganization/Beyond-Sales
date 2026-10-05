@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import unittest
+from types import SimpleNamespace
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import mysql, postgresql, sqlite
 
 from perno import db as dbmod
+from perno.db.listing_queries import ListingQueries
 from perno.db.listing_sql import Folded, Joined, search_clauses, sort_clauses
 from perno.db.schema import maile
 from perno.domain.listing import DEFAULT_SORT, LIST_FACETS, parse_state, without_facet
@@ -128,6 +131,39 @@ class VectorChecks:
         ids = ["eventy-008", "eventy-001", "eventy-002", "eventy-007", "driverzy-021", "eventy-004"]
         self.assertEqual(self.database.distinct_emails(ids), ["a01@x.pl", "a02@x.pl", "a07@x.pl"])
         self.assertEqual(self.database.distinct_emails([]), [])
+
+
+class RepositoryEdgeTests(unittest.TestCase):
+    def test_list_rows_say_exactly_whether_they_have_a_body(self):
+        database = make_db()
+        put(database, sample_row(1, body_html="<p>x</p>"), sample_row(2, body_html="", body_text=""),
+            sample_row(3, body_html="   ", body_text=""))
+        rows = {row["id"]: row for row in database.list_page(RowFilter(), "default", 0, 10)}
+        self.assertEqual([rows[f"eventy-00{n}"]["has_body"] for n in (1, 2, 3)], [True, False, True])  # same spacje to jeszcze treść
+
+    def test_counting_in_an_empty_table_gives_zeros(self):
+        self.assertEqual(make_db().match_counts([RowFilter(), RowFilter(statuses=("blad",))]), [0, 0])
+
+    def test_independent_reads_run_together_only_on_a_server_database(self):
+        def repository(dialect_name):
+            class Stub(ListingQueries):
+                engine = SimpleNamespace(dialect=SimpleNamespace(name=dialect_name))
+
+            return Stub()
+
+        barrier = threading.Barrier(2, timeout=5)
+
+        def meet():
+            barrier.wait()  # kończy się tylko wtedy, gdy oba zadania działają naraz w osobnych wątkach
+            return threading.get_ident()
+
+        threads = repository("mysql").run_together({"a": meet, "b": meet})
+        self.assertNotEqual(threads["a"], threads["b"])
+        order: list = []
+        repository("sqlite").run_together({"a": lambda: order.append("a"), "b": lambda: order.append("b")})
+        self.assertEqual(order, ["a", "b"])  # sqlite: jedno połączenie, po kolei
+        alone = repository("mysql").run_together({"only": threading.get_ident})
+        self.assertEqual(alone, {"only": threading.get_ident()})  # jedno zadanie nie potrzebuje puli wątków
 
 
 class SqlBuildingTests(unittest.TestCase):
