@@ -11,9 +11,15 @@ import json
 import os
 import unittest
 
+import sqlalchemy as sa
+from sqlalchemy.dialects import mysql, postgresql, sqlite
+
 from perno import db as dbmod
+from perno.db.listing_sql import Folded, Joined, search_clauses, sort_clauses
+from perno.db.schema import maile
 from perno.domain.listing import DEFAULT_SORT, LIST_FACETS, parse_state, without_facet
 from perno.domain.rowfilter import RowFilter
+from perno.domain.search import parse_query
 from perno.services import listing
 from tests.fixtures import make_db, put, sample_row
 from tests.test_mysql_smoke import SKIP_REASON, TEST_DB, resolve_test_url
@@ -122,6 +128,45 @@ class VectorChecks:
         ids = ["eventy-008", "eventy-001", "eventy-002", "eventy-007", "driverzy-021", "eventy-004"]
         self.assertEqual(self.database.distinct_emails(ids), ["a01@x.pl", "a02@x.pl", "a07@x.pl"])
         self.assertEqual(self.database.distinct_emails([]), [])
+
+
+class SqlBuildingTests(unittest.TestCase):
+    """Wyrażenia SQL listy dla każdej bazy: tekst składany po swojemu, polska kolacja tylko tam, gdzie baza ją ma."""
+
+    def compile(self, expression, dialect):
+        return str(expression.compile(dialect=dialect, compile_kwargs={"literal_binds": True}))
+
+    def test_folded_text_adapts_to_the_database(self):
+        plain = Folded(sa.column("x"))
+        self.assertEqual(self.compile(plain, sqlite.dialect()), "perno_fold(x)")
+        self.assertEqual(self.compile(plain, mysql.dialect()), "x")  # kolacja *_ai_ci sama składa litery
+        self.assertEqual(self.compile(plain, postgresql.dialect()), "lower(x)")
+        letters = Folded(sa.column("x"), (("ß", "ss"), ("æ", "ae")))
+        self.assertEqual(self.compile(letters, mysql.dialect()), "replace(replace(lower(x), 'ß', 'ss'), 'æ', 'ae')")
+
+    def test_search_adds_the_replace_only_for_phrases_that_need_it(self):
+        mysql_sql = lambda text: self.compile(sa.and_(*search_clauses(parse_query(text, "company"))), mysql.dialect())
+        self.assertNotIn("replace(", mysql_sql("zuraw"))
+        for needle, letter in (("strasse", "ß"), ("aero", "æ"), ("oeuvre", "œ"), ("thor", "þ")):
+            self.assertIn(f"'{letter}'", mysql_sql(needle), needle)
+        self.assertEqual(mysql_sql("-zuraw").count("NOT"), 1)
+
+    def test_joined_fields_skip_empty_values_on_mysql(self):
+        joined = Joined(sa.column("a"), sa.column("b"))
+        self.assertEqual(self.compile(joined, mysql.dialect()), "concat_ws(' ', nullif(trim(a), ''), nullif(trim(b), ''))")
+        self.assertEqual(self.compile(joined, sqlite.dialect()), "coalesce(a, '') || ' ' || coalesce(b, '')")
+
+    def test_text_sort_uses_the_polish_collation_of_each_database(self):
+        def order_sql(dialect_name, dialect):
+            return self.compile(sa.select(maile.c.id).order_by(*sort_clauses("-company", dialect_name, [])), dialect)
+
+        self.assertIn("COLLATE utf8mb4_pl_0900_ai_ci", order_sql("mysql", mysql.dialect()))
+        self.assertIn("COLLATE perno_pl", order_sql("sqlite", sqlite.dialect()))
+        self.assertNotIn("COLLATE", order_sql("postgresql", postgresql.dialect()))
+        self.assertEqual(sort_clauses("nie_ma", "mysql", ["x"]), ["x"])  # nieznany klucz: tylko kolejność domyślna
+
+    def test_counting_no_filters_needs_no_query(self):
+        self.assertEqual(make_db().match_counts([]), [])
 
 
 class SqliteVectorTests(VectorChecks, unittest.TestCase):

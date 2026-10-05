@@ -119,8 +119,6 @@ def haystack(field: str):
 
 def search_clauses(terms: SearchTerms) -> list:
     """Warunki WHERE: każde słowo z `include` musi wystąpić w tekście pola, żadne z `exclude` nie może."""
-    if not terms:
-        return []
     text = haystack(terms.field)
 
     def contains(term: str):
