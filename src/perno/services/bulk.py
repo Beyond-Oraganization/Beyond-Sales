@@ -20,8 +20,9 @@ from perno.db import Database, DbError, InvalidValue, RowNotFound, from_api
 from perno.domain import countries, mail_rules
 from perno.domain import statuses as st
 
-MAX_BULK_IDS = 2000
+MAX_BULK_IDS = 20_000  # zapis 20 tys. firm trwa ok. 2 s na MySQL (zmiany grupowane po `ID_CHUNK`), podgląd ułamek sekundy
 UNDO_LIMIT = 20
+UNDO_MAX_ROWS = 60_000  # tyle zmienionych wierszy łącznie trzyma dziennik cofania (migawka 20 tys. firm to ok. 22 MB w pamięci)
 DATA_FIELDS = ("country", "city", "address")
 LISTED_IDS = 20  # tyle id pokazujemy przy każdym ostrzeżeniu i pominięciu (reszta tylko w liczbie)
 
@@ -230,10 +231,12 @@ class Operation:
 
 
 class UndoLog:
-    """Ostatnie zbiorcze zmiany (tylko w pamięci serwera — znikają przy jego restarcie)."""
+    """Ostatnie zbiorcze zmiany (tylko w pamięci serwera — znikają przy jego restarcie). Trzyma najwyżej `limit` operacji
+    i `max_rows` zmienionych wierszy łącznie; najstarsze odpadają pierwsze, a najnowsza zostaje zawsze."""
 
-    def __init__(self, limit: int = UNDO_LIMIT):
+    def __init__(self, limit: int = UNDO_LIMIT, max_rows: int = UNDO_MAX_ROWS):
         self._limit = limit
+        self._max_rows = max_rows
         self._items: list = []
         self._lock = threading.Lock()
         self._undo_lock = threading.Lock()
@@ -242,6 +245,8 @@ class UndoLog:
         with self._lock:
             self._items.append(operation)
             del self._items[:-self._limit]
+            while len(self._items) > 1 and sum(len(item.changes) for item in self._items) > self._max_rows:
+                del self._items[0]
 
     def get(self, operation_id: Optional[str] = None) -> Optional[Operation]:
         with self._lock:

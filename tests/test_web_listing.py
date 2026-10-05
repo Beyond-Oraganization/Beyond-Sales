@@ -116,6 +116,12 @@ class ViewIdsTests(ListingCase):
         narrowed = self.data(self.call("POST", "/api/mailing/ids", {"ready": True, "state": {"countries": ["PL"]}}))["ids"]
         self.assertEqual(narrowed, ["eventy-001", "eventy-006", "driverzy-008"])
 
+    def test_excluded_statuses_are_left_out_of_the_ids(self):
+        ids = self.data(self.call("POST", "/api/mailing/ids", {"exclude_statuses": ["wyslano", "blad"]}))["ids"]
+        self.assertEqual(ids, ["eventy-001", "eventy-004", "eventy-005", "driverzy-008"])
+        for bad in ("wyslano", [1], [""], ["x"] * 21):
+            self.assertEqual(self.call("POST", "/api/mailing/ids", {"exclude_statuses": bad}).status, 400, bad)
+
     def test_limit_is_validated(self):
         for limit in (0, -1, "3", listing.MAX_LIST_IDS + 1):
             self.assertEqual(self.call("POST", "/api/mailing/ids", {"limit": limit}).status, 400, limit)

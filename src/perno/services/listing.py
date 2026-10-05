@@ -53,6 +53,21 @@ def parse_ids(value: Any, *, name: str = "ids") -> Optional[tuple]:
     return unique
 
 
+def parse_strings(value: Any, name: str, limit: int = 20) -> tuple:
+    """Krótka lista niepustych tekstów (np. statusów); brak pola to pusta lista."""
+    if value is None:
+        return ()
+    if not isinstance(value, list) or len(value) > limit or not all(isinstance(item, str) and item for item in value):
+        raise InvalidValue(f"Pole {name} musi być listą nazw (maks. {limit}).")
+    return tuple(dict.fromkeys(value))
+
+
+def order_ids(db: Database, ids: tuple, sort: Any) -> tuple:
+    """Wskazane id w kolejności widoku (klucz sortowania z panelu; nieznany daje kolejność domyślną). Id, których nie
+    ma w bazie, znikają — plik z zaznaczonymi wierszami ma wyglądać tak, jak lista na ekranie."""
+    return tuple(db.list_ids(RowFilter(ids=ids), parse_state({"sort": sort}).sort))
+
+
 def parse_list_request(payload: Mapping) -> ListRequest:
     """Waliduje żądanie `{state, page, size, ids, counts, totals, presets}`; brakujące pola mają wartości domyślne."""
     presets = payload.get("presets") or []
@@ -103,10 +118,12 @@ def list_view(db: Database, request: ListRequest) -> dict:
 
 
 def view_ids(db: Database, payload: Mapping) -> dict:
-    """Id wierszy widoku w kolejności widoku: `{ids, total, truncated}`. `ready: true` zawęża do firm gotowych do wysyłki,
-    `limit` do pierwszych N (np. „zaznacz pierwsze 10”); bez limitu bierzemy najwyżej `MAX_LIST_IDS`."""
+    """Id wierszy widoku w kolejności widoku: `{ids, truncated}`. `ready: true` zawęża do firm gotowych do wysyłki,
+    `exclude_statuses` wyklucza podane statusy (np. „Wysyłanie…”, którego nie da się zaznaczyć), `limit` bierze pierwsze N
+    (np. „zaznacz pierwsze 10”); bez limitu bierzemy najwyżej `MAX_LIST_IDS`."""
     query = parse_state(payload.get("state"))
-    flt = _view(query, parse_ids(payload.get("ids")))
+    flt = replace(_view(query, parse_ids(payload.get("ids"))),
+                  not_statuses=parse_strings(payload.get("exclude_statuses"), "exclude_statuses"))
     if payload.get("ready") is True:
         flt = replace(flt, ready=True)
     limit = _int(payload.get("limit"), "limit", MAX_LIST_IDS, 1, MAX_LIST_IDS)

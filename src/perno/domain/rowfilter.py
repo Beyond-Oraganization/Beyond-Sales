@@ -19,6 +19,7 @@ class RowFilter:
     """Które wiersze wybrać. Puste pole = bez ograniczenia; wszystkie warunki łączą się przez AND."""
     segments: tuple = ()
     statuses: tuple = ()
+    not_statuses: tuple = ()  # statusy, których NIE chcemy (np. „Wysyłanie…”, którym zarządza program, nie da się zaznaczyć)
     countries: tuple = ()  # kody ISO; NO_COUNTRY = bez kraju, FOREIGN_COUNTRY = spoza Polski (można łączyć z kodami)
     has_email: Optional[bool] = None
     has_body: Optional[bool] = None

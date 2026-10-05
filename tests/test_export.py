@@ -13,6 +13,7 @@ from perno import db as dbmod
 from perno.domain import statuses as st
 from perno.domain.rowfilter import RowFilter
 from perno.services import export as exporter
+from perno.services import listing
 from perno.web.http import Request
 from tests.fixtures import make_app, make_db, put, sample_row
 
@@ -504,9 +505,34 @@ class SelectionEndpointTests(unittest.TestCase):
             wb = openpyxl.load_workbook(f, read_only=True)
             self.assertEqual([r[0] for r in wb["Maile"].iter_rows(values_only=True)], ["Firma", "Gamma", "Alfa"])
 
+    def test_post_exports_a_whole_view_from_the_state_of_the_panel(self):
+        resp = self.post({"format": "csv", "columns": ["company"], "state": {"statuses": ["wyslano", "do_wyslania"], "sort": "-company"}})
+        self.assertEqual(self.rows_of(resp), [["Firma"], ["Beta"], ["Alfa"]])
+        self.assertEqual(resp.headers["X-Export-Rows"], "2")
+        everything = self.post({"format": "csv", "columns": ["company"], "state": {"q": "gamma", "sort": "garbage;"}})
+        self.assertEqual(self.rows_of(everything), [["Firma"], ["Gamma"]])
+        unfiltered = self.post({"format": "csv", "columns": ["company"], "state": {}})
+        self.assertEqual(self.rows_of(unfiltered), [["Firma"], ["Alfa"], ["Gamma"], ["Beta"]])  # kolejność panelu: segmenty
+
+    def test_post_orders_the_selected_rows_like_the_list_when_given_a_sort(self):
+        ids = ["driverzy-002", "eventy-003", "eventy-001", "nie-ma"]
+        by_name = self.post({"format": "csv", "ids": ids, "columns": ["company"], "sort": "company"})
+        self.assertEqual(self.rows_of(by_name), [["Firma"], ["Alfa"], ["Beta"], ["Gamma"]])
+        descending = self.post({"format": "csv", "ids": ids, "columns": ["company"], "sort": "-company"})
+        self.assertEqual(self.rows_of(descending), [["Firma"], ["Gamma"], ["Beta"], ["Alfa"]])
+        self.assertEqual(descending.headers["X-Export-Rows"], "3")  # „nie-ma” nie istnieje
+        as_listed = self.post({"format": "csv", "ids": ids, "columns": ["company"]})  # bez sort: kolejność id
+        self.assertEqual(self.rows_of(as_listed), [["Firma"], ["Beta"], ["Gamma"], ["Alfa"]])
+
+    def test_post_needs_exactly_one_of_ids_and_state(self):
+        for payload in ({"format": "csv"}, {"format": "csv", "ids": ["eventy-001"], "state": {}}):
+            resp = self.post(payload)
+            self.assertEqual(resp.status, 400)
+            self.assertIn("dokładnie jedno", json.loads(resp.body)["error"])
+
     def test_post_validation(self):
         base = {"format": "csv", "ids": ["eventy-001"]}
-        too_many = {**base, "ids": [f"x-{n}" for n in range(20_001)]}
+        too_many = {**base, "ids": [f"x-{n}" for n in range(listing.MAX_LIST_IDS + 1)]}
         cases = [
             ({"ids": ["eventy-001"]}, "format"),
             ({**base, "format": "pdf"}, "format"),

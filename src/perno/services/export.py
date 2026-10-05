@@ -109,6 +109,7 @@ class ExportSpec:
     bodies: bool = False
     delimiter: str = ";"
     columns: Optional[tuple] = None  # None = zestaw standardowy (z treścią maili, gdy `bodies`); podane `bodies` ignoruje
+    sort: str = "default"  # kolejność wierszy jak na liście w panelu (klucz sortowania); z `flt.ids` rządzi kolejność id
 
 
 @dataclass
@@ -171,7 +172,7 @@ def _rows(db: dbmod.Database, spec: ExportSpec, columns: tuple) -> Iterator[dict
     real = tuple(c for c in columns if c not in DERIVED_COLUMNS)
     if "country_name" in columns and "country" not in real:
         real += ("country",)  # nazwa kraju jest liczona z kodu, więc kod trzeba pobrać, nawet gdy nie trafia do pliku
-    for row in db.iter_rows(spec.flt, real):
+    for row in db.iter_rows(spec.flt, real, sort=spec.sort):
         if "country_name" in columns:
             row["country_name"] = countries.country_name(row.get("country"))
         yield row

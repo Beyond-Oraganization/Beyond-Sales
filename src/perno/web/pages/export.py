@@ -7,14 +7,14 @@ from typing import Optional
 
 from perno.domain import countries
 from perno.domain import statuses as st
+from perno.domain.listing import DEFAULT_SORT
 from perno.domain.rowfilter import NO_COUNTRY, RowFilter
 from perno.services import export as exporter
+from perno.services import listing
 from perno.web import layout
 from perno.web.context import AppContext
 from perno.web.http import HttpError, Request, Response, json_response
 from perno.web.page import Page
-
-MAX_EXPORT_IDS = 20_000  # ≈0,5 MB JSON — mieści się w limicie żądania (2 MB)
 
 
 def render(ctx: AppContext) -> str:
@@ -122,26 +122,37 @@ def api_export(req: Request, ctx: AppContext) -> Response:
     return _file_response(ctx, spec)
 
 
+def _export_rows(body: dict, ctx: AppContext) -> tuple:
+    """Filtr i kolejność wierszy eksportu: `ids` (zaznaczone; kolejność wg `sort`, a bez niego wg listy id) albo `state`
+    (cały widok, czyli stan filtrów i sortowania z panelu; plik jest strumieniowany, więc bez limitu liczby wierszy)."""
+    ids, state = body.get("ids"), body.get("state")
+    if (ids is None) == (state is None):
+        raise HttpError(400, "Podaj dokładnie jedno z pól: ids (zaznaczone wiersze) albo state (widok z filtrami).")
+    if state is not None:
+        query = listing.parse_state(state)
+        return query.flt, query.sort
+    chosen = listing.parse_ids(ids)
+    if not chosen:
+        raise HttpError(400, "Zaznacz przynajmniej jeden wiersz do eksportu.")
+    if body.get("sort") is not None:
+        chosen = listing.order_ids(ctx.db, chosen, body["sort"])
+    return RowFilter(ids=chosen), DEFAULT_SORT
+
+
 def api_export_selected(req: Request, ctx: AppContext) -> Response:
-    """Eksport wskazanych wierszy: `{format, delimiter, ids, columns | bodies}`. Wiersze trafiają do pliku
-    w kolejności `ids` (tak, jak je widać na ekranie), kolumny — w kolejności kanonicznej."""
+    """Eksport wskazanych wierszy albo całego widoku: `{format, delimiter, ids | state, sort?, columns | bodies}`.
+    Wiersze trafiają do pliku w kolejności listy na ekranie, kolumny — w kolejności kanonicznej."""
     body = req.json
     fmt = _choice(body.get("format"), exporter.CONTENT_TYPES, "Pole format musi mieć wartość csv albo xlsx.")
     delimiter = _choice(body.get("delimiter", "semicolon"), exporter.DELIMITERS,
                         "Pole delimiter musi mieć wartość semicolon albo comma.")
-    ids = body.get("ids")
-    if not isinstance(ids, list) or not all(isinstance(item, str) and item for item in ids):
-        raise HttpError(400, "Pole ids musi być listą identyfikatorów firm.")
-    if not ids:
-        raise HttpError(400, "Zaznacz przynajmniej jeden wiersz do eksportu.")
-    if len(ids) > MAX_EXPORT_IDS:
-        raise HttpError(400, f"Za dużo wierszy naraz (maks. {MAX_EXPORT_IDS}) — zawęź filtry.")
+    flt, sort = _export_rows(body, ctx)
     columns = body.get("columns")
     if columns is not None and (not isinstance(columns, list) or not all(isinstance(name, str) for name in columns)):
         raise HttpError(400, "Pole columns musi być listą nazw kolumn.")
     spec = exporter.ExportSpec(
-        fmt=fmt, flt=RowFilter(ids=tuple(ids)), bodies=body.get("bodies") is True,
-        delimiter=exporter.DELIMITERS[delimiter], columns=None if columns is None else tuple(columns),
+        fmt=fmt, flt=flt, bodies=body.get("bodies") is True, delimiter=exporter.DELIMITERS[delimiter],
+        columns=None if columns is None else tuple(columns), sort=sort,
     )
     return _file_response(ctx, spec)
 

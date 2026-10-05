@@ -83,6 +83,8 @@ def filter_clauses(flt: RowFilter) -> list:
         clauses.append(maile.c.segment.in_(flt.segments))
     if flt.statuses:
         clauses.append(maile.c.status.in_(flt.statuses))
+    if flt.not_statuses:
+        clauses.append(maile.c.status.not_in(flt.not_statuses))
     if flt.countries:
         clauses.append(_country_clause(flt.countries))
     clauses += tristate(maile.c.email, flt.has_email)  # adres złożony ze spacji to brak adresu

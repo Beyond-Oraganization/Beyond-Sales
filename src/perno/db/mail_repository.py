@@ -21,6 +21,7 @@ from perno.db.queries import ID_CHUNK, filter_clauses, id_chunks, ordering
 from perno.db.schema import COLUMNS, maile
 from perno.domain import mail_rules
 from perno.domain import statuses as st
+from perno.domain.listing import DEFAULT_SORT
 from perno.domain.rowfilter import ALL_ROWS, RowFilter
 
 STALE_CLAIM_MESSAGE = "Przerwano w trakcie wysyłki — sprawdź folder Wysłane, zanim ponowisz."
@@ -124,13 +125,15 @@ class MailRepository(ListingQueries):
                        for part in id_chunks(flt.ids))
 
     def iter_rows(self, flt: RowFilter = ALL_ROWS, columns: Optional[tuple] = None,
-                  chunk: int = 500) -> Iterator[dict]:
+                  chunk: int = 500, sort: str = DEFAULT_SORT) -> Iterator[dict]:
+        """Wiersze po filtrze, strumieniowo, w kolejności `sort` (domyślnie kolejność panelu). Z `flt.ids` idą w kolejności
+        tych id (wołający układa je tak, jak ma wyglądać plik), a `sort` nie ma wtedy znaczenia."""
         names = tuple(columns or COLUMNS)
         clauses = filter_clauses(flt)
         if flt.ids is not None:
             yield from self._iter_by_ids(flt.ids, names, clauses)
             return
-        stmt = sa.select(*[maile.c[name] for name in names]).where(*clauses).order_by(*ordering())
+        stmt = sa.select(*[maile.c[name] for name in names]).where(*clauses).order_by(*self._order(sort))
         with self.engine.connect() as conn:
             result = conn.execution_options(stream_results=True, yield_per=chunk).execute(stmt)
             for row in result.mappings():
@@ -191,9 +194,16 @@ class MailRepository(ListingQueries):
     # ---- zapis --------------------------------------------------------
 
     def update_rows(self, conn, updates: Iterable[tuple], now: datetime) -> None:
-        """Zapisuje `[(id, {pole: wartość})]` w transakcji wywołującego i odnotowuje czas zmiany (`updated_at`)."""
+        """Zapisuje `[(id, {pole: wartość})]` w transakcji wywołującego i odnotowuje czas zmiany (`updated_at`).
+        Wiersze z identycznymi zmianami idą jednym `UPDATE … WHERE id IN (…)` (partiami po `ID_CHUNK`): zmiana statusu
+        20 tys. firm to kilkadziesiąt zapytań zamiast 20 tys., czyli sekundy zamiast kilkunastu sekund na MySQL."""
+        groups: dict[tuple, list] = {}
         for row_id, values in updates:
-            conn.execute(sa.update(maile).where(maile.c.id == row_id).values(**values, updated_at=now))
+            groups.setdefault(tuple(sorted(values.items())), []).append(row_id)
+        for changes, ids in groups.items():
+            for start in range(0, len(ids), ID_CHUNK):
+                part = ids[start:start + ID_CHUNK]
+                conn.execute(sa.update(maile).where(maile.c.id.in_(part)).values(**dict(changes), updated_at=now))
 
     def insert_rows(self, conn, rows: list) -> int:
         stamp = self.now()

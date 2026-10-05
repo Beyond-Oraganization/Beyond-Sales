@@ -239,12 +239,25 @@ class ApplyTests(BulkCase):
                 raise RuntimeError("awaria bazy")
             return real_update(*args, **kwargs)
 
-        with mock.patch.object(mail_repository.sa, "update", flaky):
-            with self.assertRaises(RuntimeError):
+        with mock.patch.object(mail_repository.sa, "update", flaky), mock.patch.object(mail_repository, "ID_CHUNK", 1):
+            with self.assertRaises(RuntimeError):  # ID_CHUNK = 1: każdy wiersz osobnym zapytaniem, więc jest trzecie
                 self.apply(1, 2, 6, 7, status="zainteresowany")
         self.assertEqual(len(calls), 3)
         self.assertEqual(self.snapshot(), before)
         self.assertIsNone(self.log.get())
+
+    def test_rows_with_the_same_change_are_written_together_in_batches(self):
+        statements: list = []
+        sa.event.listen(self.database.engine, "before_cursor_execute",
+                        lambda conn, cursor, statement, params, context, many: statements.append(statement))
+        ids = [f"eventy-00{n}" for n in (1, 2, 3, 5, 6)]
+        with mock.patch.object(mail_repository, "ID_CHUNK", 2), self.database.transaction() as conn:
+            self.database.update_rows(conn, [(row_id, {"city": "Leeds"}) for row_id in ids]
+                                      + [("eventy-007", {"city": "Łódź"})], datetime(2026, 10, 5, 12, 0, 0))
+        updates = [sql for sql in statements if sql.lstrip().upper().startswith("UPDATE")]
+        self.assertEqual(len(updates), 4)  # pięć wierszy z tą samą zmianą w partiach po 2 (3 zapytania) + jeden z inną (1)
+        self.assertEqual([self.row(n)["city"] for n in (1, 2, 3, 5, 6, 7)], ["Leeds"] * 5 + ["Łódź"])
+        self.assertEqual(self.row(8)["city"], "")  # wiersz spoza zmian nie ucierpiał
 
     def test_ids_are_loaded_in_batches_without_losing_any(self):
         with mock.patch.object(dbmod, "ID_CHUNK", 2):
@@ -345,6 +358,29 @@ class UndoTests(BulkCase):
         self.assertEqual([op["id"] for op in log.listing()], ["op4", "op3", "op2"])
         self.assertIsNone(log.get("op0"))
         self.assertEqual(bulk.UNDO_LIMIT, 20)
+
+
+class UndoLogSizeTests(unittest.TestCase):
+    def operation(self, name: str, rows: int) -> bulk.Operation:
+        changes = [bulk.RowChange(f"{name}-{n}", {"status": "a"}, {"status": "b"}) for n in range(rows)]
+        return bulk.Operation(name, datetime(2026, 10, 5, 12, 0, 0), name, changes)
+
+    def test_oldest_operations_drop_out_when_the_log_holds_too_many_rows(self):
+        log = bulk.UndoLog(limit=10, max_rows=100)
+        for name, rows in (("a", 40), ("b", 40), ("c", 40)):
+            log.record(self.operation(name, rows))
+        self.assertEqual([op["id"] for op in log.listing()], ["c", "b"])  # 120 wierszy > 100: „a” odpada
+        log.record(self.operation("d", 70))
+        self.assertEqual([op["id"] for op in log.listing()], ["d"])  # 70 + 40 > 100: odpadają też „b” i „c”
+
+    def test_the_newest_operation_is_kept_even_when_it_alone_exceeds_the_cap(self):
+        log = bulk.UndoLog(limit=10, max_rows=100)
+        log.record(self.operation("big", 500))
+        self.assertEqual([op["id"] for op in log.listing()], ["big"])
+        self.assertIsNotNone(log.get())
+
+    def test_defaults_allow_a_full_bulk_operation_and_a_few_older_ones(self):
+        self.assertGreaterEqual(bulk.UNDO_MAX_ROWS, 2 * bulk.MAX_BULK_IDS)
 
 
 class LabelTests(BulkCase):
