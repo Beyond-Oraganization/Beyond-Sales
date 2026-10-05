@@ -221,6 +221,14 @@ class AutomatStore(StoreCore):
             return conn.execute(sa.select(sa.func.max(automat_zdarzenia.c.powiadomiono_at))
                                 .where(automat_zdarzenia.c.typ == event_type)).scalar()
 
+    def count_events(self, event_type: str, since: Optional[datetime] = None) -> int:
+        """Ile zdarzeń tego typu zapisano (od `since` włącznie, jeśli podano)."""
+        stmt = sa.select(sa.func.count()).select_from(automat_zdarzenia).where(automat_zdarzenia.c.typ == event_type)
+        if since is not None:
+            stmt = stmt.where(automat_zdarzenia.c.ts >= since)
+        with self._read() as conn:
+            return int(conn.execute(stmt).scalar() or 0)
+
     def has_event(self, event_type: str, key: str) -> bool:
         """Czy zdarzenie tego typu z tym kluczem już zapisano (np. podsumowanie danego dnia)."""
         with self._read() as conn:

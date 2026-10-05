@@ -26,6 +26,10 @@ EVENT_HORIZON_END = "horizon_end"
 EVENT_DISARMED = "disarmed"
 EVENT_DB_DOWN = "db_down"
 EVENT_SETTINGS_CHANGED = "settings_changed"
+EVENT_SENT = "sent"  # jeden udany mail (tylko dziennik, bez powiadomienia)
+EVENT_ROW_ERROR = "row_error"  # nieudany mail (dziennik; o serii błędów informuje EVENT_PAUSED)
+EVENT_INTERNAL_ERROR = "internal_error"  # nieoczekiwany wyjątek w pętli demona
+EVENT_ON_BATTERY = "on_battery"  # okno wysyłki zaczęło się, gdy Mac był na baterii
 
 _ALL = (CHANNEL_MACOS, CHANNEL_NTFY, CHANNEL_EMAIL)
 
@@ -44,6 +48,10 @@ EVENTS: dict = {
     EVENT_DISARMED: (LEVEL_INFO, (CHANNEL_MACOS,), 0),
     EVENT_DB_DOWN: (LEVEL_CRIT, (CHANNEL_MACOS, CHANNEL_NTFY), 3600),
     EVENT_SETTINGS_CHANGED: (LEVEL_INFO, (CHANNEL_MACOS,), 0),
+    EVENT_SENT: (LEVEL_INFO, (), 0),
+    EVENT_ROW_ERROR: (LEVEL_WARN, (), 0),
+    EVENT_INTERNAL_ERROR: (LEVEL_CRIT, (CHANNEL_MACOS, CHANNEL_NTFY), 3600),
+    EVENT_ON_BATTERY: (LEVEL_WARN, (CHANNEL_MACOS,), 21600),
 }
 
 

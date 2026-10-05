@@ -70,7 +70,7 @@ ignore = [
 "src/perno/scraper/runner.py" = ["T201"]        # RunLogger drukuje linie logu (faza 4.11)
 "tests/**" = ["S104", "S105", "S106", "S107", "S603", "RUF012", "PLR0912", "PLR0913", "PLR0915", "C901", "D101", "D103"]
 # Docstringi publicznych klas i funkcji wymagamy w domain/ i services/ (reguły biznesowe); reszta ma bazę do uzupełnienia.
-"src/perno/{scraper,web,cli,db,mailer}/**" = ["D101", "D103"]
+"src/perno/{scraper,web,cli,db,mailer,notify,system}/**" = ["D101", "D103"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15    # ratchet: 26 -> 15 (faza 2.6) -> 10; dziś największa funkcja ma 14
@@ -129,7 +129,7 @@ include_external_packages = true
 name = "domain nie zależy od adapterów, usług, WWW ani CLI"
 type = "forbidden"
 source_modules = ["perno.domain"]
-forbidden_modules = ["perno.db", "perno.mailer", "perno.services", "perno.scraper", "perno.web", "perno.cli"]
+forbidden_modules = ["perno.db", "perno.mailer", "perno.notify", "perno.system", "perno.services", "perno.scraper", "perno.web", "perno.cli"]
 
 [[tool.importlinter.contracts]]
 name = "domain jest czysty (bez bazy, sieci, parserów i plików biurowych)"
@@ -138,9 +138,9 @@ source_modules = ["perno.domain"]
 forbidden_modules = ["sqlalchemy", "pymysql", "bs4", "lxml", "openpyxl", "PIL"]
 
 [[tool.importlinter.contracts]]
-name = "adaptery (db, mailer, scraper) nie zależą od usług, WWW ani CLI"
+name = "adaptery (db, mailer, notify, system, scraper) nie zależą od usług, WWW ani CLI"
 type = "forbidden"
-source_modules = ["perno.db", "perno.mailer", "perno.scraper"]
+source_modules = ["perno.db", "perno.mailer", "perno.notify", "perno.system", "perno.scraper"]
 forbidden_modules = ["perno.services", "perno.web", "perno.cli"]
 ignore_imports = ["perno.db.__main__ -> perno.cli.dbcheck"]  # `python -m perno.db` to tylko skrót do polecenia z cli/
 

@@ -14,7 +14,7 @@ from typing import Mapping, Optional
 
 from perno.domain import mail_rules
 from perno.domain import statuses as st
-from perno.domain.rowfilter import FOREIGN_COUNTRY, NO_COUNTRY
+from perno.domain.rowfilter import FOREIGN_COUNTRY, NO_COUNTRY, RowFilter
 
 WEEKDAY_LABELS = ("pn", "wt", "śr", "cz", "pt", "sb", "nd")
 HARD_MAX_DAILY_CAP = 500
@@ -148,6 +148,13 @@ def _check_consistency(settings: AutomatSettings) -> None:
         raise SettingsInvalid("Okno wysyłki: godzina „od” musi być wcześniejsza niż „do”.")
     if settings.delay_min > settings.delay_max:
         raise SettingsInvalid("Odstęp min nie może być większy niż odstęp max.")
+
+
+def queue_filter(settings: AutomatSettings) -> RowFilter:
+    """Kolejka automatu: maile „Do wysłania” z adresem i treścią, w wybranym segmencie i krajach. Wiersze w statusie
+    „Błąd” celowo nie wchodzą: nieudana wysyłka wymaga decyzji człowieka (mogła jednak wyjść)."""
+    return RowFilter(segments=() if settings.segment == "both" else (settings.segment,),
+                     statuses=(st.STATUS_PENDING,), countries=settings.countries, has_email=True, has_body=True)
 
 
 # ---- dni i okno godzin ------------------------------------------------------------------------------------------------

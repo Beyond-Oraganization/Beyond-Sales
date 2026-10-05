@@ -8,6 +8,7 @@ podmieniać globalnego stanu procesu.
 from __future__ import annotations
 
 import os
+import re
 import threading
 from dataclasses import dataclass, field
 from typing import Mapping, Optional
@@ -144,6 +145,40 @@ class SmtpSettings:
             raise ConfigError("SMTP_PORT w config.env nie jest liczbą.") from None
         return cls(config["SMTP_HOST"], port, config["SMTP_USER"], config["SMTP_PASSWORD"],
                    config.get("SMTP_USE_SSL", "true").lower() == "true")
+
+
+_TOPIC_RE = re.compile(r"[A-Za-z0-9_-]{8,64}")
+
+
+@dataclass(frozen=True)
+class NotifySettings:
+    """Powiadomienia automatu z config.env: wszystkie klucze są opcjonalne, a sekrety nie trafiają do `repr`."""
+
+    macos: bool = True  # NOTIFY_MACOS=false wyłącza powiadomienia systemowe
+    ntfy_topic: str = field(default="", repr=False)  # NTFY_TOPIC: długi, losowy sekret (kto go zna, ten czyta i pisze)
+    ntfy_server: str = "https://ntfy.sh"  # NTFY_SERVER
+    email_to: str = ""  # NOTIFY_EMAIL: dokąd wysyłać podsumowania i alerty
+    healthcheck_url: str = field(default="", repr=False)  # HEALTHCHECK_URL: ping dead-man's switch (np. healthchecks.io)
+
+    @classmethod
+    def from_config(cls, config: Mapping[str, str]) -> "NotifySettings":
+        topic = config.get("NTFY_TOPIC", "").strip()
+        if topic and not _TOPIC_RE.fullmatch(topic):
+            raise ConfigError("NTFY_TOPIC w config.env musi mieć 8-64 znaków: litery, cyfry, „-” i „_”.")
+        server = config.get("NTFY_SERVER", "").strip() or "https://ntfy.sh"
+        health = config.get("HEALTHCHECK_URL", "").strip()
+        email = config.get("NOTIFY_EMAIL", "").strip()
+        for name, value in (("NTFY_SERVER", server), ("HEALTHCHECK_URL", health)):
+            if value and not value.startswith("https://"):
+                raise ConfigError(f"{name} w config.env musi zaczynać się od https://.")
+        if email and ("@" not in email or " " in email):
+            raise ConfigError("NOTIFY_EMAIL w config.env nie wygląda na adres e-mail.")
+        return cls(config.get("NOTIFY_MACOS", "true").strip().lower() != "false", topic, server, email, health)
+
+    def configured_channels(self) -> list:
+        """Nazwy kanałów, które mają komplet ustawień (e-mail dodatkowo wymaga SMTP, co sprawdza wołający)."""
+        return [name for name, on in (("macos", self.macos), ("ntfy", bool(self.ntfy_topic)),
+                                      ("email", bool(self.email_to))) if on]
 
 
 def require_smtp(config: dict, path: str = DEFAULT_CONFIG) -> dict:
