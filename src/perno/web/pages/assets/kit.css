@@ -107,3 +107,10 @@
   .kit-presets,.kit-statuses{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
   .kit-presets > *,.kit-statuses > *{flex:0 0 auto;}
 }
+
+/* ---- firma z wieloma adresami: znacznik „2/3”, odznaka wstrzymania i przygaszone kolejne adresy -------------------- */
+.kit-addr{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:var(--r-pill);background:var(--fill);
+  color:var(--label-2);font:500 var(--fs-caption)/1.4 var(--font);font-variant-numeric:tabular-nums;vertical-align:1px;}
+.kit-hold{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:var(--r-pill);white-space:nowrap;vertical-align:1px;
+  background:color-mix(in srgb,var(--warn) 8%,transparent);color:var(--warn);font:500 var(--fs-caption)/1.4 var(--font);}
+.kit-table tr.is-sibling .company-cell{color:var(--label-2);}

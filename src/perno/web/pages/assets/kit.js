@@ -54,6 +54,21 @@
   function websiteLink(url) {
     return url ? `<a class="site-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(url)}" aria-label="Otwórz stronę firmy"></a>` : '';
   }
+  // Adres firmy z wieloma adresami: znacznik „2/3” (który z ilu), nazwa przygaszona na kolejnych adresach i odznaka, gdy
+  // inny adres firmy wstrzymuje ten (odpowiedź, „Nie kontaktować”, klient). Liczby i status przychodzą z serwera.
+  function addressPosition(row) { return parseInt(row.position, 10) || 1; }
+  function addressCount(row) { return parseInt(row.mail_count, 10) || 1; }
+  function isSibling(row) { return addressPosition(row) > 1; }
+  function addressMarker(row) {
+    const count = addressCount(row), position = addressPosition(row);
+    return count > 1 ? `<span class="kit-addr" title="Adres ${position} z ${count} tej firmy">${position}/${count}</span>` : '';
+  }
+  function holdBadge(row, ctx) {
+    if (!row.hold) return '';
+    const label = (ctx.statusMeta[row.hold] || [row.hold])[0];
+    return `<span class="kit-hold" title="Inny adres tej firmy ma status „${escapeHtml(label)}” — ten adres jest wstrzymany ` +
+      `(nie wyjdzie z Automatu, z terminala ani przyciskiem Wyślij; odblokuje go zmiana tamtego statusu)">wstrzymany: ${escapeHtml(label)}</span>`;
+  }
   function shortDate(iso) { return iso ? String(iso).replace('T', ' ').slice(0, 16) : ''; }
   function plural(n, one, few, many) {
     if (n === 1) return one;
@@ -374,6 +389,7 @@
               <button type="button" class="item" data-act="all"></button>
               ${extras}
               <div class="inline">Pierwsze <input type="number" min="1" value="10" data-first aria-label="Ile pierwszych wierszy"> <button type="button" data-act="first">Zaznacz</button></div>
+              <button type="button" class="item" data-act="siblings">Dodaj pozostałe adresy zaznaczonych firm</button>
               <hr>
               <button type="button" class="item" data-act="invert">Odwróć zaznaczenie w widoku</button>
               <button type="button" class="item" data-act="unmatch">Odznacz wiersze z widoku</button>
@@ -407,6 +423,10 @@
         } else if (act === 'first') {
           const n = Math.max(1, parseInt(selectBar.first.value, 10) || 1);
           selection.addFirst((await model.viewIds(Object.assign({limit: n}, lockedFilter()))).ids, n);
+        } else if (act === 'siblings') {
+          const found = await model.siblingIds();
+          selection.add(found.ids);
+          if (found.truncated) tell(`Objęto tylko pierwsze ${found.ids.length} adresów — zaznacz mniej firm.`);
         } else if (act === 'unmatch') {
           selection.remove((await model.viewIds()).ids);
         } else if (act === 'clear') {
@@ -434,6 +454,7 @@
         selectBar.menu.querySelector(`[data-extra="${i}"]`).textContent = typeof item.label === 'function' ? item.label({total: model.total()}) : item.label;
       });
       selectBar.menu.querySelector('[data-act="clear"]').disabled = total === 0;
+      selectBar.menu.querySelector('[data-act="siblings"]').disabled = total === 0;
       selectBar.only.checked = only;
       selectBar.only.disabled = total === 0 && !only;
     }
@@ -546,12 +567,14 @@
       summaryPending: () => model.summaryPending(),
       error: () => model.error(),
       viewIds: (extra) => model.viewIds(extra),
+      siblingIds: () => model.siblingIds(),
       exportScope: () => model.exportScope()
     };
   }
 
   root.PernoKit = {
     createListView: createListView, badge: badge, countryCell: countryCell, websiteLink: websiteLink,
+    addressMarker: addressMarker, holdBadge: holdBadge, isSibling: isSibling,
     shortDate: shortDate, plural: plural, readStore: readStore, writeStore: writeStore, closePopovers: closePopovers,
     popover: popover
   };

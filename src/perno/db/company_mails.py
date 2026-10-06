@@ -46,6 +46,11 @@ class CompanyMails:
         with self.engine.connect() as conn:
             return cw.company_ids_of(conn, [mail_id]).get(mail_id)
 
+    def company_ids(self, mail_ids) -> list:
+        """Id firm podanych adresów (bez powtórzeń, rosnąco); id, których nie ma w bazie, są pomijane."""
+        with self.engine.connect() as conn:
+            return sorted(set(cw.company_ids_of(conn, mail_ids).values()))
+
     def companies_with_address(self, email: str, except_company: str, limit: int = 5) -> list:
         """Nazwy innych firm, które mają już ten adres (ostrzeżenie przy dodawaniu; bez wielkości liter i spacji)."""
         key = company_rules.email_key(email)

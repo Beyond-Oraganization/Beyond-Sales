@@ -268,6 +268,28 @@ test('viewIds pyta serwer o id widoku z dodatkowymi warunkami i zgłasza błąd'
   await assert.rejects(broken, /połączyć z serwerem/);
 });
 
+test('siblingIds pyta o adresy firm zaznaczonych adresów (niezależnie od widoku) i zgłasza błąd', async () => {
+  const env = setup();
+  await loaded(env);
+  env.model.patch({statuses: ['blad']});   // filtr widoku nie ma tu znaczenia: chodzi o firmy zaznaczonych adresów
+  env.timers.flush();
+  env.calls[0].resolve(page());
+  await tick();
+  env.calls.length = 0;
+  env.selection.add(['b', 'a']);
+  const pending = env.model.siblingIds();
+  assert.equal(env.calls[0].url, '/api/mailing/siblings');
+  assert.deepEqual(env.calls[0].payload, {ids: ['b', 'a']});
+  env.calls[0].resolve({ok: true, data: {ids: ['a', 'a~2', 'b'], truncated: false}});
+  assert.deepEqual(await pending, {ids: ['a', 'a~2', 'b'], truncated: false});
+  const failing = env.model.siblingIds();
+  env.calls[1].resolve({ok: false, status: 400, data: {error: 'Za dużo.'}});
+  await assert.rejects(failing, /Za dużo\./);
+  const broken = env.model.siblingIds();
+  env.calls[2].reject(new Error('x'));
+  await assert.rejects(broken, /połączyć z serwerem/);
+});
+
 test('exportScope: stan widoku albo, przy „tylko zaznaczone”, id i sortowanie', async () => {
   const env = setup();
   await loaded(env);

@@ -34,6 +34,7 @@ class RowFilter:
     search: Optional[SearchTerms] = None  # wyszukiwarka (słowa, „frazy”, -wykluczenia) w wybranym polu
     ready: bool = False  # tylko firmy gotowe do wysyłki: status „Do wysłania”/„Błąd”, jest e-mail i treść maila (i adres nie jest wstrzymany)
     unheld: bool = False  # bez adresów wstrzymanych przez status innego adresu tej firmy (`statuses.COMPANY_STOPS`)
+    companies: Optional[tuple] = None  # tylko adresy tych firm (id firm); None = bez ograniczenia, () = żaden
     exclude_companies: tuple = ()  # id firm, których adresów nie chcemy (np. firmy, do których wysłano już dziś: odstęp)
     # Jawna lista wierszy. None = bez ograniczenia, () = żaden. Wynik idzie w kolejności `ids` (nie w domyślnej),
     # więc plik może wyglądać tak jak lista na ekranie; id, których nie ma w bazie, są pomijane.

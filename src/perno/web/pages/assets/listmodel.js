@@ -21,7 +21,8 @@
 
   function create(o) {
     var F = o.filters, selection = o.selection, ctx = o.ctx;
-    var urls = Object.assign({list: '/api/mailing/list', ids: '/api/mailing/ids', selection: '/api/mailing/selection'}, o.urls || {});
+    var urls = Object.assign({list: '/api/mailing/list', ids: '/api/mailing/ids', selection: '/api/mailing/selection',
+                              siblings: '/api/mailing/siblings'}, o.urls || {});
     var timers = o.timers || {set: function (fn, ms) { return setTimeout(fn, ms); }, clear: function (id) { clearTimeout(id); }};
     var coalesceMs = o.coalesceMs === undefined ? 25 : o.coalesceMs;
     var summaryMs = o.summaryMs === undefined ? 250 : o.summaryMs;
@@ -201,6 +202,14 @@
         var body = Object.assign({state: viewState()}, onlySelected ? {ids: selection.toArray()} : {}, extra || {});
         return call(urls.ids, body).then(function (res) {
           if (!res.ok) throw new Error((res.data && res.data.error) || 'Nie udało się pobrać listy firm.');
+          return res.data;
+        });
+      },
+
+      // Wszystkie adresy firm zaznaczonych adresów (w kolejności panelu), także tych spoza bieżącego widoku.
+      siblingIds: function () {
+        return call(urls.siblings, {ids: selection.toArray()}).then(function (res) {
+          if (!res.ok) throw new Error((res.data && res.data.error) || 'Nie udało się pobrać pozostałych adresów firm.');
           return res.data;
         });
       },

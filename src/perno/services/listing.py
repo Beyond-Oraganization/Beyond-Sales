@@ -12,7 +12,7 @@ from math import ceil
 from typing import Any, Mapping, Optional
 
 from perno.db import Database, InvalidValue
-from perno.domain.listing import ListQuery, parse_state
+from perno.domain.listing import DEFAULT_SORT, ListQuery, parse_state
 from perno.domain.rowfilter import ALL_ROWS, FOREIGN_COUNTRY, HOME_COUNTRY, NO_COUNTRY, RowFilter
 
 DEFAULT_PAGE_SIZE = 100
@@ -129,6 +129,14 @@ def view_ids(db: Database, payload: Mapping) -> dict:
     limit = _int(payload.get("limit"), "limit", MAX_LIST_IDS, 1, MAX_LIST_IDS)
     ids = db.list_ids(flt, query.sort, limit + 1)
     return {"ids": ids[:limit], "truncated": len(ids) > limit}
+
+
+def sibling_ids(db: Database, payload: Mapping) -> dict:
+    """Wszystkie adresy firm podanych adresów (`ids`), w kolejności panelu: `{ids, truncated}`. Do akcji „dodaj pozostałe
+    adresy zaznaczonych firm”."""
+    ids = parse_ids(payload.get("ids")) or ()
+    found = db.list_ids(RowFilter(companies=tuple(db.company_ids(ids))), DEFAULT_SORT, MAX_LIST_IDS + 1) if ids else []
+    return {"ids": found[:MAX_LIST_IDS], "truncated": len(found) > MAX_LIST_IDS}
 
 
 def selection_summary(db: Database, payload: Mapping) -> dict:

@@ -53,11 +53,16 @@ function statusSelect(row){
   return `<select data-id="${escapeHtml(row.id)}" data-field="status" class="badge-select" style="--c:${escapeHtml(info[1])}">${options}</select>`;
 }
 
+// Kolejne adresy firmy mają nazwę przygaszoną ze strzałką (i bez drugiego odnośnika do strony): to ta sama firma co wiersz wyżej.
+function companyName(row){
+  return K.isSibling(row) ? `<span class="sibling-name">↳ ${escapeHtml(row.company)}</span>` : `${escapeHtml(row.company)}${K.websiteLink(row.website)}`;
+}
+
 function cells(row){
   const lock = isLocked(row) ? 'disabled' : '';
   return `
     <td data-col="segment">${escapeHtml(row.segment)}</td>
-    <td data-col="company" class="company-cell">${escapeHtml(row.company)}${K.websiteLink(row.website)}</td>
+    <td data-col="company" class="company-cell">${companyName(row)}${K.addressMarker(row)}${K.holdBadge(row, ctx)}</td>
     <td data-col="country" class="country-cell">${K.countryCell(row, ctx)}</td>
     <td data-col="email"><input type="text" data-field="email" value="${escapeHtml(row.email)}" placeholder="wpisz e-mail…" ${lock}></td>
     <td data-col="subject"><input type="text" data-field="subject" value="${escapeHtml(row.subject)}" ${lock}></td>
@@ -88,7 +93,7 @@ const view = K.createListView({
   pagerEl: el('pager'), selectEl: el('selectBar'), emptyEl: el('emptyState'),
   canSelect: (row) => !isLocked(row),
   lockedStatuses: ['wysylanie'],   // „zaznacz wszystkie pasujące” pomija wiersze, które właśnie wysyła program
-  rowClass: (row) => isLocked(row) ? 'is-locked' : '',
+  rowClass: (row) => [isLocked(row) ? 'is-locked' : '', K.isSibling(row) ? 'is-sibling' : '', row.hold ? 'is-held' : ''].join(' ').trim(),
   cells, decorate,
   detail: (row) => renderDetail(row),
   selectItems: [{

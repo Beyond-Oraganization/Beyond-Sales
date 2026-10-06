@@ -37,6 +37,11 @@ def api_list_ids(req: Request, ctx: AppContext) -> Response:
     return json_response(listing.view_ids(ctx.db, req.json))
 
 
+def api_siblings(req: Request, ctx: AppContext) -> Response:
+    """Wszystkie adresy firm zaznaczonych adresów (do „dodaj pozostałe adresy zaznaczonych firm”)."""
+    return json_response(listing.sibling_ids(ctx.db, req.json))
+
+
 def api_selection(req: Request, ctx: AppContext) -> Response:
     """Podsumowanie zaznaczenia: ile firm, ile gotowych do wysyłki, ile z zagranicy, ile poza bieżącym filtrem."""
     return json_response(listing.selection_summary(ctx.db, req.json))
@@ -144,6 +149,7 @@ PAGE = Page(
         ("POST", "/api/mailing/ids"): api_list_ids,
         ("POST", "/api/mailing/selection"): api_selection,
         ("POST", "/api/mailing/emails"): api_selected_emails,
+        ("POST", "/api/mailing/siblings"): api_siblings,
         ("POST", "/api/mailing/mails"): api_add_mail,
         ("POST", "/api/mailing/mails/delete"): api_delete_mail,
         ("POST", "/api/bulk-update"): api_bulk_update,

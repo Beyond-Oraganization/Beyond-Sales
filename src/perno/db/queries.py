@@ -114,6 +114,8 @@ def _mail_clauses(flt: RowFilter) -> list:
         clauses += [maile.c.status.in_(st.SENDABLE_STATUSES), trimmed_filled(maile.c.email), filled(maile.c.body_html)]
     if flt.unheld or flt.ready:
         clauses.append(no_holding_sibling())
+    if flt.companies is not None:
+        clauses.append(company_key().in_(list(flt.companies)) if flt.companies else sa.false())
     if flt.exclude_companies:
         clauses.append(~company_key().in_(list(flt.exclude_companies)))
     return clauses

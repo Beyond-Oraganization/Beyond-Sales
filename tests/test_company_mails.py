@@ -276,6 +276,21 @@ class MailRoutesTests(WebCase):
         self.assertEqual(self.call("POST", "/api/mailing/mails/delete", {"id": "eventy-001"}).status, 400)
         self.assertEqual(self.call("POST", "/api/mailing/mails/delete", {"id": "nie-ma"}).status, 404)
 
+    def test_siblings_of_the_selected_addresses_are_all_the_addresses_of_their_companies(self):
+        self.call("POST", "/api/mailing/mails", {"company_id": "eventy-001", "email": "b@firma.pl"})
+        self.call("POST", "/api/mailing/mails", {"company_id": "eventy-001", "email": "c@firma.pl"})
+        for ids in (["eventy-001"], ["eventy-001~2"], ["eventy-001~3", "eventy-001"]):
+            data = self.data(self.call("POST", "/api/mailing/siblings", {"ids": ids}))
+            self.assertEqual(data, {"ids": ["eventy-001", "eventy-001~2", "eventy-001~3"], "truncated": False}, ids)
+        both = self.data(self.call("POST", "/api/mailing/siblings", {"ids": ["eventy-002", "eventy-001~2"]}))
+        self.assertEqual(both["ids"], ["eventy-001", "eventy-001~2", "eventy-001~3", "eventy-002"])
+
+    def test_siblings_of_nothing_or_of_unknown_ids_are_empty_and_bad_input_is_400(self):
+        for ids in ([], ["nie-ma"]):
+            self.assertEqual(self.data(self.call("POST", "/api/mailing/siblings", {"ids": ids}))["ids"], [])
+        self.assertEqual(self.data(self.call("POST", "/api/mailing/siblings", {}))["ids"], [])
+        self.assertEqual(self.call("POST", "/api/mailing/siblings", {"ids": "eventy-001"}).status, 400)
+
     def test_the_single_row_comes_with_the_addresses_of_its_company(self):
         self.call("POST", "/api/mailing/mails", {"company_id": "eventy-001", "email": "b@firma.pl"})
         data = self.data(self.call("GET", "/api/maile/row", query={"id": ["eventy-001~2"]}))
