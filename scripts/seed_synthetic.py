@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Syntetyczne dane do testów skali: tabela `maile` (i opcjonalnie firmy skrapera) w bazie TESTOWEJ.
+"""Syntetyczne dane do testów skali: tabele `podmioty` i `maile` (i opcjonalnie firmy skrapera) w bazie TESTOWEJ.
 
     scripts/scratch_mysql.sh start
     .venv/bin/python scripts/seed_synthetic.py --db-url "$(scripts/scratch_mysql.sh url)" --rows 50000
 
 Baza musi mieć nazwę kończącą się na `_test` (dla sqlite: nazwa pliku bez rozszerzenia, np. `/tmp/perno_demo_test.db`):
-skrypt kasuje i odtwarza w niej tabele `maile` i skrapera, więc nigdy nie wskazuj nim bazy produkcyjnej.
+skrypt kasuje i odtwarza w niej tabele `maile`, `podmioty` i skrapera, więc nigdy nie wskazuj nim bazy produkcyjnej.
 Panel na takiej bazie demo: `PERNO_DB_URL=sqlite:////tmp/perno_demo_test.db .venv/bin/python server.py --no-browser`. Dane są losowe, ale powtarzalne (`--seed`) i mają rozmiary zbliżone do prawdziwych:
 treść HTML ok. 2,6 KB, tekst ok. 1,6 KB, polskie litery w nazwach (żeby sprawdzać wyszukiwanie bez ogonków), rozkład
 statusów i krajów jak w kampanii (większość „Do wysłania", dużo „Wysłano", reszta rzadsza).
@@ -24,7 +24,7 @@ import sqlalchemy as sa
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from perno.db import Database, maile, make_engine
+from perno.db import Database, companies, maile, make_engine, metadata
 from perno.domain import statuses as st
 from perno.scraper import schema as scraper_schema
 from perno.scraper.store import Store
@@ -78,6 +78,20 @@ def make_row(rng: random.Random, number: int, base: datetime) -> dict:
     }
 
 
+def add_siblings(database: Database, rng: random.Random, fraction: float) -> int:
+    """1–3 dodatkowe adresy dla losowej części firm z adresem; adresy firm już wysłanych są w części też wysłane."""
+    added = 0
+    for row in database.fetch_all(light=True):
+        if not row["email"] or rng.random() >= fraction:
+            continue
+        for number in range(rng.randint(1, 3)):
+            mail = database.add_mail(row["id"], f"adres{number + 2}@{row['email'].split('@')[1]}", copy_text=True)
+            added += 1
+            if row["status"] in st.KEEPS_SENT_AT and rng.random() < 0.3:
+                database.apply_edit(mail["id"], {"status": st.STATUS_SENT})
+    return added
+
+
 def main() -> int:
     """Zakłada tabele w bazie testowej i wstawia `--rows` wierszy (oraz firmy skrapera z `--scraper-firms`)."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -85,6 +99,8 @@ def main() -> int:
     parser.add_argument("--rows", type=int, default=50_000)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--scraper-firms", action="store_true", help="po wstawieniu maili zaimportuj z nich firmy skrapera")
+    parser.add_argument("--siblings", type=float, default=0.0, metavar="UŁAMEK",
+                        help="część firm (np. 0.25), które dostają 1–3 dodatkowe adresy (część z nich już wysłana)")
     args = parser.parse_args()
 
     url = sa.engine.make_url(args.db_url)
@@ -95,7 +111,7 @@ def main() -> int:
         raise SystemExit("Nazwa bazy (albo pliku sqlite) musi kończyć się na _test: skrypt kasuje w niej tabele.")
     database = Database(make_engine(url))
     scraper_schema.skraper_metadata.drop_all(database.engine)
-    maile.drop(database.engine, checkfirst=True)
+    metadata.drop_all(database.engine, tables=[maile, companies], checkfirst=True)
     database.ensure_schema()
     rng, base, started = random.Random(args.seed), datetime(2026, 10, 2, 12, 0, 0), time.monotonic()
     for first in range(1, args.rows + 1, BATCH):
@@ -104,7 +120,10 @@ def main() -> int:
             database.insert_rows(conn, rows)
         if first % (BATCH * 20) == 1:
             print(f"  ... {first + len(rows) - 1}/{args.rows} ({time.monotonic() - started:.0f} s)", flush=True)
-    print(f"Wstawiono {args.rows} wierszy `maile` w {time.monotonic() - started:.0f} s ({database.describe()}).")
+    print(f"Wstawiono {args.rows} firm z adresem głównym w {time.monotonic() - started:.0f} s ({database.describe()}).")
+    if args.siblings > 0:
+        added = add_siblings(database, rng, args.siblings)
+        print(f"Dodano {added} dodatkowych adresów w {time.monotonic() - started:.0f} s od początku.")
     if args.scraper_firms:
         store = Store(database)
         store.ensure_schema()

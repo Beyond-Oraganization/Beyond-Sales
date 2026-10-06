@@ -11,6 +11,7 @@ const selection = S.create();
 let STATUS = {smtp_configured: false, smtp_user: '', sent_today: 0};
 let expandedId = null;       // wiersz z rozwiniętymi szczegółami
 const detailCache = {};      // id → pełny wiersz (z treścią maila) dla rozwiniętych wierszy
+const mailsCache = {};       // id → adresy firmy tego wiersza (lista z serwera, adres główny pierwszy)
 let loadingDetail = null;
 let bulk = null;
 let sending = false;
@@ -144,8 +145,60 @@ async function loadDetail(id){
     expandedId = null;
   } else {
     detailCache[id] = data.row;
+    mailsCache[id] = data.mails || [];
   }
   view.redraw();
+}
+
+// ---- adresy firmy w rozwiniętym wierszu ------------------------------------------------------
+
+function addressesHtml(full, mails){
+  const rows = mails.map(m => {
+    const info = STATUS_LABELS[m.status] || [m.status, '#6b7280'];
+    const remove = m.deletable ? `<button type="button" class="kit-btn small" data-delete="${escapeHtml(m.id)}">Usuń</button>` : '';
+    return `<tr class="${m.id === full.id ? 'is-current' : ''}"><td class="num">${escapeHtml(m.position)}</td>
+      <td class="mail">${escapeHtml(m.email) || '<span class="muted">— brak adresu —</span>'}</td>
+      <td><span class="kit-badge" style="--c:${escapeHtml(info[1])}">${escapeHtml(info[0])}</span></td>
+      <td class="muted">${escapeHtml(m.subject)}</td><td class="muted">${escapeHtml(K.shortDate(m.sent_at))}</td><td>${remove}</td></tr>`;
+  }).join('');
+  return `<div class="mails-box"><h4>Adresy tej firmy (${mails.length})</h4>
+    <table class="mails-table"><tbody>${rows}</tbody></table>
+    <div class="mails-add">
+      <input type="email" data-new-email placeholder="nowy adres e-mail…" aria-label="Nowy adres e-mail firmy">
+      <label class="copy"><input type="checkbox" data-copy checked> skopiuj temat i treść z pierwszego adresu</label>
+      <button type="button" class="kit-btn" data-add>Dodaj adres</button>
+    </div></div>`;
+}
+
+async function addAddress(full, td){
+  const input = td.querySelector('[data-new-email]');
+  const email = input.value.trim();
+  if (!email){ showToast('Wpisz adres e-mail.', 'error'); return; }
+  const {ok, data} = await api('/api/mailing/mails', {company_id: full.company_id, email, copy_text: td.querySelector('[data-copy]').checked});
+  if (!ok){ showToast(data.error || 'Nie udało się dodać adresu.', 'error'); return; }
+  const warnings = data.warnings || [];
+  showToast('Dodano adres.' + (warnings.length ? ' ' + warnings.join(' ') : ''), warnings.length ? '' : 'ok');
+  delete detailCache[full.id];
+  input.blur();   // lista nie odświeża się pod wpisywanym polem; po dodaniu adresu ma narysować się od nowa
+  await loadRows();
+}
+
+async function deleteAddress(full, mailId){
+  const message = 'Adres zniknie z firmy. Usunąć można tylko adres, do którego nigdy nie wysłano maila.';
+  if (!await showSheet({title: 'Usunąć adres?', message, confirmLabel: 'Usuń adres', tone: 'danger'})) return;
+  const {ok, data} = await api('/api/mailing/mails/delete', {id: mailId});
+  if (!ok){ showToast(data.error || 'Nie udało się usunąć adresu.', 'error'); return; }
+  selection.remove([mailId]);
+  if (expandedId === mailId) expandedId = null;
+  delete detailCache[full.id];
+  showToast('Usunięto adres.', 'ok');
+  await loadRows();
+}
+
+function wireAddresses(td, full){
+  td.querySelector('[data-add]').addEventListener('click', () => addAddress(full, td));
+  td.querySelector('[data-new-email]').addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); addAddress(full, td); } });
+  td.querySelectorAll('[data-delete]').forEach(btn => btn.addEventListener('click', () => deleteAddress(full, btn.dataset.delete)));
 }
 
 function renderDetail(row){
@@ -163,6 +216,7 @@ function renderDetail(row){
   }
   const lock = isLocked(full) ? 'disabled' : '';
   td.innerHTML = `
+    ${addressesHtml(full, mailsCache[row.id] || [])}
     <div class="profile-grid">
       <label>Kraj ${countrySelect(full, lock)}</label>
       <label>Miasto <input type="text" data-id="${escapeHtml(full.id)}" data-field="city" value="${escapeHtml(full.city)}" ${lock}></label>
@@ -181,6 +235,7 @@ function renderDetail(row){
     </div>
     ${full.error ? `<div class="error-box"><strong>Błąd:</strong> ${escapeHtml(full.error)}</div>` : ''}
   `;
+  wireAddresses(td, full);
   td.querySelectorAll('textarea').forEach(ta => {
     ta.addEventListener('blur', () => saveField(ta.dataset.id, ta.dataset.field, ta.value));
   });
@@ -197,6 +252,7 @@ function renderDetail(row){
 
 async function loadRows(){
   Object.keys(detailCache).forEach(key => delete detailCache[key]);  // po przeładowaniu szczegóły mogą być nieaktualne
+  Object.keys(mailsCache).forEach(key => delete mailsCache[key]);
   await view.refresh();
   return true;
 }

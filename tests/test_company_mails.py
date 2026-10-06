@@ -114,6 +114,11 @@ class DeleteMailTests(unittest.TestCase):
         self.assertIsNone(self.database.get(self.c))
         assert_mirror_consistent(self, self.database)
 
+    def test_the_list_says_which_addresses_the_panel_may_delete(self):
+        self.database.apply_edit(self.b, {"status": st.STATUS_SENT})
+        flags = {m["id"]: m["deletable"] for m in self.database.company_mails("eventy-001")}
+        self.assertEqual(flags, {"eventy-001": False, self.b: False, self.c: True, self.d: True})  # kotwica i wysłany zostają
+
     def test_the_main_address_cannot_be_deleted(self):
         with self.assertRaisesRegex(dbmod.InvalidValue, "adres główny"):
             self.database.delete_mail("eventy-001")

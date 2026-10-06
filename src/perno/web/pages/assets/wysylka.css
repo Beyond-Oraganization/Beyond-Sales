@@ -98,3 +98,16 @@
   .profile-grid{grid-template-columns:1fr;}
   .detail-grid{grid-template-columns:1fr;}
 }
+
+/* ---- adresy firmy w rozwiniętym wierszu ------------------------------------------------------------------------- */
+.mails-box{margin:0 0 var(--s-4);padding:var(--s-3);border:1px solid var(--separator);border-radius:var(--r-md);background:var(--surface);}
+.mails-box h4{margin:0 0 var(--s-2);}
+.mails-table{width:100%;border-collapse:collapse;font-size:var(--fs-ui);}
+.mails-table td{padding:5px var(--s-2);border-top:1px solid var(--separator);vertical-align:middle;}
+.mails-table tr:first-child td{border-top:0;}
+.mails-table td.num{width:1%;color:var(--label-2);font-variant-numeric:tabular-nums;}
+.mails-table td.mail{font-family:var(--mono);}
+.mails-table tr.is-current td.mail{font-weight:600;}
+.mails-add{display:flex;flex-wrap:wrap;gap:var(--s-2);align-items:center;margin-top:var(--s-3);}
+.mails-add input[type=email]{flex:1 1 240px;min-width:0;}
+.mails-add .copy{display:inline-flex;gap:6px;align-items:center;color:var(--label-2);font-size:var(--fs-foot);}

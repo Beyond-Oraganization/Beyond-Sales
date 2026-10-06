@@ -35,12 +35,16 @@ class CompanyMails:
         raise NotImplementedError
 
     def company_mails(self, company_id: str) -> list:
-        """Adresy firmy jako wiersze listy (bez treści), adres główny pierwszy."""
+        """Adresy firmy jako wiersze listy (bez treści), adres główny pierwszy; `deletable` mówi, czy panel może go usunąć
+        (reguła `company_rules.deletable_problem`, ta sama co przy usuwaniu)."""
         no_position_last = sa.case((maile.c.position.is_(None), 1), else_=0)
         stmt = (select_mails(*light_columns()).where(company_key() == company_id)
                 .order_by(no_position_last, maile.c.position, maile.c.id))
         with self.engine.connect() as conn:
-            return [to_light_row(row) for row in conn.execute(stmt).mappings()]
+            mails = [to_light_row(row) for row in conn.execute(stmt).mappings()]
+        for mail in mails:
+            mail["deletable"] = company_rules.deletable_problem(mail, anchor=mail["id"] == company_id) is None
+        return mails
 
     def company_of(self, mail_id: str) -> Optional[str]:
         with self.engine.connect() as conn:
