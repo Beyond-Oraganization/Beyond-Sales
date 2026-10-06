@@ -5,10 +5,7 @@ const el = (id) => document.getElementById(id);
 let CONFIG = null;
 let INITIAL = {};  // klucz -> wartość pokazana w polu (do wykrycia zmian)
 
-function toast(text) {
-  el('toast').textContent = text || '';
-  setTimeout(() => { el('toast').textContent = ''; }, 7000);
-}
+const toast = (text, tone) => showToast(text, tone);
 
 function fieldValue(field) {
   if (field.kind === 'bool') return (field.value || field.default || 'true');
@@ -78,13 +75,13 @@ function restartBanner(keys) {
 
 async function restartDaemon() {
   const {ok, data} = await api('/api/automat/daemon', {action: 'restart'});
-  toast(ok ? 'Demon uruchomiony ponownie.' : (data.error || 'Nie udało się uruchomić demona.'));
+  toast(ok ? 'Demon uruchomiony ponownie.' : (data.error || 'Nie udało się uruchomić demona.'), ok ? 'ok' : 'error');
   if (ok) el('banners').innerHTML = '';
 }
 
 async function load() {
   const {ok, data} = await apiGet('/api/config');
-  if (!ok) { toast(data.error || 'Nie udało się wczytać konfiguracji.'); return; }
+  if (!ok) { toast(data.error || 'Nie udało się wczytać konfiguracji.', 'error'); return; }
   CONFIG = data;
   render();
 }
@@ -93,10 +90,10 @@ async function save() {
   const {values, clear} = collect();
   if (!Object.keys(values).length && !clear.length) { toast('Brak zmian do zapisania.'); return; }
   const {ok, data} = await api('/api/config', {values, clear});
-  if (!ok) { toast(data.error || 'Nie udało się zapisać.'); return; }
+  if (!ok) { toast(data.error || 'Nie udało się zapisać.', 'error'); return; }
   CONFIG = data;
   render();
-  toast(data.changed.length ? 'Zapisano: ' + data.changed.length + ' zmian(a).' : 'Wartości były już takie same.');
+  toast(data.changed.length ? 'Zapisano: ' + data.changed.length + ' zmian(a).' : 'Wartości były już takie same.', 'ok');
   if (data.restart_demon.length) restartBanner(data.restart_demon);
 }
 

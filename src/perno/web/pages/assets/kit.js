@@ -84,7 +84,7 @@
     const selectable = (rows) => rows.filter(canSelect).map((r) => r.id);
     const pageSelectable = () => selectable(pageRows());
     const lockedFilter = () => (opts.lockedStatuses && opts.lockedStatuses.length ? {exclude_statuses: opts.lockedStatuses} : {});
-    function tell(message) { if (opts.onError) opts.onError(message); else root.alert(message); }
+    function tell(message) { if (opts.onError) opts.onError(message); else root.showToast(message, 'error'); }
 
     // ---- stan w adresie i pamięci
     function parseSize(value) {

@@ -10,7 +10,6 @@ function createBulkUI(o) {
     not_ready: 'brak e-maila lub treści, więc nie mogą mieć statusu „Do wysłania”',
   };
   let undo = null;        // najnowsza operacja, którą da się cofnąć: {id, at, label, count}
-  let toastTimer = null;
   let pending = null;     // {changes, result} w otwartym oknie
   let busy = false;
 
@@ -19,13 +18,7 @@ function createBulkUI(o) {
   const firms = (n) => `${n} ${K.plural(n, 'firmę', 'firmy', 'firm')}`;
 
   // ---- komunikaty ----------------------------------------------------------------------------
-  function toast(text, kind) {
-    clearTimeout(toastTimer);
-    els.toast.textContent = text;
-    els.toast.className = 'toast' + (kind ? ' ' + kind : '');
-    els.toast.hidden = false;
-    toastTimer = setTimeout(() => { els.toast.hidden = true; }, kind === 'error' ? 12000 : 8000);
-  }
+  const toast = (text, kind) => showToast(text, kind);
 
   // ---- pasek akcji ---------------------------------------------------------------------------
   // Ile zaznaczonych jest gotowych do wysyłki, wie serwer (zaznaczone firmy nie muszą być na bieżącej stronie);

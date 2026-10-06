@@ -36,14 +36,9 @@ function showBanner(kind, text){
   el('banners').insertAdjacentHTML('beforeend', `<div class="banner ${kind}">${escapeHtml(text)}</div>`);
 }
 
-// Komunikaty jednorazowe (wynik akcji): osobny kontener, żeby odświeżenie stanu ich nie kasowało.
+// Komunikaty jednorazowe (wynik akcji) to wspólny toast; odświeżenie stanu ich nie kasuje.
 function notify(kind, text){
-  const box = el('notices');
-  const node = document.createElement('div');
-  node.className = `banner ${kind}`;
-  node.textContent = text;
-  box.appendChild(node);
-  setTimeout(() => node.remove(), kind === 'warn' ? 15000 : 8000);
+  showToast(text, kind === 'warn' ? 'error' : kind);
 }
 
 function renderBanners(){
@@ -58,8 +53,7 @@ function renderBanners(){
 function renderChips(){
   const active = statusFilter.value;
   el('statusChips').innerHTML = META.statuses.map(s => {
-    const style = s.code === active ? `background:${s.color};border-color:${s.color}` : `border-color:${s.color};color:${s.color}`;
-    return `<span class="chip ${s.code === active ? 'active' : ''}" data-status="${escapeHtml(s.code)}" style="${style}">${escapeHtml(s.label)}: ${s.count}</span>`;
+    return `<span class="chip ${s.code === active ? 'active' : ''}" data-status="${escapeHtml(s.code)}" style="--c:${escapeHtml(s.color)}">${escapeHtml(s.label)}: ${s.count}</span>`;
   }).join('');
   statusFilter.innerHTML = '<option value="">Wszystkie statusy</option>' +
     META.statuses.map(s => `<option value="${escapeHtml(s.code)}">${escapeHtml(s.label)} (${s.count})</option>`).join('');
@@ -150,7 +144,7 @@ function actions(row){
 }
 
 function renderRows(){
-  el('emptyState').style.display = ROWS.length ? 'none' : 'block';
+  el('emptyState').hidden = ROWS.length > 0;
   const from = TOTAL ? offset + 1 : 0;
   el('count').textContent = `${from}–${offset + ROWS.length} z ${TOTAL}`;
   el('prevBtn').disabled = offset === 0;
@@ -162,9 +156,9 @@ function renderRows(){
     tr.className = 'data-row';
     tr.innerHTML = `
       <td><input type="checkbox" class="sel" data-id="${row.id}" ${selected.has(row.id) ? 'checked' : ''}></td>
-      <td class="company-cell" data-id="${row.id}"><span class="domain">${escapeHtml(row.domena)}</span>${row.website ? `<a class="site-link" href="${escapeHtml(safeUrl(row.website))}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(row.website)}">🔗</a>` : ''}
+      <td class="company-cell" data-id="${row.id}"><span class="domain">${escapeHtml(row.domena)}</span>${row.website ? `<a class="site-link" href="${escapeHtml(safeUrl(row.website))}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(row.website)}" aria-label="Otwórz stronę firmy"></a>` : ''}
         ${row.nazwa ? `<div class="name">${escapeHtml(row.nazwa)}</div>` : ''}</td>
-      <td><span class="badge" style="background:${escapeHtml(info[1])}">${escapeHtml(info[0])}</span>
+      <td><span class="badge" style="--c:${escapeHtml(info[1])}">${escapeHtml(info[0])}</span>
         ${row.skan_przyczyna ? `<span class="reason" title="${escapeHtml(row.ostatni_blad || '')}">${escapeHtml(reasonText(row.skan_przyczyna))}</span>` : ''}</td>
       <td class="num">${row.stron_pobranych}</td><td class="num">${fmtMb(row.bajty_pobranych)}</td>
       <td class="num">${row.glebokosc_max == null ? '—' : row.glebokosc_max}</td>
@@ -229,11 +223,11 @@ async function loadDetail(id, page){
           ${f.nastepna_proba_po ? `<div><span class="k">Serwer prosi o powrót po:</span> ${escapeHtml(fmtDate(f.nastepna_proba_po))}</div>` : ''}
           <div><span class="k">robots.txt:</span> ${escapeHtml(f.robots_status || '—')}${f.crawl_delay ? ` · Crawl-delay ${escapeHtml(f.crawl_delay)} s` : ''}</div>
         </div>
-        <h4 style="margin-top:12px;">robots.txt</h4>
+        <h4 class="spaced">robots.txt</h4>
         <pre class="robots-pre">${escapeHtml(f.robots_txt || '(brak)')}${f['robots_obcięty'] ? '\n… (obcięto)' : ''}</pre>
       </div>
     </div>
-    <h4 style="margin-top:14px;">Strony (${data.strony_razem})</h4>
+    <h4 class="spaced">Strony (${data.strony_razem})</h4>
     <table class="pages-table"><thead><tr><th>Adres</th><th>Status</th><th>Tytuł / uwagi</th></tr></thead><tbody>${pages || '<tr><td colspan="3" class="muted">Brak pobranych stron.</td></tr>'}</tbody></table>
     ${pageCount > 1 ? `<div class="pager"><button data-act="dprev" data-id="${id}" ${detailPage === 0 ? 'disabled' : ''}>‹</button> strona ${detailPage + 1} z ${pageCount}
       <button data-act="dnext" data-id="${id}" ${detailPage + 1 >= pageCount ? 'disabled' : ''}>›</button></div>` : ''}`;
@@ -325,11 +319,11 @@ document.addEventListener('click', async (event) => {
     const kind = button.dataset.act;
     if (kind === 'retry'){ await act(api('/api/skaper/ponow', {firma_ids: [id]})); await refreshAll(); }
     else if (kind === 'target'){
-      if (confirm('Przyjąć domenę docelową jako domenę tej firmy? Dotychczasowe dane skanu firmy zostaną usunięte, a firma trafi do kolejki.')){
+      if (await showSheet({title: 'Przyjąć domenę docelową?', message: 'Dotychczasowe dane skanu firmy zostaną usunięte, a firma trafi do kolejki.', confirmLabel: 'Przyjmij domenę', focusCancel: true})){
         await act(api('/api/skaper/uzyj-domeny', {firma_id: id})); await refreshAll();
       }
     } else if (kind === 'wipe'){
-      if (confirm('Usunąć wszystkie pobrane strony i kontakty tej firmy? Tej operacji nie można cofnąć.')){
+      if (await showSheet({title: 'Usunąć dane firmy?', message: 'Wszystkie pobrane strony i kontakty tej firmy zostaną usunięte. Tej operacji nie można cofnąć.', confirmLabel: 'Usuń dane', tone: 'danger'})){
         await act(api('/api/skaper/usun-dane', {firma_id: id})); expandedId = null; await refreshAll();
       }
     } else if (kind === 'dprev'){ loadDetail(id, Math.max(0, detailPage - 1)); }

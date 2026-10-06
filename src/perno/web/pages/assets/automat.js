@@ -17,10 +17,7 @@ function fmtTime(iso) {
   return iso ? String(iso).slice(5, 16).replace('T', ' ') : '—';
 }
 
-function toast(text) {
-  el('toast').textContent = text || '';
-  setTimeout(() => { el('toast').textContent = ''; }, 6000);
-}
+const toast = (text, tone) => showToast(text, tone);
 
 function fillForm(settings) {
   for (const key of FIELDS) el('f_' + key).value = settings[key];
@@ -135,7 +132,7 @@ async function loadPreview() {
 
 async function saveLimits() {
   const {ok, data} = await api('/api/automat/limits', readForm());
-  toast(ok ? (data.disarmed ? 'Zapisano. Plan był uzbrojony — rozbrojono go, potwierdź Start od nowa.' : 'Zapisano limity.') : (data.error || 'Nie udało się zapisać.'));
+  toast(ok ? (data.disarmed ? 'Zapisano. Plan był uzbrojony — rozbrojono go, potwierdź Start od nowa.' : 'Zapisano limity.') : (data.error || 'Nie udało się zapisać.'), ok ? 'ok' : 'error');
   if (ok) { STATE = null; await loadStatus(); await loadPreview(); }
 }
 
@@ -153,7 +150,7 @@ function confirmSummary() {
 }
 
 async function openConfirm() {
-  if (isDirty()) { toast('Najpierw zapisz limity — potwierdzasz zapisane wartości.'); return; }
+  if (isDirty()) { toast('Najpierw zapisz limity — potwierdzasz zapisane wartości.', 'error'); return; }
   await loadPreview();
   el('confirmBody').innerHTML = confirmSummary();
   el('ackBox').checked = false;
@@ -164,21 +161,21 @@ async function openConfirm() {
 async function confirmStart() {
   const {ok, data} = await api('/api/automat/start', {potwierdzam: el('ackBox').checked, stamp: STATE.stamp});
   el('confirmDlg').close();
-  toast(ok ? 'Plan uzbrojony.' : (data.error || 'Nie udało się uzbroić planu.'));
+  toast(ok ? 'Plan uzbrojony.' : (data.error || 'Nie udało się uzbroić planu.'), ok ? 'ok' : 'error');
   STATE = null;
   await loadStatus();
 }
 
 async function simple(path, okText) {
   const {ok, data} = await api(path, {});
-  toast(ok ? okText : (data.error || 'Operacja nie powiodła się.'));
+  toast(ok ? okText : (data.error || 'Operacja nie powiodła się.'), ok ? 'ok' : 'error');
   STATE = null;
   await loadStatus();
 }
 
 async function daemonAction(action, okText) {
   const {ok, data} = await api('/api/automat/daemon', {action});
-  toast(ok ? okText : (data.error || 'Operacja na demonie nie powiodła się.'));
+  toast(ok ? okText : (data.error || 'Operacja na demonie nie powiodła się.'), ok ? 'ok' : 'error');
   STATE = null;
   await loadStatus();
   setTimeout(loadStatus, 4000);  // demon potrzebuje chwili, żeby zapisać pierwszy puls
@@ -196,7 +193,7 @@ async function doctor() {
 
 async function testNotify() {
   const {ok, data} = await api('/api/automat/test-notify', {});
-  if (!ok) { toast(data.error || 'Nie udało się wysłać próby.'); return; }
+  if (!ok) { toast(data.error || 'Nie udało się wysłać próby.', 'error'); return; }
   const parts = data.sent.map((name) => 'OK ' + name)
     .concat(Object.entries(data.failed).map(([name, why]) => 'BŁĄD ' + name + ': ' + why))
     .concat(data.skipped.map((name) => 'pominięto ' + name + ' (nieskonfigurowany)'));
@@ -214,11 +211,15 @@ el('saveBtn').addEventListener('click', saveLimits);
 el('startBtn').addEventListener('click', openConfirm);
 el('pauseBtn').addEventListener('click', () => simple('/api/automat/pause', 'Wstrzymano.'));
 el('resumeBtn').addEventListener('click', () => simple('/api/automat/resume', 'Wznowiono.'));
-el('stopBtn').addEventListener('click', () => { if (confirm('Zatrzymać plan? Nic więcej nie zostanie wysłane, dopóki nie uzbroisz go ponownie.')) simple('/api/automat/stop', 'Plan zatrzymany.'); });
+el('stopBtn').addEventListener('click', async () => {
+  const message = 'Nic więcej nie zostanie wysłane, dopóki nie uzbroisz planu ponownie.';
+  if (await showSheet({title: 'Zatrzymać plan?', message, confirmLabel: 'Zatrzymaj plan', tone: 'danger'})) simple('/api/automat/stop', 'Plan zatrzymany.');
+});
 el('daemonInstallBtn').addEventListener('click', () => daemonAction('install', 'Demon zainstalowany i uruchomiony.'));
 el('daemonRestartBtn').addEventListener('click', () => daemonAction('restart', 'Demon uruchomiony ponownie.'));
-el('daemonRemoveBtn').addEventListener('click', () => {
-  if (confirm('Usunąć demona? Przestanie wstawać po zalogowaniu i nic nie wyśle, dopóki go nie zainstalujesz ponownie.')) daemonAction('remove', 'Demon usunięty.');
+el('daemonRemoveBtn').addEventListener('click', async () => {
+  const message = 'Demon przestanie wstawać po zalogowaniu i nic nie wyśle, dopóki go nie zainstalujesz ponownie.';
+  if (await showSheet({title: 'Usunąć demona?', message, confirmLabel: 'Usuń demona', tone: 'danger'})) daemonAction('remove', 'Demon usunięty.');
 });
 el('doctorBtn').addEventListener('click', doctor);
 el('notifyBtn').addEventListener('click', testNotify);

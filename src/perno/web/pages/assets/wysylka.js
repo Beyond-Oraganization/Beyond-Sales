@@ -96,7 +96,7 @@ const view = K.createListView({
     run: async ({ids}) => { selection.add((await ids({ready: true})).ids); },
   }],
   onChange: () => { if (bulk) bulk.refresh(); },
-  onError: (message) => { if (bulk) bulk.toast(message, 'error'); else alert(message); },
+  onError: (message) => showToast(message, 'error'),
 });
 
 // ---- zapis pól i rozwinięty wiersz ----------------------------------------------------------
@@ -118,7 +118,7 @@ async function saveField(id, field, value){
   if ((baseline[field] || '') === value) return;
   const {ok, data} = await api('/api/update-row', {id, [field]: value});
   if (data.row) replaceRow(data.row);
-  if (!ok) alert(data.error || 'Nie udało się zapisać zmiany.');
+  if (!ok) showToast(data.error || 'Nie udało się zapisać zmiany.', 'error');
   view.redraw();    // od razu z tego, co zwrócił serwer…
   view.refresh();   // …a liczniki i przynależność do filtra serwer policzy od nowa (wiersz może już nie pasować do widoku)
 }
@@ -135,7 +135,7 @@ async function loadDetail(id){
   const {ok, data} = await apiGet('/api/maile/row?id=' + encodeURIComponent(id));
   loadingDetail = null;
   if (!ok){
-    alert(data.error || 'Nie udało się wczytać szczegółów wiersza.');
+    showToast(data.error || 'Nie udało się wczytać szczegółów wiersza.', 'error');
     expandedId = null;
   } else {
     detailCache[id] = data.row;
@@ -197,12 +197,12 @@ async function loadRows(){
 }
 
 el('reloadBtn').addEventListener('click', async () => {
-  if (await loadRows()) { await loadStatus(); if (bulk) bulk.toast('Lista przeładowana.'); }
+  if (await loadRows()) { await loadStatus(); showToast('Lista przeładowana.', 'ok'); }
 });
 
 el('refreshBtn').addEventListener('click', async () => {
   const {ok, data} = await api('/api/regenerate', {rows: false});
-  if (!ok){ alert(data.error || 'Nie udało się odświeżyć danych.'); return; }
+  if (!ok){ showToast(data.error || 'Nie udało się odświeżyć danych.', 'error'); return; }
   await loadRows();
   const parts = Object.entries(data).filter(([key]) => key !== 'rows')
     .map(([segment, s]) => `${segment}: ${s.created} nowych, ${s.regenerated} przeliczonych`);
@@ -254,7 +254,7 @@ function describeOutcome(status, data){
 // sprawdza serwer, bo zaznaczone firmy nie muszą być na bieżącej stronie.
 async function readyIds(){
   const {ok, data} = await api('/api/mailing/selection', {ids: selection.toArray(), ready_ids: true, state: {sort: view.getState().sort}});
-  if (!ok){ alert(data.error || 'Nie udało się sprawdzić zaznaczonych firm.'); return null; }
+  if (!ok){ showToast(data.error || 'Nie udało się sprawdzić zaznaczonych firm.', 'error'); return null; }
   return data.ready_ids;
 }
 
@@ -282,19 +282,21 @@ sendBtn.addEventListener('click', async () => {
   let ids = await readyIds();
   if (ids === null) return;
   const notReady = selectedCount - ids.length;
-  if (!ids.length){ alert('Żadna z zaznaczonych firm nie jest gotowa do wysyłki (potrzebny status „Do wysłania” lub „Błąd”, e-mail i treść).'); return; }
+  const stop = (title, message) => showSheet({title, message, confirmLabel: 'OK', cancelLabel: null});
+  if (!ids.length){ await stop('Nie ma co wysłać', 'Żadna z zaznaczonych firm nie jest gotowa do wysyłki (potrzebny status „Do wysłania” lub „Błąd”, e-mail i treść).'); return; }
   if (ids.length > remainingCap){
-    if (!confirm(`Gotowych jest ${ids.length}, ale dzienny limit pozwala jeszcze na ${remainingCap} (dziś wysłano już ${sentToday}). Wysłać pierwsze ${remainingCap}?`)) return;
+    const message = `Gotowych jest ${ids.length}, ale dzienny limit pozwala jeszcze na ${remainingCap} (dziś wysłano już ${sentToday}).`;
+    if (!await showSheet({title: 'Dzienny limit', message, confirmLabel: `Wyślij pierwsze ${remainingCap}`, focusCancel: true})) return;
     ids = ids.slice(0, remainingCap);
   }
-  if (!ids.length){ alert('Nic do wysłania (limit dzienny wyczerpany).'); return; }
-  if (!STATUS.smtp_configured){ alert('Brak hasła SMTP w config.env — uzupełnij je, zanim spróbujesz wysłać.'); return; }
+  if (!ids.length){ await stop('Limit wyczerpany', 'Nic do wysłania: dzienny limit jest wyczerpany.'); return; }
+  if (!STATUS.smtp_configured){ await stop('Brak hasła SMTP', 'Brak hasła SMTP w config.env — uzupełnij je, zanim spróbujesz wysłać.'); return; }
   const lines = [`Wysyłam ${ids.length} maili z konta ${STATUS.smtp_user || '?'}.`];
   if (notReady > 0) lines.push(`Pominę ${notReady} zaznaczonych firm, które nie są gotowe do wysyłki (status, e-mail albo treść).`);
   const foreign = await foreignWarning(ids);
   if (foreign) lines.push(foreign);
-  lines.push('Kontynuować?');
-  if (!confirm(lines.join('\n\n'))) return;
+  const sendLabel = `Wyślij ${ids.length} ${K.plural(ids.length, 'mail', 'maile', 'maili')}`;
+  if (!await showSheet({title: 'Wysłać maile?', message: lines.join('\n\n'), confirmLabel: sendLabel, focusCancel: true})) return;
 
   sending = true;
   sendBtn.disabled = true;
@@ -331,7 +333,7 @@ bulk = createBulkUI({
   els: {
     count: el('actionCount'), statusBtn: el('statusBtn'), statusMenu: el('statusMenu'), dataBtn: el('dataBtn'),
     copyBtn: el('copyBtn'), exportBtn: el('exportBtn'), exportMenu: el('exportMenu'), undoBtn: el('undoBtn'),
-    sendBtn: sendBtn, toast: el('toast'),
+    sendBtn: sendBtn,
     dialog: el('bulkDialog'), form: el('bulkForm'), title: el('bulkTitle'), body: el('bulkBody'),
     cancel: el('bulkCancel'), apply: el('bulkApply'),
   },
