@@ -9,16 +9,18 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import date, datetime
 from typing import Any, Mapping, Optional, Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
 from perno.db.codec import format_value
-from perno.db.company_sql import column_for, extra_columns, mail_company_join, select_mails
+from perno.db.company_sql import column_for, company_key, extra_columns, mail_company_join, select_mails
 from perno.db.listing_sql import sort_clauses
 from perno.db.queries import blank, filled, filter_clauses, ordering, trimmed_filled
 from perno.db.schema import EXTRA_COLUMNS, LIGHT_COLUMNS, companies, maile
+from perno.domain import statuses as st
 from perno.domain.rowfilter import FOREIGN_COUNTRY, HOME_COUNTRY, NO_COUNTRY, RowFilter, country_selected
 
 FACETS = {
@@ -96,6 +98,29 @@ class ListingQueries:
         stmt = select_mails(sa.func.count()).where(*self._where(flt))
         with self.engine.connect() as conn:
             return conn.execute(stmt).scalar() or 0
+
+    def count_companies(self, flt: RowFilter) -> int:
+        """Ile różnych firm ma wiersze pasujące do filtra."""
+        stmt = select_mails(sa.func.count(sa.distinct(company_key()))).where(*self._where(flt))
+        with self.engine.connect() as conn:
+            return conn.execute(stmt).scalar() or 0
+
+    def queue_company_ids(self, flt: RowFilter, sort: str) -> list:
+        """Id firm po jednym na wiersz pasujący do filtra, w kolejności `sort` — kolejka wysyłki widziana jako firmy (do
+        prognozy z odstępem dla firmy)."""
+        stmt = select_mails(company_key()).where(*self._where(flt)).order_by(*self._order(sort))
+        with self.engine.connect() as conn:
+            return [row[0] for row in conn.execute(stmt)]
+
+    def last_sent_by_company(self, since: datetime) -> dict:
+        """`{id firmy: dzień ostatniego wysłanego maila}` dla firm, do których wysłano coś od `since` (adres w statusie z
+        zachowaną datą wysłania). Mały zakres po indeksie `(status, sent_at)`: ok. limit dzienny × dni odstępu."""
+        key = company_key()
+        stmt = (sa.select(key, sa.func.max(maile.c.sent_at))
+                .where(maile.c.status.in_(st.KEEPS_SENT_AT), maile.c.sent_at >= since).group_by(key))
+        with self.engine.connect() as conn:
+            days: dict[str, date] = {company: sent.date() for company, sent in conn.execute(stmt)}
+        return days
 
     def overview(self, flt: RowFilter) -> dict:
         """Jedno przejście po tabeli: `{"total", "statuses", "segments", "countries"}`. Suma to liczba wierszy pasujących

@@ -71,6 +71,19 @@ class LimitsTests(CliCase):
         self.assertIn("09:00–14:00", again)
         self.assertIn("zmienione 05.10.2026 10:00", again)
 
+    def test_the_company_gap_flag_is_saved_and_shown(self):
+        _, out = run_cmd(cli.cmd_limits, self.ctx, ["limits"])
+        self.assertIn("odstęp dla firmy:  1 dn. między mailami do jednej firmy", out)  # domyślnie jeden mail na firmę dziennie
+        _, out = run_cmd(cli.cmd_limits, self.ctx, ["limits", "--company-gap", "3"])
+        self.assertIn("odstęp dla firmy:  3 dn.", out)
+        _, out = run_cmd(cli.cmd_limits, self.ctx, ["limits", "--company-gap", "0"])
+        self.assertIn("brak (kilka adresów jednej firmy tego samego dnia)", out)
+        self.assertEqual(self.ctx.store.get_state().settings.company_gap_days, 0)
+
+    def test_a_bad_gap_is_refused(self):
+        with self.assertRaises(ar.SettingsInvalid):
+            run_cmd(cli.cmd_limits, self.ctx, ["limits", "--company-gap", "99"])
+
     def test_defaults_are_marked_as_not_saved(self):
         _, out = run_cmd(cli.cmd_limits, self.ctx, ["limits"])
         self.assertIn("domyślne, jeszcze nie zapisane", out)
@@ -87,6 +100,15 @@ class StartTests(CliCase):
         self.assertIn("ostatnia zmiana limitów: 05.10.2026 10:00", out)
         self.assertTrue(self.ctx.store.get_state().armed)
         self.assertIn("demon nie działa", out)
+
+    def test_start_tells_about_companies_deferred_and_held_addresses(self):
+        put(self.ctx.db, sample_row(1), sample_row(2))
+        self.ctx.db.add_mail("eventy-001", "druga@firma.pl")
+        self.ctx.db.claim_for_sending("eventy-001")
+        self.ctx.db.mark_sent("eventy-001")
+        _, out = run_cmd(cli.cmd_start, self.ctx, ["start"], ask=lambda prompt: "nie")
+        self.assertIn("W kolejce: 2 maili", out)
+        self.assertIn("to 2 firm; dziś czeka na odstęp: 1; wstrzymane statusem innego adresu firmy: 0.", out)
 
     def test_anything_but_yes_cancels(self):
         put(self.ctx.db, sample_row(1))

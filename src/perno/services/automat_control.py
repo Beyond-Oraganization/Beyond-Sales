@@ -22,7 +22,7 @@ from perno.domain import automat_rules as ar
 from perno.domain.rowfilter import FOREIGN_COUNTRY, HOME_COUNTRY, NO_COUNTRY, country_selected
 from perno.notify import Notification, Notifier
 from perno.notify.factory import build_notifier
-from perno.services import sending
+from perno.services import automat_queue, sending
 from perno.services.automat_log import EventLog
 from perno.settings import ConfigError, NotifySettings, smtp_configured
 from perno.system import launchd, power
@@ -120,12 +120,15 @@ def arm(db: Database, store: AutomatStore, log: EventLog, mailer: Callable, *, a
     if stamp != stamp_of(state.changed_at):
         raise StaleConfirmation("Limity zmieniły się od wyświetlenia okna potwierdzenia — sprawdź je jeszcze raz.")
     mailer()  # rzuca ConfigError, gdy brakuje danych SMTP
-    queue = db.count_matching(ar.queue_filter(state.settings))
+    queue = db.count_matching(ar.queue_filter(state.settings))  # bez odstępu: firmy czekające na jutro też są w planie
     if queue == 0:
-        raise ArmRefused("Kolejka jest pusta: brak maili „Do wysłania” pasujących do ustawionego segmentu i krajów.")
+        raise ArmRefused("Kolejka jest pusta: brak maili „Do wysłania” pasujących do ustawionego segmentu i krajów "
+                         "(adresy wstrzymane przez status innego adresu firmy się nie liczą).")
     store.arm(ar.horizon_end(db.now(), state.settings),
               {"settings": state.settings.to_json(), "stamp": stamp, "queue": queue})
-    log.emit(ev.EVENT_ARMED, f"Plan uzbrojony: do {state.settings.daily_cap} maili dziennie, w kolejce {queue}.")
+    gap = state.settings.company_gap_days
+    log.emit(ev.EVENT_ARMED, f"Plan uzbrojony: do {state.settings.daily_cap} maili dziennie, w kolejce {queue}"
+                             + (f", odstęp dla firmy {gap} dn" if gap else "") + ".")
     return store.get_state()
 
 
@@ -236,13 +239,15 @@ def preview(db: Database, store: AutomatStore, now: datetime) -> dict:
     flt = replace(ar.queue_filter(settings), countries=())
     countries = {key: n for key, n in db.facet_counts(flt, "countries").items()
                  if key != FOREIGN_COUNTRY and country_selected(settings.countries, key)}
-    queue = sum(countries.values())
     foreign = sum(n for key, n in countries.items() if key not in (NO_COUNTRY, HOME_COUNTRY))
     sent_today = db.sent_today_count(now)
     until = state.armed_until or ar.horizon_end(now, settings)
-    estimate = ar.estimate_finish(now, settings, queue, sent_today, until)
+    view = automat_queue.forecast(db, settings, now, sent_today, until)
+    estimate = view.estimate
     return {
-        "queue": queue, "foreign": foreign, "no_country": countries.get(NO_COUNTRY, 0),
+        "queue": view.queue, "companies": view.companies, "held": view.held, "deferred_today": view.deferred_today,
+        "gap_days": view.gap_days, "limited_by_gap": estimate.limited_by_gap,
+        "foreign": foreign, "no_country": countries.get(NO_COUNTRY, 0),
         "countries": sorted(countries.items(), key=lambda item: -item[1])[:12],
         "sent_today": sent_today, "send_days": estimate.send_days,
         "last_day": estimate.last_day.isoformat() if estimate.last_day else None,

@@ -30,6 +30,7 @@ EVENT_SENT = "sent"  # jeden udany mail (tylko dziennik, bez powiadomienia)
 EVENT_ROW_ERROR = "row_error"  # nieudany mail (dziennik; o serii błędów informuje EVENT_PAUSED)
 EVENT_INTERNAL_ERROR = "internal_error"  # nieoczekiwany wyjątek w pętli demona
 EVENT_ON_BATTERY = "on_battery"  # okno wysyłki zaczęło się, gdy Mac był na baterii
+EVENT_GAP_WAIT = "gap_wait"  # w kolejce są maile, ale wszystkie firmy czekają na odstęp (raz dziennie, tylko dziennik)
 
 _ALL = (CHANNEL_MACOS, CHANNEL_NTFY, CHANNEL_EMAIL)
 
@@ -52,6 +53,7 @@ EVENTS: dict = {
     EVENT_ROW_ERROR: (LEVEL_WARN, (), 0),
     EVENT_INTERNAL_ERROR: (LEVEL_CRIT, (CHANNEL_MACOS, CHANNEL_NTFY), 3600),
     EVENT_ON_BATTERY: (LEVEL_WARN, (CHANNEL_MACOS,), 21600),
+    EVENT_GAP_WAIT: (LEVEL_INFO, (), 0),
 }
 
 

@@ -18,7 +18,7 @@ import io
 import os
 import threading
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import openpyxl
 import sqlalchemy as sa
@@ -480,6 +480,22 @@ class MysqlSiblingTests(unittest.TestCase):
         self.assertEqual(self.database.list_ids(RowFilter(ready=True), "default"), ["eventy-n0010"])
         self.assertEqual([r["id"] for r in self.database.select_candidates(limit=None, unheld=True, per_company=True)],
                          ["eventy-n0010"])
+
+    def test_queue_queries_for_the_company_gap(self):
+        from perno.domain import automat_rules as ar
+
+        self.database.add_mail("eventy-n001", "b@beta.pl")
+        self.database.claim_for_sending("eventy-n001")
+        self.database.mark_sent("eventy-n001")
+        since = datetime(2000, 1, 1)
+        self.assertEqual(self.database.last_sent_by_company(since), {"eventy-n001": datetime.now().date()})
+        self.assertEqual(self.database.last_sent_by_company(datetime.now().replace(hour=0, minute=0, second=0) + timedelta(days=1)), {})
+        settings = ar.DEFAULT_SETTINGS
+        base = ar.queue_filter(settings)
+        self.assertEqual(self.database.queue_company_ids(base, "default"), ["eventy-n001", "eventy-n0010"])
+        self.assertEqual(self.database.count_companies(base), 2)
+        self.assertEqual(self.database.count_matching(ar.queue_filter(settings, ("eventy-n001",))), 1)
+        self.assertEqual(self.database.list_ids(ar.queue_filter(settings, ("eventy-n001",)), "default", limit=1), ["eventy-n0010"])
 
     def test_the_unique_index_is_case_insensitive_on_mysql(self):
         self.database.add_mail("eventy-n001", "b@beta.pl")

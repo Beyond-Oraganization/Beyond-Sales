@@ -72,7 +72,8 @@ def settings_from_flags(args: argparse.Namespace) -> dict:
     """Pola ustawień podane we flagach (pominięte zostają bez zmian)."""
     raw: dict = {}
     for flag, key in (("daily_cap", "daily_cap"), ("delay_min", "delay_min"), ("delay_max", "delay_max"),
-                      ("segment", "segment"), ("horizon", "horizon_days"), ("max_errors", "max_consecutive_errors")):
+                      ("segment", "segment"), ("horizon", "horizon_days"), ("max_errors", "max_consecutive_errors"),
+                      ("company_gap", "company_gap_days")):
         if getattr(args, flag) is not None:
             raw[key] = getattr(args, flag)
     if args.window:
@@ -94,7 +95,9 @@ def describe_settings(s: ar.AutomatSettings) -> list:
             f"  odstęp między mailami: {s.delay_min:g}–{s.delay_max:g} s",
             f"  segment:           {s.segment}", f"  kraje:             {', '.join(s.countries) or 'wszystkie'}",
             f"  horyzont planu:    {s.horizon_days} dni (potem trzeba potwierdzić od nowa)",
-            f"  pauza po błędach z rzędu: {s.max_consecutive_errors}"]
+            f"  pauza po błędach z rzędu: {s.max_consecutive_errors}",
+            "  odstęp dla firmy:  " + (f"{s.company_gap_days} dn. między mailami do jednej firmy" if s.company_gap_days
+                                     else "brak (kilka adresów jednej firmy tego samego dnia)")]
 
 
 def cmd_limits(args: argparse.Namespace, ctx: Context) -> int:
@@ -132,6 +135,9 @@ def cmd_start(args: argparse.Namespace, ctx: Context, ask: Callable = input) -> 
     print(f"  ostatnia zmiana limitów: {state.changed_at:%d.%m.%Y %H:%M}" if state.changed_at else "  limity: DOMYŚLNE (nigdy nie zapisane)")
     print(f"W kolejce: {data['queue']} maili, w tym {data['foreign']} do firm spoza Polski"
           f" (maile są dziś generowane po polsku) i {data['no_country']} bez kraju.")
+    if data["companies"] != data["queue"] or data["held"] or data["deferred_today"]:
+        print(f"  to {data['companies']} firm; dziś czeka na odstęp: {data['deferred_today']}; "
+              f"wstrzymane statusem innego adresu firmy: {data['held']}.")
     if data["last_day"]:
         print(f"Przy tym tempie koniec około {data['last_day']} ({data['send_days']} dni wysyłki)"
               + ("" if data["fits_in_horizon"] else f" — NIE zmieści się w horyzoncie planu (do {data['until'][:10]})."))
@@ -252,6 +258,8 @@ def build_parser() -> argparse.ArgumentParser:
     limits.add_argument("--countries", help="kody ISO po przecinku (np. PL,DE); „_foreign” = spoza Polski; puste = wszystkie")
     limits.add_argument("--horizon", type=int, help="na ile dni uzbrajamy plan")
     limits.add_argument("--max-errors", type=int, help="po ilu błędach z rzędu automat się wstrzymuje")
+    limits.add_argument("--company-gap", type=int, metavar="DNI",
+                        help="odstęp w dniach między mailami do jednej firmy (0 = bez odstępu; domyślnie 1 = jeden mail na firmę dziennie)")
     helps = {"status": "Stan demona, planu i ostatnie zdarzenia.", "start": "Pokaż limity i kolejkę, zapytaj, uzbrój plan.",
              "stop": "Zatrzymaj plan.", "pause": "Wstrzymaj wysyłkę.", "resume": "Wznów wstrzymaną wysyłkę.",
              "run": "Demon (uruchamia go launchd).", "install": "Zainstaluj LaunchAgent (start po zalogowaniu).",

@@ -26,7 +26,7 @@ from perno.domain import statuses as st
 from perno.domain.listing import DEFAULT_SORT
 from perno.notify import Notification, Notifier, NotifyError
 from perno.notify.healthcheck import HealthcheckPinger
-from perno.services import sending
+from perno.services import automat_queue, sending
 from perno.services.automat_log import TITLES, EventLog
 from perno.settings import ConfigError
 from perno.system.power import PowerState, SleepGuard, read_power_state
@@ -257,14 +257,22 @@ class AutomatRunner:
         settings = state.settings
         today_start = datetime.combine(now.date(), dtime.min)
         errors = self.d.store.count_events(ev.EVENT_ROW_ERROR, since=today_start)
-        queue = self.d.db.count_matching(ar.queue_filter(settings))
         lines = [f"Wysłano dziś: {sent_today} z {settings.daily_cap}."]
         if errors:
             lines.append(f"Błędy wysyłki dziś: {errors}.")
-        lines.append(f"W kolejce zostało: {queue}.")
-        estimate = ar.estimate_finish(now, settings, queue, sent_today, state.armed_until)
-        if queue and estimate.last_day:
+        view = automat_queue.forecast(self.d.db, settings, now, sent_today, state.armed_until)
+        lines.append(f"W kolejce zostało: {view.queue}.")
+        if view.companies and view.companies != view.queue:  # kilka adresów na firmę: ile to firm
+            lines.append(f"Dotyczy firm: {view.companies}.")
+        if view.deferred_today:
+            lines.append(f"Czeka na odstęp dla firmy: {view.deferred_today}.")
+        if view.held:
+            lines.append(f"Wstrzymane przez status innego adresu firmy: {view.held}.")
+        estimate = view.estimate
+        if view.queue and estimate.last_day:
             lines.append(f"Przy tym tempie koniec około {estimate.last_day:%d.%m.%Y} ({estimate.send_days} dni wysyłki).")
+            if estimate.limited_by_gap:
+                lines.append(f"Odstęp dla firmy ({view.gap_days} dn.) wydłuża plan.")
             if not estimate.fits_in_horizon and state.armed_until:
                 lines.append(f"Plan jest uzbrojony do {state.armed_until:%d.%m.%Y} i nie zmieści całej kolejki.")
         return "\n".join(lines)
@@ -273,8 +281,11 @@ class AutomatRunner:
 
     def _send_next(self, state: AutomatState) -> float:
         settings = state.settings
-        ids = self.d.db.list_ids(ar.queue_filter(settings), DEFAULT_SORT, limit=1)
+        now = self.d.db.now()
+        ids = self.d.db.list_ids(automat_queue.next_filter(self.d.db, settings, now), DEFAULT_SORT, limit=1)
         if not ids:
+            if self.d.db.count_matching(ar.queue_filter(settings)):  # są maile, ale ich firmy czekają na odstęp
+                return self._wait_for_gap(state, now)
             self._queue_empty(state)
             return IDLE_SECONDS
         try:
@@ -288,6 +299,22 @@ class AutomatRunner:
         if result.outcome == "skipped":
             return SKIPPED_ROW_SECONDS
         return float(self.d.jitter(settings.delay_min, settings.delay_max))
+
+    def _wait_for_gap(self, state: AutomatState, now: datetime) -> float:
+        """Kolejka nie jest pusta, ale każda firma z oczekującym mailem dostała już mail w ostatnich dniach odstępu: czekamy
+        (nie rozbrajamy planu), a w dzienniku zostaje jeden wpis na dzień."""
+        tomorrow = datetime.combine(now.date() + timedelta(days=1), dtime.min)
+        until = ar.next_send_time(tomorrow, state.settings)
+        if self.run_id is not None:
+            self.d.store.heartbeat(self.run_id, {
+                "v": ar.DAEMON_VERSION, "stan": ar.ACTION_WAIT, "powod": ar.REASON_COMPANY_GAP,
+                "dzis": self.d.db.sent_today_count(now), "limit": state.settings.daily_cap,
+                "do": until.strftime("%Y-%m-%dT%H:%M:%S")})
+        key = now.date().isoformat()
+        if not self.d.store.has_event(ev.EVENT_GAP_WAIT, key):
+            self.log.emit(ev.EVENT_GAP_WAIT, "Wszystkie firmy z oczekującymi mailami dostały już mail w ostatnich "
+                          f"{state.settings.company_gap_days} dn. — czekam na koniec odstępu.", key=key, notify=False)
+        return IDLE_SECONDS
 
     def _after_send(self, result: sending.SendResult, state: AutomatState) -> Optional[str]:
         """Zapisuje wynik wysyłki; zwraca powód pauzy, jeśli automat się wstrzymał (None = kontynuuj)."""

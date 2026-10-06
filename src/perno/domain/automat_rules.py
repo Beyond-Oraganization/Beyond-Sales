@@ -216,6 +216,7 @@ REASON_HORIZON = "horizon_over"
 REASON_OUTSIDE_WINDOW = "outside_window"
 REASON_NOT_SEND_DAY = "not_send_day"
 REASON_CAP_REACHED = "cap_reached"
+REASON_COMPANY_GAP = "company_gap"  # są maile do wysłania, ale ich firmy czekają na odstęp (decyzja pętli, nie `plan_tick`)
 
 
 @dataclass(frozen=True)

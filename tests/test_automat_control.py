@@ -95,7 +95,7 @@ class ArmTests(ControlCase):
         self.save(daily_cap=7, horizon_days=3)
         state = self.arm()
         self.assertEqual((state.armed, state.armed_until), (True, datetime(2026, 10, 8, 0, 0)))
-        self.assertEqual(self.macos.got[0].message, "Plan uzbrojony: do 7 maili dziennie, w kolejce 2.")
+        self.assertEqual(self.macos.got[0].message, "Plan uzbrojony: do 7 maili dziennie, w kolejce 2, odstęp dla firmy 1 dn.")
 
     def test_refuses_empty_queue_and_missing_smtp(self):
         with self.assertRaisesRegex(ctl.ArmRefused, "Kolejka jest pusta"):
