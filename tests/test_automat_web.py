@@ -46,6 +46,23 @@ class StatusTests(AutomatWebCase):
         data = self.data(self.call("GET", "/api/automat/preview"))
         self.assertEqual((data["queue"], data["foreign"]), (2, 1))
 
+    def test_preview_reports_companies_held_and_deferred_mails(self):
+        put(self.database, sample_row(1), sample_row(2))
+        self.database.add_mail("eventy-001", "druga@firma.pl")
+        self.database.claim_for_sending("eventy-001")
+        self.database.mark_sent("eventy-001")
+        data = self.data(self.call("GET", "/api/automat/preview"))
+        self.assertEqual((data["queue"], data["companies"], data["deferred_today"], data["held"], data["gap_days"]),
+                         (2, 2, 1, 0, 1))
+        self.assertTrue(data["limited_by_gap"])  # drugi adres firmy wyjdzie dopiero jutro, plain prognoza skończyłaby dziś
+        self.call("POST", "/api/automat/limits", {"company_gap_days": 0})
+        data = self.data(self.call("GET", "/api/automat/preview"))
+        self.assertEqual((data["deferred_today"], data["gap_days"], data["limited_by_gap"]), (0, 0, False))
+
+    def test_page_has_the_company_gap_field(self):
+        html = self.call("GET", "/automat").body.decode("utf-8")
+        self.assertIn('id="f_company_gap_days"', html)
+
 
 class LimitsTests(AutomatWebCase):
     def test_limits_are_saved_and_come_back(self):
@@ -54,6 +71,10 @@ class LimitsTests(AutomatWebCase):
         data = self.data(self.call("GET", "/api/automat/status"))
         self.assertEqual((data["settings"]["daily_cap"], data["settings"]["weekdays"], data["settings"]["countries"]),
                          (12, [0, 1], ["PL"]))
+        self.assertEqual(data["settings"]["company_gap_days"], 1)
+        self.call("POST", "/api/automat/limits", {"company_gap_days": 4})
+        self.assertEqual(self.data(self.call("GET", "/api/automat/status"))["settings"]["company_gap_days"], 4)
+        self.assertEqual(self.call("POST", "/api/automat/limits", {"company_gap_days": 99}).status, 400)
         self.assertNotEqual(data["stamp"], "")
 
     def test_invalid_limits_are_a_400_with_a_message(self):

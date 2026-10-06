@@ -36,9 +36,11 @@
       <label>Segment <select id="f_segment"><option value="both">oba</option><option value="eventy">eventy</option><option value="driverzy">driverzy</option></select></label>
       <label>Horyzont planu (dni) <input type="number" id="f_horizon_days" min="1" max="60"></label>
       <label>Pauza po błędach z rzędu <input type="number" id="f_max_consecutive_errors" min="1" max="20"></label>
+      <label>Odstęp dla firmy (dni) <input type="number" id="f_company_gap_days" min="0" max="30"></label>
       <label class="wide">Kraje (kody po przecinku, puste = wszystkie; „_foreign” = spoza Polski)
         <input type="text" id="f_countries" placeholder="np. PL,DE"></label>
     </div>
+    <p class="muted small">Odstęp dla firmy: tyle dni kalendarzowych musi minąć między mailami do tej samej firmy (każdy adres firmy to osobny mail). 1 = najwyżej jeden mail na firmę dziennie, 0 = bez odstępu. Gdy któryś adres firmy ma status „Odpowiedział”, „Zainteresowany”, „Nie kontaktować” albo „Już klient”, pozostałe adresy tej firmy nie są wysyłane.</p>
     <div class="days" id="daysBox">
       <label><input type="checkbox" id="d0"> pn</label><label><input type="checkbox" id="d1"> wt</label>
       <label><input type="checkbox" id="d2"> śr</label><label><input type="checkbox" id="d3"> cz</label>

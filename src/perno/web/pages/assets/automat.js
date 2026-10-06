@@ -5,9 +5,10 @@ const el = (id) => document.getElementById(id);
 const DAY_LABELS = ['pn', 'wt', 'śr', 'cz', 'pt', 'sb', 'nd'];
 const REASONS = {
   not_armed: 'plan nieuzbrojony', paused: 'wstrzymany', outside_window: 'poza oknem godzin', not_send_day: 'dzień bez wysyłki',
-  cap_reached: 'limit dnia wyczerpany', horizon_over: 'koniec planu',
+  cap_reached: 'limit dnia wyczerpany', horizon_over: 'koniec planu', company_gap: 'czeka na odstęp dla firmy',
 };
-const FIELDS = ['daily_cap', 'window_start', 'window_end', 'delay_min', 'delay_max', 'segment', 'horizon_days', 'max_consecutive_errors'];
+const FIELDS = ['daily_cap', 'window_start', 'window_end', 'delay_min', 'delay_max', 'segment', 'horizon_days', 'max_consecutive_errors',
+  'company_gap_days'];
 let STATE = null;
 let PREVIEW = null;
 let pollTimer = 0;
@@ -103,15 +104,29 @@ function renderEvents() {
   el('eventsBox').innerHTML = rows ? '<table class="events-table"><tbody>' + rows + '</tbody></table>' : 'Brak zdarzeń.';
 }
 
+// „ (w K firmach)” tylko gdy któraś firma ma więcej niż jeden adres; liczby z serwera przechodzą przez escapeHtml.
+function queueScope(p) {
+  return p.companies && p.companies !== p.queue ? ' (w <b>' + escapeHtml(p.companies) + '</b> firmach)' : '';
+}
+
+function queueNotes(p) {
+  const notes = [];
+  if (p.deferred_today) notes.push('Dziś czeka na odstęp dla firmy: <b>' + escapeHtml(p.deferred_today) + '</b> maili.');
+  if (p.held) notes.push('Wstrzymane przez status innego adresu firmy (odpowiedź, „Nie kontaktować”, klient): <b>' + escapeHtml(p.held) + '</b> maili — nie wejdą do kolejki.');
+  return notes.map((note) => '<p class="muted small">' + note + '</p>').join('');
+}
+
 function renderForecast() {
   const p = PREVIEW;
   if (!p) return;
   const chips = (p.countries || []).map(([code, n]) => '<span class="chip">' + escapeHtml(code === '_none' ? 'bez kraju' : code) + ': ' + escapeHtml(n) + '</span>').join('');
   const plan = (p.plan || []).map(([day, count]) => '<tr><td>' + escapeHtml(day) + '</td><td>' + escapeHtml(count) + ' maili</td></tr>').join('');
-  el('forecastBox').innerHTML = '<p>W kolejce: <b>' + escapeHtml(p.queue) + '</b> maili „Do wysłania”, w tym <b>' + escapeHtml(p.foreign)
+  el('forecastBox').innerHTML = '<p>W kolejce: <b>' + escapeHtml(p.queue) + '</b> maili „Do wysłania”' + queueScope(p) + ', w tym <b>' + escapeHtml(p.foreign)
     + '</b> do firm spoza Polski' + (p.foreign ? ' (maile są dziś generowane po polsku)' : '') + ', ' + escapeHtml(p.no_country) + ' bez kraju.</p>'
+    + queueNotes(p)
     + '<div class="chips">' + chips + '</div>'
     + (p.last_day ? '<p>Przy tym tempie koniec około <b>' + escapeHtml(p.last_day) + '</b> (' + escapeHtml(p.send_days) + ' dni wysyłki).'
+      + (p.limited_by_gap ? ' <span class="lvl-warn">Odstęp dla firmy (' + escapeHtml(p.gap_days) + ' dn.) wydłuża plan.</span>' : '')
       + (p.fits_in_horizon ? '' : ' <span class="lvl-warn">Nie zmieści się w horyzoncie planu (do ' + escapeHtml(String(p.until).slice(0, 10)) + ').</span>') + '</p>'
       + '<table class="plan-table"><tbody>' + plan + '</tbody></table>' : '<p>Kolejka pusta.</p>');
 }
@@ -143,9 +158,11 @@ function confirmSummary() {
     'dzienny limit: ' + s.daily_cap, 'dni: ' + days, 'okno: ' + s.window_start + '–' + s.window_end,
     'odstęp między mailami: ' + s.delay_min + '–' + s.delay_max + ' s', 'segment: ' + s.segment,
     'kraje: ' + ((s.countries || []).join(', ') || 'wszystkie'), 'horyzont planu: ' + s.horizon_days + ' dni',
+    'odstęp dla firmy: ' + (Number(s.company_gap_days) > 0 ? s.company_gap_days + ' dn. między mailami do jednej firmy' : 'brak'),
     'limity ostatnio zmienione: ' + (STATE.stamp ? fmtTime(STATE.stamp) : 'NIGDY (domyślne)'),
   ];
-  const queue = PREVIEW ? ['w kolejce: ' + PREVIEW.queue + ' maili, w tym ' + PREVIEW.foreign + ' do firm spoza Polski'] : [];
+  const queue = PREVIEW ? ['w kolejce: ' + PREVIEW.queue + ' maili' + (PREVIEW.companies && PREVIEW.companies !== PREVIEW.queue ? ' (' + PREVIEW.companies + ' firm)' : '')
+    + ', w tym ' + PREVIEW.foreign + ' do firm spoza Polski'] : [];
   return '<ul class="sum-list">' + lines.concat(queue).map((line) => '<li>' + escapeHtml(line) + '</li>').join('') + '</ul>';
 }
 
