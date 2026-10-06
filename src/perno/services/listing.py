@@ -62,10 +62,10 @@ def parse_strings(value: Any, name: str, limit: int = 20) -> tuple:
     return tuple(dict.fromkeys(value))
 
 
-def order_ids(db: Database, ids: tuple, sort: Any) -> tuple:
+def order_ids(db: Database, ids: tuple, sort: Any, group: Any = "") -> tuple:
     """Wskazane id w kolejności widoku (klucz sortowania z panelu; nieznany daje kolejność domyślną). Id, których nie
     ma w bazie, znikają — plik z zaznaczonymi wierszami ma wyglądać tak, jak lista na ekranie."""
-    return tuple(db.list_ids(RowFilter(ids=ids), parse_state({"sort": sort}).sort))
+    return tuple(db.list_ids(RowFilter(ids=ids), parse_state({"sort": sort, "group": group}).sort))
 
 
 def parse_list_request(payload: Mapping) -> ListRequest:

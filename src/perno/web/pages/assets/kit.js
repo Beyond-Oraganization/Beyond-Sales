@@ -145,6 +145,7 @@
             <div class="kit-pop" data-role="countries"><button type="button" class="kit-btn" aria-expanded="false">Kraj</button><div class="kit-popover" hidden></div></div>
             <button type="button" class="kit-btn" data-role="more-toggle" aria-expanded="false">Więcej filtrów</button>
             <div class="kit-pop kit-views" data-role="views"><button type="button" class="kit-btn" aria-expanded="false">Widoki</button><div class="kit-popover align-right" hidden></div></div>
+            <label class="kit-only" title="Przy sortowaniu po e-mailu, statusie albo dacie adresy jednej firmy stoją razem, a firmy układają się wg swojego najlepszego adresu"><input type="checkbox" data-role="group"> Grupuj wg firmy</label>
             <button type="button" class="kit-btn" data-role="clear" hidden>Wyczyść filtry</button>
           </div>
           <div class="kit-more" data-role="more" hidden>
@@ -153,6 +154,8 @@
             <label>Miasto <select data-field="city">${TRI_OPTIONS}</select></label>
             <label>Adres <select data-field="address">${TRI_OPTIONS}</select></label>
             <label>Wysłano <select data-field="sent">${SENT_OPTIONS}</select></label>
+            <label>Adresy firmy <select data-field="multi"><option value="">dowolnie</option><option value="yes">więcej niż jeden</option><option value="no">jeden</option></select></label>
+            <label>Wstrzymane przez inny adres firmy <select data-field="held"><option value="">dowolnie</option><option value="yes">tak</option><option value="no">nie</option></select></label>
             <label>Pochodzenie <select data-field="origin"><option value="">dowolne</option><option value="dossier">z dossier</option><option value="import">zaimportowane</option></select></label>
             <div class="kit-range">
               <label>Wysłano od <input type="date" data-field="sentFrom"></label>
@@ -170,7 +173,7 @@
       const q = (role) => opts.filtersEl.querySelector(`[data-role="${role}"]`);
       bar = {
         presets: q('presets'), statuses: q('statuses'), search: q('q'), qfield: q('qfield'), more: q('more'),
-        moreToggle: q('more-toggle'), clear: q('clear'), active: q('active'),
+        moreToggle: q('more-toggle'), clear: q('clear'), active: q('active'), group: q('group'),
         segmentsPop: q('segments'), countriesPop: q('countries'), viewsPop: q('views')
       };
       ['segmentsPop', 'countriesPop', 'viewsPop'].forEach((name) => {
@@ -194,6 +197,7 @@
         searchTimer = setTimeout(() => patch({q: bar.search.value}), 150);
       });
       bar.qfield.addEventListener('change', () => patch({qFields: bar.qfield.value}));
+      bar.group.addEventListener('change', () => patch({group: bar.group.checked ? 'yes' : ''}));
       bar.segmentsPop.panel.addEventListener('change', (e) => {
         if (e.target.dataset.value !== undefined) patch({segments: toggled(model.getState().segments, e.target.dataset.value)});
       });
@@ -302,7 +306,8 @@
       setPopButton(bar.countriesPop.btn, 'Kraj', state.countries.map((c) => c === F.FOREIGN ? 'spoza PL' : c === F.NO_COUNTRY ? 'bez kraju' : c));
       // dodatkowe filtry
       bar.more.querySelectorAll('[data-field]').forEach((el) => { if (el.value !== state[el.dataset.field]) el.value = state[el.dataset.field]; });
-      const extra = ['email', 'body', 'city', 'address', 'sent', 'origin', 'sentFrom', 'sentTo', 'generatedFrom', 'generatedTo'].some((k) => state[k] !== '');
+      const extra = ['email', 'body', 'city', 'address', 'sent', 'multi', 'held', 'origin', 'sentFrom', 'sentTo', 'generatedFrom', 'generatedTo'].some((k) => state[k] !== '');
+      bar.group.checked = state.group === 'yes';
       bar.moreToggle.classList.toggle('is-active', extra);
       // aktywne filtry i licznik
       const parts = F.describe(state, ctx);

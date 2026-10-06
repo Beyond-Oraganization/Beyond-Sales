@@ -137,3 +137,40 @@ test('kontekst: nazwy i flagi krajów, kolejność statusów', () => {
   assert.deepEqual(ctx.statusOrder.slice(0, 3), ['do_wyslania', 'wysylanie', 'wyslano']);
   assert.equal(ctx.today, '2026-09-30');
 });
+
+// ---- firmy z wieloma adresami: filtry „adresy firmy” i „wstrzymane” oraz „grupuj wg firmy” --------------------------
+
+test('filtry „adresy firmy” i „wstrzymane” są trójstanowe, a nieznane wartości wracają do „dowolnie”', () => {
+  assert.equal(F.emptyState().multi, '');
+  assert.equal(F.emptyState().held, '');
+  const s = F.normalizeState({multi: 'yes', held: 'no'});
+  assert.deepEqual([s.multi, s.held], ['yes', 'no']);
+  const bad = F.normalizeState({multi: 'tak', held: 3});
+  assert.deepEqual([bad.multi, bad.held], ['', '']);
+});
+
+test('„grupuj wg firmy” to tylko „yes” i nie jest filtrem', () => {
+  assert.equal(F.emptyState().group, '');
+  assert.equal(F.normalizeState({group: 'yes'}).group, 'yes');
+  for (const value of ['', 'no', true, 1, 'YES']) assert.equal(F.normalizeState({group: value}).group, '', String(value));
+  assert.deepEqual(F.activeParts({group: 'yes', sort: 'status'}), [], 'grupowanie nie liczy się do aktywnych filtrów');
+  assert.equal(F.presetKeyFor({group: 'yes'}, ctx), 'all', 'grupowanie nie zmienia podświetlonego szybkiego widoku');
+});
+
+test('nowe filtry mają opis, część do usunięcia i ślad w adresie URL', () => {
+  const state = {multi: 'yes', held: 'yes'};
+  assert.deepEqual(F.activeParts(state), ['multi', 'held']);
+  assert.deepEqual(F.describe(state, ctx).map((d) => d.text), ['Adresy firmy: więcej niż jeden', 'Wstrzymane: tak']);
+  assert.deepEqual(F.describe({multi: 'no', held: 'no'}, ctx).map((d) => d.text), ['Adresy firmy: jeden', 'Wstrzymane: nie']);
+  const cleared = F.clearPart(state, 'multi');
+  assert.deepEqual([cleared.multi, cleared.held], ['', 'yes']);
+  assert.equal(F.toQuery(state), 'multi=yes&held=yes');
+  assert.deepEqual(F.fromQuery('multi=yes&held=no&group=yes&sort=status'), F.normalizeState({multi: 'yes', held: 'no', group: 'yes', sort: 'status'}));
+});
+
+test('adres URL zapamiętuje grupowanie razem z sortowaniem i odtwarza je wiernie', () => {
+  const state = F.normalizeState({sort: '-status', group: 'yes', statuses: ['blad']});
+  assert.equal(F.toQuery(state), 'status=blad&sort=-status&group=yes');
+  assert.deepEqual(F.fromQuery(F.toQuery(state)), state);
+  assert.equal(F.toQuery(F.emptyState()), '');
+});

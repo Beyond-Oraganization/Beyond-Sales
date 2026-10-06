@@ -481,6 +481,25 @@ class MysqlSiblingTests(unittest.TestCase):
         self.assertEqual([r["id"] for r in self.database.select_candidates(limit=None, unheld=True, per_company=True)],
                          ["eventy-n0010"])
 
+    def test_grouped_sorts_filters_and_computed_columns_on_mysql(self):
+        """Funkcje okienkowe z kolacją w ORDER BY, EXISTS dla filtrów i podzapytania wyliczanych kolumn."""
+        self.database.add_mail("eventy-n001", "b@beta.pl")
+        self.database.apply_edit("eventy-n001~2", {"status": st.STATUS_ERROR})
+        self.database.apply_edit("eventy-n0010", {"status": st.STATUS_SENT})
+        self.assertEqual(self.database.list_ids(RowFilter(), "status"), ["eventy-n001", "eventy-n0010", "eventy-n001~2"])
+        self.assertEqual(self.database.list_ids(RowFilter(), "g:status"), ["eventy-n001", "eventy-n001~2", "eventy-n0010"])
+        self.assertEqual(self.database.list_ids(RowFilter(), "g:-status"), ["eventy-n001", "eventy-n001~2", "eventy-n0010"])
+        self.assertEqual(self.database.list_ids(RowFilter(), "g:email"), ["eventy-n0010", "eventy-n001", "eventy-n001~2"])
+        self.assertEqual(self.database.list_ids(RowFilter(), "g:-sent_at")[:2], ["eventy-n0010", "eventy-n001"])
+        self.assertEqual(self.database.list_ids(RowFilter(), "-mails"), ["eventy-n001", "eventy-n001~2", "eventy-n0010"])
+        self.assertEqual(self.database.list_ids(RowFilter(multi=True), "default"), ["eventy-n001", "eventy-n001~2"])
+        self.assertEqual(self.database.list_ids(RowFilter(multi=False), "default"), ["eventy-n0010"])
+        self.database.apply_edit("eventy-n001", {"status": st.STATUS_REPLIED})
+        self.assertEqual(self.database.list_ids(RowFilter(held=True), "default"), ["eventy-n001~2"])
+        rows = {r["id"]: r for r in self.database.iter_rows(RowFilter(), ("id", "company_id", "position", "mail_count", "hold"))}
+        self.assertEqual((rows["eventy-n001~2"]["mail_count"], rows["eventy-n001~2"]["hold"], rows["eventy-n001~2"]["position"]),
+                         (2, st.STATUS_REPLIED, 2))
+
     def test_queue_queries_for_the_company_gap(self):
         from perno.domain import automat_rules as ar
 

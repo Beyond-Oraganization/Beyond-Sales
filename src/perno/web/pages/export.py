@@ -135,7 +135,7 @@ def _export_rows(body: dict, ctx: AppContext) -> tuple:
     if not chosen:
         raise HttpError(400, "Zaznacz przynajmniej jeden wiersz do eksportu.")
     if body.get("sort") is not None:
-        chosen = listing.order_ids(ctx.db, chosen, body["sort"])
+        chosen = listing.order_ids(ctx.db, chosen, body["sort"], body.get("group", ""))
     return RowFilter(ids=chosen), DEFAULT_SORT
 
 

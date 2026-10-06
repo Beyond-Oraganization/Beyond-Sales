@@ -28,7 +28,8 @@ ALL_EXPORT_COLUMNS = (
     "company", "segment", "country_name", "country", "city", "address", "email", "contact_person", "website",
     "status", "sent_at", "generated_at", "subject", "description", "error",
     "body_html", "body_text",
-    "id", "row_number", "tag", "mode", "attachments", "inline_images", "retry_count", "updated_at",
+    "id", "row_number", "tag", "mode", "attachments", "inline_images", "retry_count",
+    "company_id", "position", "mail_count", "updated_at",
 )
 # Zestaw domyślny: tyle, żeby plik dało się przeczytać bez przewijania na boki.
 STANDARD_COLUMNS = ("company", "segment", "country_name", "city", "email", "website", "status", "sent_at", "subject")
@@ -62,6 +63,9 @@ COLUMN_INFO = {
     "inline_images": ("Obrazy w treści", "Techniczne"),
     "retry_count": ("Liczba prób wysyłki", "Techniczne"),
     "updated_at": ("Data zmiany", "Techniczne"),
+    "company_id": ("Identyfikator firmy", "Techniczne"),
+    "position": ("Numer adresu w firmie", "Techniczne"),
+    "mail_count": ("Liczba adresów firmy", "Techniczne"),
 }
 # Gotowe zestawy kolumn: (klucz, etykieta, kolumny).
 COLUMN_PRESETS = (
@@ -93,6 +97,7 @@ _WIDTHS = {
     "contact_person": 22, "website": 36, "status": 16, "sent_at": 17, "generated_at": 19, "subject": 62,
     "description": 56, "error": 40, "body_html": 60, "body_text": 60, "id": 16, "row_number": 11, "tag": 18,
     "mode": 13, "attachments": 18, "inline_images": 20, "retry_count": 11, "updated_at": 17,
+    "company_id": 18, "position": 12, "mail_count": 12,
 }
 
 

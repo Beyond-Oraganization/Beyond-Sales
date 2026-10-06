@@ -49,7 +49,7 @@ function onViewChange(info){
 // Co wysłać serwerowi: zaznaczone jako id (układa je jak listę na ekranie) albo cały widok jako stan filtrów i sortowania —
 // przy 50 tys. firm nie przesyłamy listy id, serwer sam wybiera wiersze.
 function exportRows(){
-  return scope === 'selected' ? {ids: selection.toArray(), sort: view.getState().sort} : view.exportScope();
+  return scope === 'selected' ? {ids: selection.toArray(), sort: view.getState().sort, group: view.getState().group} : view.exportScope();
 }
 
 function exportCount(){
@@ -182,7 +182,7 @@ download.addEventListener('click', async () => {
   if (result.ok){
     const missing = n - result.rows;
     showMessage(`Pobrano ${result.name} — ${result.rows} ${K.plural(result.rows, 'wiersz', 'wiersze', 'wierszy')}` +
-      (missing > 0 ? `; ${missing} ${K.plural(missing, 'firmy', 'firm', 'firm')} z listy nie ma już w bazie.` : '.'), 'ok');
+      (missing > 0 ? `; ${missing} ${K.plural(missing, 'wiersza', 'wierszy', 'wierszy')} z listy nie ma już w bazie.` : '.'), 'ok');
   } else {
     showMessage(result.error, 'error');
   }

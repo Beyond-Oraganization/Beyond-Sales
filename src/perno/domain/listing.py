@@ -1,7 +1,7 @@
 """Stan listy firm w panelu (filtry, wyszukiwarka, sortowanie) w postaci, którą liczy serwer.
 
-Przeglądarka trzyma stan jako obiekt `{q, qFields, statuses, segments, countries, email, body, city, address, sent, origin,
-sentFrom, sentTo, generatedFrom, generatedTo, sort}` (to samo trafia do adresu URL i zapisanych widoków); `parse_state`
+Przeglądarka trzyma stan jako obiekt `{q, qFields, statuses, segments, countries, email, body, city, address, sent, multi,
+held, origin, sentFrom, sentTo, generatedFrom, generatedTo, sort, group}` (to samo trafia do adresu URL i zapisanych widoków); `parse_state`
 zamienia go na `RowFilter` i klucz sortowania. Nieznane pola i wartości o złym typie wracają do domyślnych, tak jak w
 przeglądarce: stan z adresu URL bywa stary albo ręcznie zmieniony.
 """
@@ -16,8 +16,10 @@ from typing import Any, Mapping, Optional
 from perno.domain.rowfilter import ALL_ROWS, ORIGINS, RowFilter
 from perno.domain.search import SEARCH_FIELDS, parse_query
 
-SORT_KEYS = ("company", "city", "email", "segment", "status", "country", "generated_at", "sent_at")
+SORT_KEYS = ("company", "city", "email", "segment", "status", "country", "generated_at", "sent_at", "mails")
+ADDRESS_SORT_KEYS = ("email", "status", "generated_at", "sent_at", "mails")  # klucze po polach adresu, nie firmy
 DEFAULT_SORT = "default"
+GROUP_PREFIX = "g:"  # „grupuj wg firmy”: `g:status` — firmy układają się wg najlepszego adresu, a jej adresy stoją razem
 MAX_QUERY_LENGTH = 200
 MAX_SEARCH_TERMS = 10  # słów szukanych i osobno wykluczanych; każde to przejście po tabeli, więc setki słów nie mają sensu
 MAX_LIST_ITEMS = 100
@@ -58,6 +60,13 @@ def _day(value: Any) -> Optional[date]:
         return None
 
 
+def split_sort(sort: str) -> tuple:
+    """`(klucz, malejąco, grupowanie)` z klucza sortowania: `status`, `-status`, `g:-status`, `default`."""
+    grouped = sort.startswith(GROUP_PREFIX)
+    plain = sort[len(GROUP_PREFIX):] if grouped else sort
+    return plain.lstrip("-"), plain.startswith("-"), grouped
+
+
 def parse_state(payload: object) -> ListQuery:
     """Stan z przeglądarki → `ListQuery`. Wszystko, czego nie rozumiemy, znaczy „bez ograniczenia”."""
     data: Mapping = payload if isinstance(payload, dict) else {}
@@ -74,12 +83,17 @@ def parse_state(payload: object) -> ListQuery:
         countries=_string_list(data.get("countries")),
         has_email=_tri(data.get("email")), has_body=_tri(data.get("body")),
         has_city=_tri(data.get("city")), has_address=_tri(data.get("address")), has_sent=_tri(data.get("sent")),
+        multi=_tri(data.get("multi")), held=_tri(data.get("held")),
         origin=origin if origin in ORIGINS else "",
         sent_from=_day(data.get("sentFrom")), sent_to=_day(data.get("sentTo")),
         generated_from=_day(data.get("generatedFrom")), generated_to=_day(data.get("generatedTo")),
         search=terms if terms else None,
     )
-    return ListQuery(flt, sort if sort.lstrip("-") in SORT_KEYS else DEFAULT_SORT)
+    key = sort.lstrip("-")
+    if key not in SORT_KEYS:
+        return ListQuery(flt, DEFAULT_SORT)
+    grouped = data.get("group") == "yes" and key in ADDRESS_SORT_KEYS and key != "mails"  # liczba adresów jest wspólna dla firmy
+    return ListQuery(flt, GROUP_PREFIX + sort if grouped else sort)
 
 
 def without_facet(flt: RowFilter, facet: str) -> RowFilter:

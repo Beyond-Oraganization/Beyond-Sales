@@ -216,7 +216,7 @@
 
       // Co wysłać do eksportu, żeby dostać dokładnie to, co widać: stan widoku albo (w „tylko zaznaczone”) same id.
       exportScope: function () {
-        return onlySelected ? {ids: selection.toArray(), sort: state.sort} : {state: state};
+        return onlySelected ? {ids: selection.toArray(), sort: state.sort, group: state.group} : {state: state};
       }
     };
     return model;

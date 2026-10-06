@@ -26,6 +26,8 @@ class RowFilter:
     has_city: Optional[bool] = None
     has_address: Optional[bool] = None
     has_sent: Optional[bool] = None  # czy jest data wysłania
+    multi: Optional[bool] = None  # czy firma ma więcej niż jeden adres
+    held: Optional[bool] = None  # czy adres jest wstrzymany przez status innego adresu firmy (`statuses.COMPANY_STOPS`)
     origin: str = ""  # jedna z ORIGINS; pusty = bez ograniczenia
     sent_from: Optional[date] = None  # dni kalendarzowe, oba końce włącznie
     sent_to: Optional[date] = None

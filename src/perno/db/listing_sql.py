@@ -19,12 +19,12 @@ import sqlalchemy as sa
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.expression import FunctionElement
 
-from perno.db.company_sql import column_for
+from perno.db.company_sql import column_for, company_key, mail_count_expression
 from perno.db.schema import companies, maile
 from perno.db.sqlite_functions import FOLD_FUNCTION, PL_COLLATION
 from perno.domain import statuses as st
 from perno.domain.countries import COUNTRY_NAMES
-from perno.domain.listing import SORT_KEYS
+from perno.domain.listing import ADDRESS_SORT_KEYS, SORT_KEYS, split_sort
 from perno.domain.search import SearchTerms, pl_sort_key
 
 MYSQL_PL_COLLATION = "utf8mb4_pl_0900_ai_ci"
@@ -153,25 +153,46 @@ def _country_order():
     return _rank(companies.c.country, ranked, fallback=len(ranked))
 
 
+def _address_value(key: str, dialect: str):
+    """Wartość, po której sortujemy pole adresu (`ADDRESS_SORT_KEYS`); NULL oznacza puste i ląduje na końcu."""
+    if key == "email":
+        return sa.case((sa.or_(maile.c.email.is_(None), maile.c.email == ""), sa.null()),
+                       else_=_text_key(maile.c.email, dialect))
+    if key == "status":
+        return _rank(maile.c.status, tuple(st.STATUS_META))
+    if key == "mails":
+        return mail_count_expression()
+    return maile.c[key]  # generated_at, sent_at
+
+
+def _address_clauses(key: str, descending: bool, dialect: str, tiebreak: list, grouped: bool) -> list:
+    """Sortowanie po polu adresu. W trybie „grupuj wg firmy” wartość firmy to najlepsza z jej adresów (najmniejsza przy
+    rosnącym, największa przy malejącym): firmy układają się wg niej, a adresy jednej firmy stoją razem, bo w `tiebreak`
+    przed numerem adresu jest id firmy."""
+    value = _address_value(key, dialect)
+    if grouped:
+        aggregate = sa.func.max if descending else sa.func.min
+        value = aggregate(value).over(partition_by=company_key())
+    return [sa.case((value.is_(None), 1), else_=0), value.desc() if descending else value.asc(), *tiebreak]
+
+
 def sort_clauses(sort: str, dialect: str, tiebreak: list) -> list:
-    """ORDER BY dla klucza sortowania panelu: `klucz` rosnąco, `-klucz` malejąco, puste wartości zawsze na końcu;
-    remisy rozstrzyga domyślna kolejność panelu (`tiebreak`). Nieznany klucz i „default” dają samą kolejność domyślną."""
-    key = sort.lstrip("-")
+    """ORDER BY dla klucza sortowania panelu: `klucz` rosnąco, `-klucz` malejąco, `g:klucz` z grupowaniem adresów firmy;
+    puste wartości zawsze na końcu, remisy rozstrzyga domyślna kolejność panelu (`tiebreak`). Nieznany klucz i „default”
+    dają samą kolejność domyślną. Klucze po polach firmy (firma, miasto, kraj, segment) trzymają adresy firmy razem same."""
+    key, descending, grouped = split_sort(sort)
     if key not in SORT_KEYS:
         return list(tiebreak)
+    if key in ADDRESS_SORT_KEYS:
+        return _address_clauses(key, descending, dialect, tiebreak, grouped)
 
     def direct(expression):
-        return expression.desc() if sort.startswith("-") else expression.asc()
+        return expression.desc() if descending else expression.asc()
 
-    if key in ("company", "city", "email"):
+    if key in ("company", "city"):
         column = column_for(key)
         return [_empty_last(column), direct(_text_key(column, dialect)), *tiebreak]
     if key == "segment":
         return [direct(_rank(companies.c.segment, st.SEGMENT_ORDER)), direct(_text_key(companies.c.segment, dialect)),
                 *tiebreak]
-    if key == "status":
-        return [direct(_rank(maile.c.status, tuple(st.STATUS_META))), *tiebreak]
-    if key == "country":
-        return [_empty_last(companies.c.country), direct(_country_order()), *tiebreak]
-    column = column_for(key)
-    return [sa.case((column.is_(None), 1), else_=0), direct(column), *tiebreak]
+    return [_empty_last(companies.c.country), direct(_country_order()), *tiebreak]  # country

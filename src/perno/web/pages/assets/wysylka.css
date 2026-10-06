@@ -111,3 +111,4 @@
 .mails-add{display:flex;flex-wrap:wrap;gap:var(--s-2);align-items:center;margin-top:var(--s-3);}
 .mails-add input[type=email]{flex:1 1 240px;min-width:0;}
 .mails-add .copy{display:inline-flex;gap:6px;align-items:center;color:var(--label-2);font-size:var(--fs-foot);}
+.mails-count{text-align:center;font-variant-numeric:tabular-nums;}

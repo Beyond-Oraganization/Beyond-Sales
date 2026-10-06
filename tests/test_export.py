@@ -93,7 +93,7 @@ class ReadableFileTests(FormatCase):
         self.assertEqual(exporter.headers(("company", "sent_at")), ("Firma", "Data wysłania"))
 
     def test_catalog_covers_exactly_the_database_columns_plus_the_derived_one(self):
-        self.assertEqual(set(exporter.ALL_EXPORT_COLUMNS), set(dbmod.COLUMNS) | {"updated_at", "country_name"})
+        self.assertEqual(set(exporter.ALL_EXPORT_COLUMNS), set(dbmod.COLUMNS) | {"updated_at", "country_name", "company_id", "position", "mail_count"})
 
     def test_presets_are_ordered_from_compact_to_everything(self):
         sizes = {key: len(columns) for key, _, columns in exporter.COLUMN_PRESETS}

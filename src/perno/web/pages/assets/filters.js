@@ -23,9 +23,9 @@
     return {
       q: '', qFields: 'all',
       statuses: [], segments: [], countries: [],
-      email: '', body: '', city: '', address: '', sent: '', origin: '',
+      email: '', body: '', city: '', address: '', sent: '', multi: '', held: '', origin: '',
       sentFrom: '', sentTo: '', generatedFrom: '', generatedTo: '',
-      sort: 'default'
+      sort: 'default', group: ''
     };
   }
 
@@ -52,7 +52,7 @@
     if (typeof input.q === 'string') s.q = input.q.slice(0, 200);
     if (QUERY_FIELDS.indexOf(input.qFields) !== -1) s.qFields = input.qFields;
     ARRAY_KEYS.forEach(function (key) { s[key] = stringList(input[key]); });
-    ['email', 'body', 'city', 'address', 'sent'].forEach(function (key) {
+    ['email', 'body', 'city', 'address', 'sent', 'multi', 'held'].forEach(function (key) {
       if (TRI.indexOf(input[key]) !== -1) s[key] = input[key];
     });
     if (ORIGINS.indexOf(input.origin) !== -1) s.origin = input.origin;
@@ -60,12 +60,14 @@
       if (isDay(input[key])) s[key] = input[key];
     });
     if (typeof input.sort === 'string' && /^-?[a-z_]+$/.test(input.sort)) s.sort = input.sort;
+    if (input.group === 'yes') s.group = 'yes';
     return s;
   }
 
   var PARTS = {  // klucz części filtra → pola stanu, które ona obejmuje (do „x” na liście aktywnych filtrów)
     q: ['q', 'qFields'], statuses: ['statuses'], segments: ['segments'], countries: ['countries'],
-    email: ['email'], body: ['body'], city: ['city'], address: ['address'], sent: ['sent'], origin: ['origin'],
+    email: ['email'], body: ['body'], city: ['city'], address: ['address'], sent: ['sent'], multi: ['multi'], held: ['held'],
+    origin: ['origin'],
     sent_range: ['sentFrom', 'sentTo'], generated_range: ['generatedFrom', 'generatedTo']
   };
 
@@ -155,7 +157,7 @@
   function sameFilters(a, b) {
     var x = normalizeState(a), y = normalizeState(b);
     return Object.keys(emptyState()).every(function (key) {
-      if (key === 'sort' || key === 'qFields') return true;
+      if (key === 'sort' || key === 'qFields' || key === 'group') return true;
       return JSON.stringify(Array.isArray(x[key]) ? x[key].slice().sort() : x[key]) ===
         JSON.stringify(Array.isArray(y[key]) ? y[key].slice().sort() : y[key]);
     });
@@ -173,7 +175,8 @@
 
   var TRI_TEXT = {
     email: ['E-mail', 'jest', 'brak'], body: ['Treść maila', 'jest', 'brak'], city: ['Miasto', 'jest', 'brak'],
-    address: ['Adres', 'jest', 'brak'], sent: ['Wysłano', 'tak', 'nie']
+    address: ['Adres', 'jest', 'brak'], sent: ['Wysłano', 'tak', 'nie'],
+    multi: ['Adresy firmy', 'więcej niż jeden', 'jeden'], held: ['Wstrzymane', 'tak', 'nie']
   };
 
   function countryLabel(code, ctx) {
@@ -206,8 +209,8 @@
 
   var QUERY_NAMES = {
     statuses: 'status', segments: 'segment', countries: 'country', email: 'email', body: 'body', city: 'city',
-    address: 'address', sent: 'sent', origin: 'origin', sentFrom: 'sent_from', sentTo: 'sent_to',
-    generatedFrom: 'gen_from', generatedTo: 'gen_to', q: 'q', qFields: 'qf', sort: 'sort'
+    address: 'address', sent: 'sent', multi: 'multi', held: 'held', origin: 'origin', sentFrom: 'sent_from', sentTo: 'sent_to',
+    generatedFrom: 'gen_from', generatedTo: 'gen_to', q: 'q', qFields: 'qf', sort: 'sort', group: 'group'
   };
 
   // Stan → ciąg zapytania (`status=wyslano,blad&country=PL`); wartości domyślne są pomijane.

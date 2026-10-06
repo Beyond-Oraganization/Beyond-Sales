@@ -217,7 +217,7 @@ function createBulkUI(o) {
     K.closePopovers();
     const [scope, format] = b.dataset.export.split(':');
     // Zaznaczone idą jako id (serwer układa je jak listę na ekranie), cały widok jako stan filtrów i sortowania.
-    const rows = scope === 'selected' ? {ids: selectedIds(), sort: view.getState().sort} : view.exportScope();
+    const rows = scope === 'selected' ? {ids: selectedIds(), sort: view.getState().sort, group: view.getState().group} : view.exportScope();
     toast('Przygotowuję plik…');
     let result;
     try { result = await downloadExport({format: format, delimiter: 'semicolon', ...rows}); }

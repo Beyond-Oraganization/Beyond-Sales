@@ -297,7 +297,9 @@ test('exportScope: stan widoku albo, przy „tylko zaznaczone”, id i sortowani
   assert.deepEqual(env.model.exportScope(), {state: env.model.getState()});
   env.selection.add(['a', 'b']);
   env.model.setOnlySelected(true);
-  assert.deepEqual(env.model.exportScope(), {ids: ['a', 'b'], sort: '-company'});
+  assert.deepEqual(env.model.exportScope(), {ids: ['a', 'b'], sort: '-company', group: ''});
+  env.model.patch({group: 'yes'});
+  assert.deepEqual(env.model.exportScope(), {ids: ['a', 'b'], sort: '-company', group: 'yes'});
 });
 
 test('restore ustawia stan bez pytania serwera i ignoruje złe wartości', () => {

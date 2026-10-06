@@ -17,8 +17,14 @@ mail_company_join = maile.join(companies, companies.c.id == maile.c.company_id, 
 
 
 def column_for(name: str):
-    """Kolumna pola o nazwie z API: pola firmy z `podmioty`, pozostałe z `maile`."""
-    return companies.c[name] if name in COMPANY_COLUMNS else maile.c[name]
+    """Kolumna pola o nazwie z API: pola firmy z `podmioty`, pola wyliczane (`schema.EXTRA_COLUMNS`) jako wyrażenia, pozostałe
+    z `maile`."""
+    if name in COMPANY_COLUMNS:
+        return companies.c[name]
+    computed = {"company_id": company_key, "mail_count": mail_count_expression, "hold": hold_expression}
+    if name in computed:
+        return computed[name]().label(name)
+    return maile.c[name]
 
 
 def select_mails(*columns):
@@ -44,6 +50,12 @@ def hold_expression():
                    sibling.c.status.in_(st.COMPANY_STOPS))
             .order_by(rank).limit(1).correlate(maile).scalar_subquery())
     return sa.func.coalesce(stop, "")
+
+
+def has_sibling():
+    """Warunek: firma tego maila ma jeszcze inny adres."""
+    other = maile.alias("sibling_other")
+    return sa.exists().where(other.c.company_id == maile.c.company_id, other.c.id != maile.c.id).correlate(maile)
 
 
 def no_holding_sibling():

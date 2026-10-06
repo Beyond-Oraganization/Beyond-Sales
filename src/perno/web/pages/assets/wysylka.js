@@ -65,6 +65,7 @@ function cells(row){
     <td data-col="segment">${escapeHtml(row.segment)}</td>
     <td data-col="company" class="company-cell">${companyName(row)}${K.addressMarker(row)}${K.holdBadge(row, ctx)}</td>
     <td data-col="country" class="country-cell">${K.countryCell(row, ctx)}</td>
+    <td data-col="mails" class="muted mails-count">${escapeHtml(row.mail_count)}</td>
     <td data-col="email"><input type="text" data-field="email" value="${escapeHtml(row.email)}" placeholder="wpisz e-mail…" ${lock}></td>
     <td data-col="subject"><input type="text" data-field="subject" value="${escapeHtml(row.subject)}" ${lock}></td>
     <td data-col="status">${statusSelect(row)}</td>
@@ -206,7 +207,7 @@ function renderDetail(row){
   const tr = document.createElement('tr');
   tr.className = 'detail-row';
   const td = document.createElement('td');
-  td.colSpan = 9;
+  td.colSpan = 10;
   tr.appendChild(td);
   const full = detailCache[row.id];
   if (!full){
@@ -273,7 +274,7 @@ el('refreshBtn').addEventListener('click', async () => {
 // ---- widoczność kolumn ----------------------------------------------------------------------
 
 const COLUMN_CHOICES = [
-  ['segment', 'Segment'], ['country', 'Kraj'], ['email', 'E-mail'], ['subject', 'Temat'],
+  ['segment', 'Segment'], ['country', 'Kraj'], ['mails', 'Adresy firmy'], ['email', 'E-mail'], ['subject', 'Temat'],
   ['status', 'Status'], ['generated', 'Wygenerowano'], ['sent', 'Wysłano'],
 ];
 
