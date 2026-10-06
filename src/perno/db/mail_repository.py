@@ -16,6 +16,7 @@ from sqlalchemy.engine import Engine
 
 from perno.db import company_writes as cw
 from perno.db.codec import from_api, to_api
+from perno.db.company_sql import column_for, company_key, select_mails
 from perno.db.errors import InvalidValue, RowLocked, RowNotFound
 from perno.db.listing_queries import ListingQueries, has_body_expression, light_columns, to_light_row
 from perno.db.queries import ID_CHUNK, filter_clauses, id_chunks, ordering
@@ -57,9 +58,9 @@ class MailRepository(ListingQueries):
             with self.engine.connect() as own:
                 return self.fetch_all(own, light)
         if light:
-            stmt = sa.select(*light_columns()).order_by(*ordering())
+            stmt = select_mails(*light_columns()).order_by(*ordering())
             return [to_light_row(r) for r in conn.execute(stmt).mappings()]
-        stmt = sa.select(maile).order_by(*ordering())
+        stmt = select_mails(*[column_for(name) for name in COLUMNS]).order_by(*ordering())
         return [to_api(r) for r in conn.execute(stmt).mappings()]
 
     def fetch_index(self) -> dict:
@@ -72,22 +73,23 @@ class MailRepository(ListingQueries):
         if conn is None:
             with self.engine.connect() as own:
                 return self.get(row_id, own)
-        row = conn.execute(sa.select(maile).where(maile.c.id == row_id)).mappings().first()
+        row = conn.execute(select_mails(*[column_for(name) for name in COLUMNS])
+                           .where(maile.c.id == row_id)).mappings().first()
         return to_api(row) if row else None
 
     def select_candidates(
         self, *, segment: str = "both", row_id: str = "", company: str = "",
         statuses: tuple = (st.STATUS_PENDING,), limit: Optional[int] = 20, countries: tuple = (),
     ) -> list:
-        stmt = sa.select(maile).where(maile.c.status.in_(statuses))
+        stmt = select_mails(*[column_for(name) for name in COLUMNS]).where(maile.c.status.in_(statuses))
         if segment and segment != "both":
-            stmt = stmt.where(maile.c.segment == segment)
+            stmt = stmt.where(companies.c.segment == segment)
         if countries:
             stmt = stmt.where(*filter_clauses(RowFilter(countries=tuple(countries))))
         if row_id:
             stmt = stmt.where(maile.c.id == row_id)
         if company:
-            stmt = stmt.where(sa.func.lower(maile.c.company).contains(company.lower(), autoescape=True))
+            stmt = stmt.where(sa.func.lower(companies.c.company).contains(company.lower(), autoescape=True))
         stmt = stmt.order_by(maile.c.id)
         if limit is not None:
             stmt = stmt.limit(limit)
@@ -101,7 +103,7 @@ class MailRepository(ListingQueries):
 
     def distinct_segments(self) -> list:
         with self.engine.connect() as conn:
-            found = [r[0] for r in conn.execute(sa.select(maile.c.segment).distinct())]
+            found = [r[0] for r in conn.execute(sa.select(companies.c.segment).distinct())]
         rank = {name: i for i, name in enumerate(st.SEGMENT_ORDER)}
         return sorted(found, key=lambda s: (rank.get(s, len(rank)), s))
 
@@ -130,7 +132,7 @@ class MailRepository(ListingQueries):
 
     def count_rows(self, flt: RowFilter = ALL_ROWS) -> int:
         clauses = filter_clauses(flt)
-        count = sa.select(sa.func.count()).select_from(maile)
+        count = select_mails(sa.func.count())
         with self.engine.connect() as conn:
             if flt.ids is None:
                 return conn.execute(count.where(*clauses)).scalar() or 0
@@ -146,7 +148,7 @@ class MailRepository(ListingQueries):
         if flt.ids is not None:
             yield from self._iter_by_ids(flt.ids, names, clauses)
             return
-        stmt = sa.select(*[maile.c[name] for name in names]).where(*clauses).order_by(*self._order(sort))
+        stmt = select_mails(*[column_for(name) for name in names]).where(*clauses).order_by(*self._order(sort))
         with self.engine.connect() as conn:
             result = conn.execution_options(stream_results=True, yield_per=chunk).execute(stmt)
             for row in result.mappings():
@@ -156,7 +158,7 @@ class MailRepository(ListingQueries):
         """Wiersze o wskazanych id w kolejności `ids`, pobierane partiami po ID_CHUNK (pamięć ograniczona).
         Wszystkie partie czytane są w jednej transakcji, więc plik pochodzi z jednego spójnego stanu bazy."""
         fetch = names if "id" in names else ("id",) + names
-        stmt = sa.select(*[maile.c[name] for name in fetch])
+        stmt = select_mails(*[column_for(name) for name in fetch])
         with self.engine.connect() as conn:
             for part in id_chunks(ids):
                 found = {row["id"]: row for row in conn.execute(stmt.where(*clauses, maile.c.id.in_(part))).mappings()}
@@ -167,22 +169,38 @@ class MailRepository(ListingQueries):
 
     def load_for_bulk(self, conn, ids: Iterable[str], *, lock: bool) -> dict:
         """Wiersze o podanych id (tylko pola potrzebne do analizy zmiany zbiorczej — bez treści maili, za to z
-        `has_body`), czytane partiami w kolejności id. Przy `lock` zakładają blokady wierszy (SELECT … FOR UPDATE)
-        zawsze w tej samej kolejności, więc dwie jednoczesne operacje nie zakleszczą się nawzajem."""
+        `has_body`), czytane partiami w kolejności id. Przy `lock` zakładają blokady (SELECT … FOR UPDATE) zawsze w tej
+        samej kolejności — najpierw firmy rosnąco po id, potem maile rosnąco po id — więc dwie jednoczesne operacje i edycja
+        pojedyncza nie zakleszczą się nawzajem. Pola firmy (kraj, miasto, adres) są dołączane osobnym zapytaniem, bo
+        blokada nie może iść przez złączenie."""
         has_body = has_body_expression().label("has_body")
-        columns = [maile.c.id, maile.c.status, maile.c.sent_at, maile.c.email, maile.c.country, maile.c.city,
-                   maile.c.address, has_body]
         found = {}
         ordered = sorted(ids)
         if lock:
             self._lock_companies_of(conn, ordered)
         for start in range(0, len(ordered), ID_CHUNK):
-            stmt = sa.select(*columns).where(maile.c.id.in_(ordered[start:start + ID_CHUNK])).order_by(maile.c.id)
+            stmt = (sa.select(maile.c.id, maile.c.status, maile.c.sent_at, maile.c.email, company_key().label("company_id"),
+                              has_body)
+                    .where(maile.c.id.in_(ordered[start:start + ID_CHUNK])).order_by(maile.c.id))
             if lock:
                 stmt = stmt.with_for_update()
             for row in conn.execute(stmt).mappings():
                 found[row["id"]] = dict(row)
+        profiles = self._company_profiles(conn, {row["company_id"] for row in found.values()})
+        blank = {"country": None, "city": None, "address": None}
+        for row in found.values():
+            row.update(profiles.get(row.pop("company_id"), blank))
         return found
+
+    @staticmethod
+    def _company_profiles(conn, company_ids: set) -> dict:
+        """`{id firmy: {country, city, address}}` dla podanych firm."""
+        profiles: dict = {}
+        for part in id_chunks(sorted(company_ids)):
+            stmt = sa.select(companies.c.id, companies.c.country, companies.c.city, companies.c.address)
+            for row in conn.execute(stmt.where(companies.c.id.in_(part))).mappings():
+                profiles[row["id"]] = {"country": row["country"], "city": row["city"], "address": row["address"]}
+        return profiles
 
     @staticmethod
     def _lock_companies_of(conn, mail_ids: list) -> None:
@@ -193,16 +211,17 @@ class MailRepository(ListingQueries):
                          .order_by(companies.c.id).with_for_update()).all()
 
     def id_website_pairs(self, conn) -> list:
-        """`[{id, website}]` wszystkich wierszy — do rozpoznawania firm po domenie przy imporcie."""
-        return [dict(r) for r in conn.execute(sa.select(maile.c.id, maile.c.website)).mappings()]
+        """`[{id, website}]` wszystkich firm (id firmy = id adresu głównego) — do rozpoznawania firm po domenie przy
+        imporcie."""
+        return [dict(r) for r in conn.execute(sa.select(companies.c.id, companies.c.website)).mappings()]
 
     def segment_ids(self, conn, segment: str) -> list:
-        return [r.id for r in conn.execute(sa.select(maile.c.id).where(maile.c.segment == segment))]
+        return [r.id for r in conn.execute(sa.select(companies.c.id).where(companies.c.segment == segment))]
 
     def profile_rows(self, conn) -> list:
-        """`[{id, website, country, city, address}]` — dane o firmie do uzupełniania kraju, miasta i adresu."""
-        return [dict(r) for r in conn.execute(
-            sa.select(maile.c.id, maile.c.website, maile.c.country, maile.c.city, maile.c.address)).mappings()]
+        """`[{id, website, country, city, address}]` firm — dane do uzupełniania kraju, miasta i adresu."""
+        return [dict(r) for r in conn.execute(sa.select(
+            companies.c.id, companies.c.website, companies.c.country, companies.c.city, companies.c.address)).mappings()]
 
     @contextmanager
     def dump_table(self, table: sa.Table = maile):

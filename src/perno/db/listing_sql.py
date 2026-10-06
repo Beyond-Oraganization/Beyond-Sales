@@ -19,7 +19,8 @@ import sqlalchemy as sa
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.expression import FunctionElement
 
-from perno.db.schema import maile
+from perno.db.company_sql import column_for
+from perno.db.schema import companies, maile
 from perno.db.sqlite_functions import FOLD_FUNCTION, PL_COLLATION
 from perno.domain import statuses as st
 from perno.domain.countries import COUNTRY_NAMES
@@ -97,24 +98,24 @@ def _joined(*parts):
 
 def _country_name():
     """Polska nazwa kraju z kodu (puste dla nieznanego), żeby „niemcy” znajdowało firmy z kodem DE."""
-    return sa.case(COUNTRY_NAMES, value=maile.c.country, else_="")
+    return sa.case(COUNTRY_NAMES, value=companies.c.country, else_="")
 
 
 def haystack(field: str):
     """Tekst, w którym szuka wyszukiwarka dla danego pola (`SEARCH_FIELDS`); kolejność i pola jak w dawnym widoku."""
-    company = _joined(maile.c.company, maile.c.contact_person)
-    place = _joined(maile.c.country, _country_name(), maile.c.city, maile.c.address)
+    company = _joined(companies.c.company, maile.c.contact_person)
+    place = _joined(companies.c.country, _country_name(), companies.c.city, companies.c.address)
     if field == "company":
         return company
     if field == "email":
         return _joined(maile.c.email)
     if field == "website":
-        return _joined(maile.c.website)
+        return _joined(companies.c.website)
     if field == "place":
         return place
     if field == "description":
-        return _joined(maile.c.description)
-    return _joined(maile.c.id, company, maile.c.email, maile.c.website, place, maile.c.description)
+        return _joined(companies.c.description)
+    return _joined(maile.c.id, company, maile.c.email, companies.c.website, place, companies.c.description)
 
 
 def search_clauses(terms: SearchTerms) -> list:
@@ -149,7 +150,7 @@ def _text_key(column, dialect: str):
 
 def _country_order():
     ranked = sorted(COUNTRY_NAMES, key=lambda code: pl_sort_key(COUNTRY_NAMES[code]))
-    return _rank(maile.c.country, ranked, fallback=len(ranked))
+    return _rank(companies.c.country, ranked, fallback=len(ranked))
 
 
 def sort_clauses(sort: str, dialect: str, tiebreak: list) -> list:
@@ -163,13 +164,14 @@ def sort_clauses(sort: str, dialect: str, tiebreak: list) -> list:
         return expression.desc() if sort.startswith("-") else expression.asc()
 
     if key in ("company", "city", "email"):
-        column = getattr(maile.c, key)
+        column = column_for(key)
         return [_empty_last(column), direct(_text_key(column, dialect)), *tiebreak]
     if key == "segment":
-        return [direct(_rank(maile.c.segment, st.SEGMENT_ORDER)), direct(_text_key(maile.c.segment, dialect)), *tiebreak]
+        return [direct(_rank(companies.c.segment, st.SEGMENT_ORDER)), direct(_text_key(companies.c.segment, dialect)),
+                *tiebreak]
     if key == "status":
         return [direct(_rank(maile.c.status, tuple(st.STATUS_META))), *tiebreak]
     if key == "country":
-        return [_empty_last(maile.c.country), direct(_country_order()), *tiebreak]
-    column = getattr(maile.c, key)
+        return [_empty_last(companies.c.country), direct(_country_order()), *tiebreak]
+    column = column_for(key)
     return [sa.case((column.is_(None), 1), else_=0), direct(column), *tiebreak]

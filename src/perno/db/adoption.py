@@ -18,7 +18,7 @@ from sqlalchemy.engine import Connection, Engine
 
 from perno.db.errors import DbError
 from perno.db.queries import ID_CHUNK
-from perno.db.schema import COMPANY_COLUMNS, companies, maile
+from perno.db.schema import COMPANY_COLUMNS, companies, legacy_key, maile
 
 LOCK_NAME = "perno_adopt"
 LOCK_WAIT_SECONDS = 30
@@ -82,7 +82,8 @@ def _insert_missing_companies(conn: Connection, now: datetime) -> int:
     `INSERT … SELECT` z innej tabeli, więc MySQL nie zgłasza błędu 1093 jak przy podzapytaniu do tej samej tabeli."""
     anchor = sa.or_(maile.c.company_id.is_(None), maile.c.company_id == maile.c.id)
     absent = ~sa.exists().where(companies.c.id == maile.c.id)
-    source = sa.select(maile.c.id, *[maile.c[name] for name in COMPANY_COLUMNS], sa.literal(now)).where(anchor, absent)
+    source = sa.select(maile.c.id, *[maile.c[legacy_key(name)] for name in COMPANY_COLUMNS], sa.literal(now)).where(
+        anchor, absent)
     result = conn.execute(sa.insert(companies).from_select(
         ["id", *COMPANY_COLUMNS, "updated_at"], source))
     return result.rowcount or 0
@@ -124,7 +125,7 @@ class Diagnostics:
 def diagnose(conn: Connection) -> Diagnostics:
     has_mail = sa.exists().where(maile.c.company_id == companies.c.id)
     has_company = sa.exists().where(companies.c.id == maile.c.company_id)
-    drift = sa.or_(*[maile.c[name].is_distinct_from(companies.c[name]) for name in COMPANY_COLUMNS])
+    drift = sa.or_(*[maile.c[legacy_key(name)].is_distinct_from(companies.c[name]) for name in COMPANY_COLUMNS])
     drifted = conn.execute(
         sa.select(sa.func.count()).select_from(maile.join(companies, companies.c.id == maile.c.company_id)).where(drift)
     ).scalar() or 0

@@ -117,6 +117,9 @@ addopts = "-q"
 markers = [
     "slow: wolne testy (prawdziwe odliczanie czasu, podprocesy); szybka warstwa: pytest -m 'not slow'",
 ]
+# Zapytanie o maile bez złączenia z firmą (`db.company_sql.select_mails`) robi iloczyn kartezjański; SQLAlchemy ostrzega o tym
+# przy kompilacji, a my chcemy od tego błędu, nie ostrzeżenia.
+filterwarnings = ["error::sqlalchemy.exc.SAWarning"]
 
 # ---------------------------------------------------------------------------------------------
 # Warstwy (egzekwowane przez `lint-imports` w scripts/check.sh). Dziś zabraniamy zależności "w górę";

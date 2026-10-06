@@ -21,6 +21,12 @@ COMPANY_COLUMNS = ("segment", "row_number", "company", "website", "tag", "countr
 MAIL_COLUMNS = tuple(name for name in COLUMNS if name not in COMPANY_COLUMNS)
 # Łącze adresu z firmą (NULL do czasu `--adopt`): id firmy i numer adresu w firmie (1 = adres główny).
 LINK_COLUMNS = ("company_id", "position")
+
+
+def legacy_key(name: str) -> str:
+    """Klucz w kodzie dla starej kolumny firmowej w `maile` (nazwa w SQL się nie zmienia). Dzięki temu `maile.c.country`
+    rzuca błąd zamiast po cichu czytać lustro: pola firmy czytamy z `podmioty`, a lustro tylko zapisujemy."""
+    return "legacy_" + name
 # Lista bez treści maili: tego potrzebuje panel do tabeli i filtrów (treść pobiera dopiero po rozwinięciu wiersza).
 LIGHT_COLUMNS = tuple(name for name in COLUMNS if name not in ("body_html", "body_text"))
 
@@ -30,13 +36,13 @@ _LongText = sa.Text().with_variant(mysql.MEDIUMTEXT(), "mysql")
 maile = sa.Table(
     "maile", metadata,
     sa.Column("id", sa.String(32), primary_key=True),
-    sa.Column("segment", sa.String(32), nullable=False),
-    sa.Column("row_number", sa.Integer, nullable=True),
-    sa.Column("company", sa.String(255)),
+    sa.Column("segment", sa.String(32), nullable=False, key=legacy_key("segment")),
+    sa.Column("row_number", sa.Integer, nullable=True, key=legacy_key("row_number")),
+    sa.Column("company", sa.String(255), key=legacy_key("company")),
     sa.Column("contact_person", sa.String(255)),
     sa.Column("email", sa.String(320)),
-    sa.Column("website", sa.String(1000)),
-    sa.Column("tag", sa.String(255)),
+    sa.Column("website", sa.String(1000), key=legacy_key("website")),
+    sa.Column("tag", sa.String(255), key=legacy_key("tag")),
     sa.Column("mode", sa.String(16)),
     sa.Column("subject", sa.String(500)),
     sa.Column("body_html", _LongText),
@@ -50,15 +56,15 @@ maile = sa.Table(
     sa.Column("retry_count", sa.Integer, nullable=False, server_default=sa.text("0")),
     sa.Column("updated_at", sa.DateTime),
     # Dane o firmie — na końcu, żeby kolejność kolumn była taka sama w świeżej i w uaktualnionej bazie.
-    sa.Column("country", sa.String(2)),
-    sa.Column("city", sa.String(120)),
-    sa.Column("address", sa.String(500)),
-    sa.Column("description", sa.Text),
+    sa.Column("country", sa.String(2), key=legacy_key("country")),
+    sa.Column("city", sa.String(120), key=legacy_key("city")),
+    sa.Column("address", sa.String(500), key=legacy_key("address")),
+    sa.Column("description", sa.Text, key=legacy_key("description")),
     # Łącze z firmą — też na końcu, z tego samego powodu. Bez klucza obcego: konto bazy nie ma uprawnienia REFERENCES.
     sa.Column("company_id", sa.String(32)),
     sa.Column("position", sa.Integer),
     sa.Index("ix_maile_status_sent_at", "status", "sent_at"),
-    sa.Index("ix_maile_segment_row", "segment", "row_number"),
+    sa.Index("ix_maile_segment_row", legacy_key("segment"), legacy_key("row_number")),
     sa.Index("ix_maile_email", "email"),
     sa.Index("ix_maile_company_status", "company_id", "status"),
     # Ten sam adres dwa razy w jednej firmie jest błędem; NULL (wiersz bez adresu albo jeszcze bez firmy) nie koliduje.

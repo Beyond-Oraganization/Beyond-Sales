@@ -15,15 +15,16 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
 from perno.db.codec import format_value
+from perno.db.company_sql import column_for, mail_company_join, select_mails
 from perno.db.listing_sql import sort_clauses
 from perno.db.queries import blank, filled, filter_clauses, ordering, trimmed_filled
-from perno.db.schema import LIGHT_COLUMNS, maile
+from perno.db.schema import LIGHT_COLUMNS, companies, maile
 from perno.domain.rowfilter import FOREIGN_COUNTRY, HOME_COUNTRY, NO_COUNTRY, RowFilter, country_selected
 
 FACETS = {
     "statuses": maile.c.status,
-    "segments": maile.c.segment,
-    "countries": sa.case((blank(maile.c.country), NO_COUNTRY), else_=maile.c.country),
+    "segments": companies.c.segment,
+    "countries": sa.case((blank(companies.c.country), NO_COUNTRY), else_=companies.c.country),
 }
 
 
@@ -34,7 +35,7 @@ def has_body_expression() -> Any:
 
 def light_columns() -> list:
     """Kolumny listy: wszystko poza treścią maili, plus `has_body`."""
-    return [*[maile.c[name] for name in LIGHT_COLUMNS], has_body_expression().label("has_body")]
+    return [*[column_for(name) for name in LIGHT_COLUMNS], has_body_expression().label("has_body")]
 
 
 def to_light_row(row: Mapping) -> dict:
@@ -75,14 +76,14 @@ class ListingQueries:
         ids = self.list_ids(flt, sort, limit, offset)
         if not ids:
             return []
-        stmt = sa.select(*light_columns()).where(maile.c.id.in_(ids))
+        stmt = select_mails(*light_columns()).where(maile.c.id.in_(ids))
         with self.engine.connect() as conn:
             found = {row["id"]: to_light_row(row) for row in conn.execute(stmt).mappings()}
         return [found[row_id] for row_id in ids if row_id in found]
 
     def list_ids(self, flt: RowFilter, sort: str, limit: Optional[int] = None, offset: int = 0) -> list:
         """Id wierszy po filtrze w kolejności `sort`; `limit` zawęża do pierwszych (np. „zaznacz pierwsze 10”)."""
-        stmt = sa.select(maile.c.id).where(*self._where(flt)).order_by(*self._order(sort))
+        stmt = select_mails(maile.c.id).where(*self._where(flt)).order_by(*self._order(sort))
         if limit is not None:
             stmt = stmt.limit(limit).offset(offset)
         with self.engine.connect() as conn:
@@ -90,7 +91,7 @@ class ListingQueries:
 
     def count_matching(self, flt: RowFilter) -> int:
         """Ile wierszy pasuje do filtra (w odróżnieniu od `count_rows` bez dzielenia `ids` na partie)."""
-        stmt = sa.select(sa.func.count()).select_from(maile).where(*self._where(flt))
+        stmt = select_mails(sa.func.count()).where(*self._where(flt))
         with self.engine.connect() as conn:
             return conn.execute(stmt).scalar() or 0
 
@@ -100,8 +101,8 @@ class ListingQueries:
         filtra tego pola), żeby przy nieaktywnej wartości widać było, ile wierszy doszłoby po jej wybraniu. Wyszukiwarkę
         i inne warunki liczy baza raz (`GROUP BY` po trzech polach), a rozdzielenie na liczniki robimy tu, w pamięci."""
         base = replace(flt, statuses=(), segments=(), countries=())
-        columns = [maile.c.status, maile.c.segment, FACETS["countries"].label("country_key")]
-        stmt = sa.select(*columns, sa.func.count()).where(*self._where(base)).group_by(*columns)
+        columns = [maile.c.status, companies.c.segment, FACETS["countries"].label("country_key")]
+        stmt = select_mails(*columns, sa.func.count()).where(*self._where(base)).group_by(*columns)
         with self.engine.connect() as conn:
             groups = [(row[0], row[1], row[2], row[3]) for row in conn.execute(stmt)]
         statuses, segments, countries = set(flt.statuses), set(flt.segments), flt.countries
@@ -128,7 +129,7 @@ class ListingQueries:
         to `NO_COUNTRY`; dla krajów dochodzi `FOREIGN_COUNTRY` = wszystkie spoza Polski. Wołający zdejmuje z filtra pole,
         które liczy, żeby licznik przy nieaktywnej wartości mówił, ile wierszy doszłoby po jej wybraniu."""
         value = FACETS[facet].label("value")
-        stmt = sa.select(value, sa.func.count()).where(*self._where(flt)).group_by(value)
+        stmt = select_mails(value, sa.func.count()).where(*self._where(flt)).group_by(value)
         with self.engine.connect() as conn:
             counts = {row[0]: row[1] for row in conn.execute(stmt)}
         if facet == "countries":
@@ -142,7 +143,7 @@ class ListingQueries:
         columns = [sa.func.coalesce(sa.func.sum(sa.case((sa.and_(sa.true(), *self._where(flt)), 1), else_=0)), 0)
                    for flt in flts]
         with self.engine.connect() as conn:
-            return [int(value) for value in conn.execute(sa.select(*columns).select_from(maile)).one()]
+            return [int(value) for value in conn.execute(sa.select(*columns).select_from(mail_company_join)).one()]
 
     def distinct_emails(self, ids: Sequence[str]) -> list:
         """Różne adresy e-mail wskazanych wierszy (bez pustych), w kolejności alfabetycznej."""

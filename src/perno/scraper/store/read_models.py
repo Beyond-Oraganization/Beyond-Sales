@@ -6,7 +6,7 @@ from typing import Optional
 
 import sqlalchemy as sa
 
-from perno.db import maile
+from perno.db import companies, maile
 from perno.scraper import statuses as st
 from perno.scraper.schema import firmy, firmy_maile, kontakty, strony, strony_tresc
 from perno.scraper.store.core import StoreCore, iso
@@ -77,10 +77,11 @@ class ReadModels(StoreCore):
         co najmniej `min_pages` stron — razem z danymi firmy ze skanera (`firma_id`, `skan_status`, `stron_pobranych`)."""
         with self._read() as conn:
             rows = conn.execute(
-                sa.select(maile.c.id, maile.c.segment, maile.c.company, maile.c.website, maile.c.country, maile.c.city,
-                          maile.c.address, maile.c.description, maile.c.email, maile.c.status,
+                sa.select(maile.c.id, companies.c.segment, companies.c.company, companies.c.website, companies.c.country,
+                          companies.c.city, companies.c.address, companies.c.description, maile.c.email, maile.c.status,
                           firmy.c.id.label("firma_id"), firmy.c.skan_status, firmy.c.stron_pobranych)
-                .select_from(maile.join(firmy_maile, firmy_maile.c.maile_id == maile.c.id)
+                .select_from(maile.join(companies, companies.c.id == maile.c.company_id)
+                             .join(firmy_maile, firmy_maile.c.maile_id == maile.c.id)
                              .join(firmy, firmy.c.id == firmy_maile.c.firma_id))
                 .where(firmy.c.skan_status.in_(scan_statuses), maile.c.status.in_(mail_statuses),
                        firmy.c.stron_pobranych >= min_pages)

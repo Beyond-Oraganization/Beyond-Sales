@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql, sqlite
 
 from perno import db as dbmod
-from perno.db import InvalidValue, add_column_statements, from_api, legacy_csv
+from perno.db import InvalidValue, add_column_statements, from_api, legacy_csv, legacy_key
 from tests.fixtures import make_db, old_database, put, sample_row
 
 
@@ -178,7 +178,7 @@ class SchemaUpgradeTests(unittest.TestCase):
 
 class AddColumnStatementTests(unittest.TestCase):
     def columns(self):
-        return [dbmod.maile.c[name] for name in dbmod.PROFILE_COLUMNS]
+        return [dbmod.maile.c[legacy_key(name)] for name in dbmod.PROFILE_COLUMNS]
 
     def test_mysql_gets_one_atomic_alter_statement(self):
         statements = add_column_statements(mysql.dialect(), self.columns())

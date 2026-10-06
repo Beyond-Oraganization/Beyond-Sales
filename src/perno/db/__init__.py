@@ -26,6 +26,7 @@ from perno.db.schema import (
     MAIL_COLUMNS,
     PROFILE_COLUMNS,
     companies,
+    legacy_key,
     maile,
     metadata,
 )
@@ -34,5 +35,5 @@ __all__ = [
     "COLUMNS", "COMPANY_COLUMNS", "DB_ERRORS", "ID_CHUNK", "LEGACY_COLUMNS", "LIGHT_COLUMNS", "LINK_COLUMNS",
     "MAIL_COLUMNS", "PROFILE_COLUMNS", "STALE_CLAIM_MESSAGE", "Database", "DbError", "DbUnavailable", "EmptyDatabase",
     "InvalidValue", "NotAdopted", "RowLocked", "RowNotFound", "add_column_statements", "build_url", "companies",
-    "format_value", "from_api", "maile", "make_engine", "metadata", "to_api",
+    "format_value", "from_api", "legacy_key", "maile", "make_engine", "metadata", "to_api",
 ]

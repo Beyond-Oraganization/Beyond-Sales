@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Connection
 
 from perno.db.queries import ID_CHUNK, id_chunks
-from perno.db.schema import COMPANY_COLUMNS, companies, maile
+from perno.db.schema import COMPANY_COLUMNS, companies, legacy_key, maile
 
 
 def split_values(values: Mapping) -> tuple:
@@ -25,8 +25,8 @@ def split_values(values: Mapping) -> tuple:
 
 
 def mirror(values: Mapping) -> dict:
-    """Pola firmy w postaci do zapisu w starych kolumnach `maile`."""
-    return {name: values[name] for name in COMPANY_COLUMNS if name in values}
+    """Pola firmy w postaci do zapisu w starych kolumnach `maile` (pod ich kluczami w kodzie)."""
+    return {legacy_key(name): values[name] for name in COMPANY_COLUMNS if name in values}
 
 
 def lock_company(conn: Connection, company_id: str) -> None:
@@ -61,4 +61,6 @@ def insert_new_companies(conn: Connection, rows: Sequence[Mapping], now: datetim
         return
     conn.execute(sa.insert(companies), [
         {"id": row["id"], **{name: row.get(name) for name in COMPANY_COLUMNS}, "updated_at": now} for row in rows])
-    conn.execute(sa.insert(maile), [{**row, "company_id": row["id"], "position": 1, "updated_at": now} for row in rows])
+    mail_rows = [{**{name: value for name, value in row.items() if name not in COMPANY_COLUMNS}, **mirror(row),
+                  "company_id": row["id"], "position": 1, "updated_at": now} for row in rows]
+    conn.execute(sa.insert(maile), mail_rows)
