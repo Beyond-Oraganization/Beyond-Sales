@@ -8,9 +8,10 @@ jest w `perno.services.automat`.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Sequence
 
 from perno.domain import mail_rules
 from perno.domain import statuses as st
@@ -21,6 +22,7 @@ HARD_MAX_DAILY_CAP = 500
 MIN_DELAY = 10.0  # sekund; poniżej tego odstęp przestaje przypominać człowieka
 MAX_DELAY = 3600.0
 MAX_HORIZON_DAYS = 60
+MAX_COMPANY_GAP_DAYS = 30
 DAEMON_VERSION = 2  # rośnie, gdy demon poznaje nowe reguły (2 = blokada firmy i odstęp); panel odmawia dodawania adresów starszemu
 TICK_SECONDS = 30.0  # najdłuższy sen pętli; krótszy niż to, co uznajemy za „zniknięcie” procesu
 GAP_THRESHOLD = 180.0  # przerwa między tyknięciami dłuższa niż to = komputer spał albo proces stał
@@ -44,6 +46,7 @@ class AutomatSettings:
     countries: tuple = ()  # puste = wszystkie kraje (kody ISO oraz NO_COUNTRY/FOREIGN_COUNTRY jak w filtrze panelu)
     horizon_days: int = 5  # na ile dni kalendarzowych (z dniem startu) uzbrajamy plan; potem trzeba potwierdzić od nowa
     max_consecutive_errors: int = 3
+    company_gap_days: int = 1  # najmniejszy odstęp (w dniach kalendarzowych) między mailami do jednej firmy; 0 = bez odstępu
 
     def to_json(self) -> dict:
         """Postać zapisywana w bazie i zwracana przez API."""
@@ -52,7 +55,7 @@ class AutomatSettings:
             "window_start": self.window_start.strftime("%H:%M"), "window_end": self.window_end.strftime("%H:%M"),
             "delay_min": self.delay_min, "delay_max": self.delay_max, "segment": self.segment,
             "countries": list(self.countries), "horizon_days": self.horizon_days,
-            "max_consecutive_errors": self.max_consecutive_errors,
+            "max_consecutive_errors": self.max_consecutive_errors, "company_gap_days": self.company_gap_days,
         }
 
 
@@ -139,6 +142,8 @@ def settings_from_mapping(raw: Mapping, base: AutomatSettings = DEFAULT_SETTINGS
         values["horizon_days"] = _integer(raw["horizon_days"], "horyzont (dni)", 1, MAX_HORIZON_DAYS)
     if "max_consecutive_errors" in raw:
         values["max_consecutive_errors"] = _integer(raw["max_consecutive_errors"], "błędy z rzędu", 1, 20)
+    if "company_gap_days" in raw:
+        values["company_gap_days"] = _integer(raw["company_gap_days"], "odstęp dla firmy (dni)", 0, MAX_COMPANY_GAP_DAYS)
     merged = replace(base, **values)
     _check_consistency(merged)
     return merged
@@ -151,11 +156,13 @@ def _check_consistency(settings: AutomatSettings) -> None:
         raise SettingsInvalid("Odstęp min nie może być większy niż odstęp max.")
 
 
-def queue_filter(settings: AutomatSettings) -> RowFilter:
-    """Kolejka automatu: maile „Do wysłania” z adresem i treścią, w wybranym segmencie i krajach. Wiersze w statusie
-    „Błąd” celowo nie wchodzą: nieudana wysyłka wymaga decyzji człowieka (mogła jednak wyjść)."""
+def queue_filter(settings: AutomatSettings, exclude_companies: tuple = ()) -> RowFilter:
+    """Kolejka automatu: maile „Do wysłania” z adresem i treścią, w wybranym segmencie i krajach, bez adresów wstrzymanych
+    przez status innego adresu firmy. Wiersze w statusie „Błąd” celowo nie wchodzą: nieudana wysyłka wymaga decyzji człowieka
+    (mogła jednak wyjść). `exclude_companies` to firmy, do których odstęp (`company_gap_days`) każe dziś nie pisać."""
     return RowFilter(segments=() if settings.segment == "both" else (settings.segment,),
-                     statuses=(st.STATUS_PENDING,), countries=settings.countries, has_email=True, has_body=True)
+                     statuses=(st.STATUS_PENDING,), countries=settings.countries, has_email=True, has_body=True,
+                     unheld=True, exclude_companies=tuple(exclude_companies))
 
 
 # ---- dni i okno godzin ------------------------------------------------------------------------------------------------
@@ -253,6 +260,7 @@ class FinishEstimate:
     last_day: Optional[date]
     fits_in_horizon: bool
     plan: tuple  # ((data, ile maili), …) dla najbliższych dni wysyłki, maksymalnie 14
+    limited_by_gap: bool = False  # odstęp dla firmy wydłuża plan (bez niego kolejka skończyłaby się wcześniej)
 
 
 def estimate_finish(now: datetime, settings: AutomatSettings, queue: int, sent_today: int,
@@ -274,6 +282,51 @@ def estimate_finish(now: datetime, settings: AutomatSettings, queue: int, sent_t
             plan.append((day, today))
     fits = until is None or last_day is None or last_day < until.date()
     return FinishEstimate(send_days, last_day, fits and remaining <= 0, tuple(plan))
+
+
+def estimate_finish_grouped(now: datetime, settings: AutomatSettings, queue: Sequence[str], sent_today: int,
+                            until: Optional[datetime] = None, last_sent: Optional[Mapping] = None) -> FinishEstimate:
+    """Prognoza z odstępem dla firmy. `queue` to id firm, po jednym na oczekujący mail, w kolejności wysyłki (bez maili
+    wstrzymanych blokadą firmy); `last_sent` mówi, kiedy ostatnio wysłano mail do firmy (dzień), dla firm z ostatnich dni.
+
+    Dzień po dniu: pojemność dnia (limit, okno, dni tygodnia) wypełniają maile firm w kolejności ich pierwszego maila w
+    kolejce, najwyżej jeden na firmę dziennie, a firma wraca do gry najwcześniej po `company_gap_days` dniach od ostatniego
+    maila. Przy odstępie 0 to dawna prognoza. Kolejka jest sprowadzona do firm z liczbą maili, więc dzień kosztuje tyle co
+    liczba firm, które trzeba przejrzeć, a nie liczba maili."""
+    gap = settings.company_gap_days
+    plain = estimate_finish(now, settings, len(queue), sent_today, until)
+    if gap <= 0 or not queue:
+        return plain
+    remaining = Counter(queue)
+    order = list(remaining)  # pierwsze wystąpienie wyznacza miejsce firmy w kolejce
+    last = dict(last_sent or {})
+    left, send_days, last_day = len(queue), 0, None
+    plan: list = []
+    for offset in range(400):
+        if left <= 0:
+            break
+        day = now.date() + timedelta(days=offset)
+        capacity = _capacity(day, now, settings, sent_today)  # 0 w dni bez wysyłki: pętla niżej niczego wtedy nie weźmie
+        sent: list = []
+        for company in order:
+            if len(sent) >= capacity:
+                break
+            if company in last and (day - last[company]).days < gap:
+                continue
+            sent.append(company)
+        if not sent:
+            continue
+        for company in sent:
+            last[company] = day
+            remaining[company] -= 1
+        order = [company for company in order if remaining[company] > 0]
+        left -= len(sent)
+        send_days, last_day = send_days + 1, day
+        if len(plan) < 14:
+            plan.append((day, len(sent)))
+    fits = until is None or last_day is None or last_day < until.date()
+    slower = last_day is not None and (plain.last_day is None or last_day > plain.last_day)
+    return FinishEstimate(send_days, last_day, fits and left <= 0, tuple(plan), slower)
 
 
 def _capacity(day: date, now: datetime, settings: AutomatSettings, sent_today: int) -> int:

@@ -60,6 +60,39 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(ar.settings_from_mapping({"delay_min": ar.MIN_DELAY}).delay_min, 10.0)
 
 
+class CompanyGapSettingTests(unittest.TestCase):
+    def test_default_is_one_mail_per_company_per_day(self):
+        self.assertEqual(ar.DEFAULT_SETTINGS.company_gap_days, 1)
+        self.assertEqual(ar.DEFAULT_SETTINGS.to_json()["company_gap_days"], 1)
+
+    def test_gap_roundtrips_and_zero_means_no_gap(self):
+        for value in (0, 1, 3, 30):
+            s = ar.settings_from_mapping({"company_gap_days": value})
+            self.assertEqual(s.company_gap_days, value)
+            self.assertEqual(ar.settings_from_mapping(s.to_json()), s)
+
+    def test_an_old_saved_json_without_the_field_gets_the_default(self):
+        old = {k: v for k, v in ar.DEFAULT_SETTINGS.to_json().items() if k != "company_gap_days"}
+        self.assertEqual(ar.settings_from_mapping(old).company_gap_days, 1)
+
+    def test_bad_gaps_are_rejected(self):
+        for bad in (-1, 31, True, 1.5, "x", None, [1]):
+            with self.subTest(bad=bad), self.assertRaises(ar.SettingsInvalid):
+                ar.settings_from_mapping({"company_gap_days": bad})
+
+    def test_only_the_gap_differs_when_it_changes(self):
+        changed = ar.settings_from_mapping({"company_gap_days": 5})
+        self.assertNotEqual(changed, ar.DEFAULT_SETTINGS)
+        self.assertEqual({k for k, v in changed.to_json().items() if v != ar.DEFAULT_SETTINGS.to_json()[k]}, {"company_gap_days"})
+
+    def test_queue_filter_skips_held_addresses_and_companies_in_the_gap(self):
+        flt = ar.queue_filter(ar.DEFAULT_SETTINGS, ("eventy-001", "eventy-002"))
+        self.assertTrue(flt.unheld)
+        self.assertEqual(flt.exclude_companies, ("eventy-001", "eventy-002"))
+        self.assertEqual((flt.statuses, flt.has_email, flt.has_body), (("do_wyslania",), True, True))
+        self.assertEqual(ar.queue_filter(ar.DEFAULT_SETTINGS).exclude_companies, ())
+
+
 class WindowTests(unittest.TestCase):
     s = ar.DEFAULT_SETTINGS
 
@@ -215,6 +248,118 @@ class EstimateTests(unittest.TestCase):
         e = ar.estimate_finish(at(5, 10), self.s, 50 * 40, 0)
         self.assertEqual(len(e.plan), 14)
         self.assertEqual(e.send_days, 40)
+
+
+class GroupedEstimateTests(unittest.TestCase):
+    """Prognoza z odstępem dla firmy (`estimate_finish_grouped`): kolejka to id firm, po jednym na oczekujący mail."""
+
+    def settings(self, gap: int, **over):
+        return ar.settings_from_mapping({"company_gap_days": gap, **over})
+
+    def run_estimate(self, queue, gap=1, sent_today=0, now=None, last_sent=None, until=None, **over):
+        return ar.estimate_finish_grouped(now or at(5, 10), self.settings(gap, **over), queue, sent_today, until, last_sent)
+
+    def test_without_a_gap_it_is_the_plain_estimate(self):
+        queue = ["a"] * 120
+        grouped = self.run_estimate(queue, gap=0)
+        plain = ar.estimate_finish(at(5, 10), self.settings(0), 120, 0)
+        self.assertEqual(grouped, plain)
+        self.assertFalse(grouped.limited_by_gap)
+
+    def test_an_empty_queue_needs_no_days(self):
+        e = self.run_estimate([])
+        self.assertEqual((e.send_days, e.last_day, e.fits_in_horizon, e.plan, e.limited_by_gap), (0, None, True, (), False))
+
+    def test_one_mail_per_company_per_day_stretches_a_company_with_many_addresses(self):
+        e = self.run_estimate(["a", "a", "a", "b"], gap=1, daily_cap=50)
+        self.assertEqual(e.plan, ((date(2026, 10, 5), 2), (date(2026, 10, 6), 1), (date(2026, 10, 7), 1)))
+        self.assertEqual((e.send_days, e.last_day), (3, date(2026, 10, 7)))
+        self.assertTrue(e.limited_by_gap)
+
+    def test_companies_with_one_address_are_not_slowed_down(self):
+        queue = [f"firma{n}" for n in range(120)]
+        e = self.run_estimate(queue, gap=1)
+        self.assertEqual(e.plan, ((date(2026, 10, 5), 50), (date(2026, 10, 6), 50), (date(2026, 10, 7), 20)))
+        self.assertFalse(e.limited_by_gap)
+
+    def test_the_daily_limit_still_applies_and_companies_are_taken_in_queue_order(self):
+        queue = ["a", "a", "b", "b", "c", "c"]
+        e = self.run_estimate(queue, gap=1, daily_cap=2)
+        # pn: a, b; wt: a, b; potem zostaje tylko c, które ma dwa maile, więc po jednym dziennie
+        self.assertEqual(e.plan, ((date(2026, 10, 5), 2), (date(2026, 10, 6), 2), (date(2026, 10, 7), 1), (date(2026, 10, 8), 1)))
+
+    def test_a_longer_gap_waits_the_whole_gap_in_calendar_days(self):
+        every_day = {"weekdays": [0, 1, 2, 3, 4, 5, 6]}
+        e = self.run_estimate(["a", "a"], gap=3, **every_day)
+        self.assertEqual(e.plan, ((date(2026, 10, 5), 1), (date(2026, 10, 8), 1)))  # pn → czw: trzy dni kalendarzowe
+
+    def test_the_gap_counts_calendar_days_not_send_days(self):
+        e = self.run_estimate(["a", "a"], gap=3)  # pn–pt; po poniedziałku najwcześniej czwartek
+        self.assertEqual([d for d, _ in e.plan], [date(2026, 10, 5), date(2026, 10, 8)])
+        friday = self.run_estimate(["a", "a"], gap=3, now=at(9, 10))  # pt → najwcześniej poniedziałek (3 dni później: nd, pn = 12.10)
+        self.assertEqual([d for d, _ in friday.plan], [date(2026, 10, 9), date(2026, 10, 12)])
+
+    def test_a_company_mailed_today_waits_for_tomorrow(self):
+        e = self.run_estimate(["a", "b"], gap=1, sent_today=1, last_sent={"a": date(2026, 10, 5)})
+        self.assertEqual(e.plan, ((date(2026, 10, 5), 1), (date(2026, 10, 6), 1)))
+
+    def test_a_company_mailed_earlier_in_the_gap_waits_for_the_rest_of_it(self):
+        last = {"a": date(2026, 10, 5)}  # poniedziałek; odstęp 3 → najwcześniej czwartek
+        e = self.run_estimate(["a", "b"], gap=3, now=at(6, 10), last_sent=last)
+        self.assertEqual(e.plan, ((date(2026, 10, 6), 1), (date(2026, 10, 8), 1)))
+
+    def test_a_company_mailed_before_the_gap_is_free_again(self):
+        last = {"a": date(2026, 10, 2)}  # piątek; odstęp 3 → w poniedziałek znów wolna
+        e = self.run_estimate(["a"], gap=3, now=at(5, 10), last_sent=last)
+        self.assertEqual(e.plan, ((date(2026, 10, 5), 1),))
+
+    def test_when_everything_waits_the_empty_days_are_skipped_not_counted(self):
+        last = {"a": date(2026, 10, 5)}
+        e = self.run_estimate(["a"], gap=3, last_sent=last)
+        self.assertEqual((e.send_days, e.plan), (1, ((date(2026, 10, 8), 1),)))
+
+    def test_today_after_the_window_has_no_capacity(self):
+        e = self.run_estimate(["a", "a"], gap=1, now=at(5, 17))
+        self.assertEqual([d for d, _ in e.plan], [date(2026, 10, 6), date(2026, 10, 7)])
+
+    def test_horizon_fit_follows_the_gap(self):
+        until = ar.horizon_end(at(5, 10), self.settings(1))  # 10.10 00:00: dni 5, 6, 7, 8, 9
+        self.assertTrue(self.run_estimate(["a"] * 5, until=until).fits_in_horizon)
+        self.assertFalse(self.run_estimate(["a"] * 6, until=until).fits_in_horizon)  # szósty mail dopiero 12.10
+
+    def test_a_queue_that_cannot_finish_in_the_simulation_does_not_fit(self):
+        e = self.run_estimate(["a"] * 1000, gap=30)
+        self.assertFalse(e.fits_in_horizon)
+
+    def test_a_big_queue_is_computed_quickly(self):
+        import time
+
+        queue = [f"firma{n % 5000}" for n in range(50_000)]
+        started = time.monotonic()
+        e = self.run_estimate(queue, gap=1, daily_cap=500, weekdays=[0, 1, 2, 3, 4, 5, 6])
+        self.assertLess(time.monotonic() - started, 2.0)
+        self.assertGreater(e.send_days, 10)
+
+    def test_the_simulation_covers_exactly_400_days(self):
+        every_day = {"weekdays": [0, 1, 2, 3, 4, 5, 6]}
+        fits = self.run_estimate(["a"] * 400, gap=1, **every_day)
+        self.assertEqual((fits.send_days, fits.fits_in_horizon), (400, True))
+        too_long = self.run_estimate(["a"] * 401, gap=1, **every_day)
+        self.assertEqual((too_long.send_days, too_long.fits_in_horizon), (400, False))
+
+    def test_the_plan_lists_at_most_14_days(self):
+        e = self.run_estimate(["a"] * 15, gap=1, weekdays=[0, 1, 2, 3, 4, 5, 6])
+        self.assertEqual((e.send_days, len(e.plan)), (15, 14))
+
+    def test_the_last_day_on_the_horizon_boundary_does_not_fit(self):
+        every_day = {"weekdays": [0, 1, 2, 3, 4, 5, 6]}
+        until = ar.horizon_end(at(5, 10), self.settings(1, **every_day))  # 10.10 00:00 — dni 5, 6, 7, 8, 9
+        self.assertTrue(self.run_estimate(["a"] * 5, until=until, **every_day).fits_in_horizon)
+        self.assertFalse(self.run_estimate(["a"] * 6, until=until, **every_day).fits_in_horizon)
+
+    def test_a_gap_that_changes_nothing_is_not_reported_as_limiting(self):
+        e = self.run_estimate(["a", "b", "c"], gap=1)
+        self.assertFalse(e.limited_by_gap)
 
 
 class FailureTests(unittest.TestCase):
