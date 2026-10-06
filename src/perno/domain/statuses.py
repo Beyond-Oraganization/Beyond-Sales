@@ -48,6 +48,10 @@ KEEPS_SENT_AT = (STATUS_SENT, STATUS_REPLIED, STATUS_INTERESTED, STATUS_DO_NOT_C
 # albo decyzję człowieka (np. firma, której nie wolno pisać, wróciłaby na „Do wysłania").
 PROTECTED_FROM_REGENERATION = (STATUS_SENT, STATUS_SENDING, STATUS_REPLIED, STATUS_INTERESTED, STATUS_DO_NOT_CONTACT)
 
+# Statusy, które dotyczą całej firmy, nie jednego adresu: firma odpowiedziała, jest zainteresowana, prosi o spokój albo
+# już jest klientem. Pozostałe adresy tej firmy są wtedy wstrzymane (`company_rules.hold_reason`).
+COMPANY_STOPS = (STATUS_REPLIED, STATUS_INTERESTED, STATUS_DO_NOT_CONTACT, STATUS_SKIPPED_CUSTOMER)
+
 SEGMENT_ORDER = ("eventy", "driverzy")
 
 

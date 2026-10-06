@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Iterable, Mapping, Optional
 
+from perno.domain import company_rules
 from perno.domain import statuses as st
 
 
@@ -53,6 +54,8 @@ def sendability_problem(row: Mapping) -> Optional[str]:
                 "Jeśli to pomyłka, zmień status ręcznie.")
     if not row["email"] or not row["body_html"]:
         return "Brak e-maila lub treści — uzupełnij przed wysyłką."
+    if row.get("hold"):  # status innego adresu tej firmy (`COMPANY_STOPS`), wyliczany przez bazę
+        return company_rules.hold_message(row["hold"])
     return None
 
 
