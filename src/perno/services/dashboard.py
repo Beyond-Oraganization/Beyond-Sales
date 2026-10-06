@@ -14,6 +14,7 @@ import json
 import os
 
 from perno.db import Database
+from perno.design import read_tokens
 from perno.domain import countries
 from perno.domain.statuses import STATUS_META as STATUS_LABELS
 
@@ -22,53 +23,66 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
 <title>Perno — Maile (dashboard)</title>
 <style>
-  :root{
-    --bg:#f5f6f8; --card:#ffffff; --border:#e2e5ea; --text:#1b1f27; --muted:#6b7280;
-    --accent:#2f6feb; --row-hover:#f0f3fa;
-  }
-  @media (prefers-color-scheme: dark){
-    :root{ --bg:#0f1115; --card:#171a21; --border:#282d37; --text:#e7e9ee; --muted:#9aa2b1;
-           --accent:#5b8cff; --row-hover:#1c2029; }
-  }
+/*__TOKENS__*/
   *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-       background:var(--bg);color:var(--text);}
-  header{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--border);
-         padding:18px 24px 14px;}
-  header h1{margin:0 0 10px;font-size:19px;font-weight:650;}
-  .summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
-  .summary .chip{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;
-                  background:var(--card);border:1px solid var(--border);}
-  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
-  .controls input, .controls select{font-family:inherit;font-size:13px;padding:7px 10px;
-      border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);}
-  .controls input[type="text"]{flex:1 1 240px;min-width:200px;}
-  .count{font-size:12.5px;color:var(--muted);white-space:nowrap;}
-  main{padding:16px 24px 60px;}
-  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);
-        border-radius:10px;overflow:hidden;}
-  thead th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;
-           color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--border);}
-  tbody tr{border-bottom:1px solid var(--border);cursor:pointer;}
-  tbody tr:hover{background:var(--row-hover);}
-  tbody td{padding:9px 12px;font-size:13px;vertical-align:top;}
-  .badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;color:#fff;
-         white-space:nowrap;}
-  .site-link{margin-left:6px;text-decoration:none;opacity:.7;}
-  .site-link:hover{opacity:1;}
-  .detail-row td{background:var(--row-hover);padding:16px 20px;}
-  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-  .detail-grid h4{margin:0 0 6px;font-size:11.5px;text-transform:uppercase;color:var(--muted);}
-  .body-preview{border:1px solid var(--border);border-radius:8px;background:var(--card);padding:12px;
-                max-height:420px;overflow:auto;font-size:13px;}
-  .body-text{white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:12px;
-             border:1px solid var(--border);border-radius:8px;background:var(--card);padding:12px;
-             max-height:420px;overflow:auto;}
-  .error-box{color:#c0392b;font-size:12.5px;margin-top:8px;}
-  .empty-state{padding:50px;text-align:center;color:var(--muted);}
-  .muted{color:var(--muted);}
+  body{margin:0;font:400 14px/1.45 var(--font);background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;}
+  :focus-visible{outline:3px solid var(--accent-ring);outline-offset:1px;}
+  header{position:sticky;top:0;z-index:var(--z-nav);padding:var(--s-5) var(--s-6) var(--s-3);background:var(--material);
+         -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);
+         border-bottom:1px solid var(--separator);}
+  header h1{margin:0 0 var(--s-3);font-size:var(--fs-page);font-weight:700;letter-spacing:-.02em;line-height:1.2;}
+  .summary{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--s-3);}
+  .summary .chip{--c:var(--label-2);display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:var(--r-pill);
+                 background:color-mix(in srgb,var(--c) 14%,transparent);color:color-mix(in srgb,var(--c) 70%,var(--label));
+                 font-size:var(--fs-foot);font-weight:500;}
+  .summary .chip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--c);}
+  .controls{display:flex;gap:var(--s-2);flex-wrap:wrap;align-items:center;}
+  .controls input,.controls select{min-height:var(--control-h);padding:0 10px;font:400 var(--fs-ui)/1.3 var(--font);color:var(--label);
+      background:var(--surface);border:1px solid var(--field-border);border-radius:var(--r-md);}
+  .controls select{-webkit-appearance:none;appearance:none;padding-right:28px;background-image:var(--select-chev);
+      background-repeat:no-repeat;background-position:right 9px center;background-size:12px;}
+  .controls input[type="text"]{flex:1 1 240px;min-width:200px;border-color:transparent;background-color:var(--fill);}
+  .controls input:focus,.controls select:focus{outline:3px solid var(--accent-ring);outline-offset:0;border-color:var(--accent);}
+  .count{font-size:var(--fs-foot);color:var(--label-2);white-space:nowrap;}
+  main{padding:var(--s-4) var(--s-6) var(--s-8);}
+  table{width:100%;border-collapse:separate;border-spacing:0;font-size:var(--fs-ui);font-variant-numeric:tabular-nums;
+        background:var(--surface);border:1px solid var(--separator);border-radius:var(--r-lg);box-shadow:var(--sh-1);}
+  thead th{text-align:left;padding:0 var(--s-3);height:36px;font-size:var(--fs-foot);font-weight:600;color:var(--label-2);
+           background:var(--surface-2);border-bottom:1px solid var(--separator);}
+  thead th:first-child{border-top-left-radius:calc(var(--r-lg) - 1px);}
+  thead th:last-child{border-top-right-radius:calc(var(--r-lg) - 1px);}
+  tbody td{padding:var(--s-2) var(--s-3);vertical-align:top;border-bottom:1px solid var(--separator);}
+  tbody tr:last-child > td{border-bottom:none;}
+  tbody tr{cursor:pointer;}
+  tbody tr:hover > td{background:var(--fill);}
+  .badge{--c:var(--label-2);display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--r-pill);
+         font-size:var(--fs-foot);font-weight:500;white-space:nowrap;
+         background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) 62%,var(--label));}
+  .badge::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--c);}
+  .site-link{display:inline-grid;place-content:center;width:18px;height:18px;margin-left:6px;vertical-align:-3px;border-radius:var(--r-sm);
+             color:var(--label-3);text-decoration:none;}
+  .site-link::before{content:"";width:12px;height:12px;background:currentColor;
+                     -webkit-mask:var(--i-link) center/contain no-repeat;mask:var(--i-link) center/contain no-repeat;}
+  .site-link:hover{color:var(--accent-ink);background:var(--accent-tint);}
+  tbody tr.detail-row{cursor:default;}
+  tbody tr.detail-row > td{padding:var(--s-5);background:var(--surface-2);}
+  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s-4);}
+  .detail-grid h4{margin:0 0 6px;font-size:var(--fs-foot);font-weight:600;color:var(--label-2);}
+  .body-preview{padding:var(--s-3);max-height:420px;overflow:auto;font-size:var(--fs-ui);background:var(--surface);
+                border:1px solid var(--separator);border-radius:var(--r-md);}
+  .body-text{padding:var(--s-3);max-height:420px;overflow:auto;white-space:pre-wrap;font:12px/1.5 var(--mono);background:var(--surface);
+             border:1px solid var(--separator);border-radius:var(--r-md);}
+  .error-box{margin-top:var(--s-2);font-size:var(--fs-foot);color:var(--danger);}
+  .note{margin-top:var(--s-2);font-size:var(--fs-foot);}
+  .empty-state{padding:var(--s-8) var(--s-4);text-align:center;color:var(--label-2);}
+  .muted{color:var(--label-2);}
+  td.muted{white-space:nowrap;font-size:var(--fs-foot);}
+  code{font:12px/1.4 var(--mono);background:var(--fill);border-radius:5px;padding:1px 5px;}
+  @media (max-width:760px){header{padding:var(--s-4) var(--s-3) var(--s-2);}main{padding:var(--s-3);}.detail-grid{grid-template-columns:1fr;}}
+  @media (prefers-reduced-motion: reduce){*{transition:none !important;animation:none !important;}}
 </style>
 </head>
 <body>
@@ -94,7 +108,7 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
     </thead>
     <tbody id="tbody"></tbody>
   </table>
-  <div class="empty-state" id="emptyState" style="display:none;">Brak wierszy pasujących do filtrów.</div>
+  <div class="empty-state" id="emptyState" hidden>Brak wierszy pasujących do filtrów.</div>
 </main>
 
 <script>
@@ -130,7 +144,7 @@ function escapeHtml(s){
 
 function badge(status){
   const info = STATUS_LABELS[status] || [status, '#6b7280'];
-  return `<span class="badge" style="background:${info[1]}">${escapeHtml(info[0])}</span>`;
+  return `<span class="badge" style="--c:${escapeHtml(info[1])}">${escapeHtml(info[0])}</span>`;
 }
 
 function countryCell(row){
@@ -142,7 +156,7 @@ function countryCell(row){
 
 function websiteLink(url){
   if (!url) return '';
-  return `<a class="site-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(url)}">🔗</a>`;
+  return `<a class="site-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(url)}" aria-label="Otwórz stronę firmy"></a>`;
 }
 
 function matches(row){
@@ -161,13 +175,13 @@ function renderSummary(){
   const el = document.getElementById('summary');
   el.innerHTML = Object.entries(counts).map(([status, n]) => {
     const info = STATUS_LABELS[status] || [status, '#6b7280'];
-    return `<span class="chip" style="border-color:${info[1]};color:${info[1]}">${escapeHtml(info[0])}: ${n}</span>`;
+    return `<span class="chip" style="--c:${escapeHtml(info[1])}">${escapeHtml(info[0])}: ${n}</span>`;
   }).join('');
 }
 
 function renderBodies(row){
   if (!('body_html' in row)) {
-    return `<div class="muted" style="font-size:12.5px;">Ten podgląd jest bez treści maili${row.has_body ? '' : ' (ten wiersz i tak jej nie ma)'}.
+    return `<div class="muted note">Ten podgląd jest bez treści maili${row.has_body ? '' : ' (ten wiersz i tak jej nie ma)'}.
       Przeczytasz ją w panelu (<code>python3 server.py</code>) albo w podglądzie z treściami:
       <code>python3 dashboard.py --with-bodies</code>.</div>`;
   }
@@ -192,7 +206,7 @@ function renderDetail(row){
   td.innerHTML = `
     ${renderBodies(row)}
     ${row.error ? `<div class="error-box"><strong>Błąd:</strong> ${escapeHtml(row.error)}</div>` : ''}
-    ${row.attachments ? `<div class="muted" style="margin-top:8px;font-size:12px;">Załączniki/obrazy: ${escapeHtml(row.attachments)} ${escapeHtml(row.inline_images||'')}</div>` : ''}
+    ${row.attachments ? `<div class="muted note">Załączniki/obrazy: ${escapeHtml(row.attachments)} ${escapeHtml(row.inline_images||'')}</div>` : ''}
   `;
   tr.appendChild(td);
   return tr;
@@ -224,7 +238,7 @@ function render(){
       tbody.appendChild(renderDetail(row));
     }
   });
-  emptyState.style.display = visible.length ? 'none' : 'block';
+  emptyState.hidden = visible.length > 0;
   countEl.textContent = `${visible.length} / ${MAILE_ROWS.length} wierszy`;
 }
 
@@ -251,7 +265,7 @@ def generate_dashboard(rows: list[dict], output_path: str) -> None:
     labels_json = json.dumps(STATUS_LABELS, ensure_ascii=False)
     countries_json = json.dumps({code: [name, flag] for code, name, flag in countries.choices()}, ensure_ascii=False)
     html = (_PAGE_TEMPLATE.replace("/*__DATA__*/", data_json).replace("/*__STATUS_LABELS__*/", labels_json)
-            .replace("/*__COUNTRIES__*/", countries_json))
+            .replace("/*__COUNTRIES__*/", countries_json).replace("/*__TOKENS__*/", read_tokens()))
     tmp_path = output_path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(html)

@@ -45,6 +45,15 @@ class WriteDashboardTests(unittest.TestCase):
         self.assertEqual([r["has_body"] for r in rows], [True, False])
         self.assertNotIn("Treść 1", read_text(self.out))
 
+    def test_preview_inlines_the_shared_design_tokens(self):
+        dashboard.write_dashboard(self.database, self.out)
+        html = read_text(self.out)
+        self.assertNotIn("/*__TOKENS__*/", html)
+        self.assertIn("--accent:#0071e3", html)
+        self.assertIn("prefers-color-scheme: dark", html)
+        self.assertIn('<meta name="color-scheme" content="light dark">', html)
+        self.assertNotIn("style=\"background:", html)  # kolor statusu przychodzi jako --c, nie jako tło
+
     def test_bodies_can_be_included_on_request(self):
         dashboard.write_dashboard(self.database, self.out, with_bodies=True)
         rows = embedded_rows(self.out)

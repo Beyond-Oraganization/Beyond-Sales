@@ -61,6 +61,12 @@ class PageTests(WebCase):
         self.assertIn("sqlite (test)", html)
         self.assertIn("wysylanie", html)
 
+    def test_pages_carry_the_design_tokens_and_a_segmented_menu(self):
+        html = self.call("GET", "/").body.decode("utf-8")
+        self.assertIn("--accent:#0071e3", html)
+        self.assertIn('<meta name="color-scheme" content="light dark">', html)
+        self.assertIn('<div class="topnav-seg"><a class="topnav-link"', html)
+
     def test_security_headers_on_every_response(self):
         for resp in (self.call("GET", "/"), self.call("GET", "/nie-ma"), self.call("GET", "/api/maile")):
             for name in SECURITY_HEADERS:
