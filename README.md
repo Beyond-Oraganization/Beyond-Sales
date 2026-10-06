@@ -15,7 +15,7 @@ firmy.py             nowe firmy z CSV do bazy oraz przypisanie im kraju, miasta 
 wypelnij.py          uzupełnianie maili treścią z zakończonych skanów                          → perno.cli.enrich
 build_seed_data.py   buduje data/*.csv (dane firm) ze źródeł                                  → perno.cli.seed
 dashboard.py         statyczny podgląd index.html tylko do odczytu — powstaje na żądanie (bez treści maili; --with-bodies) → perno.cli.dashboard
-index.html           wynik dashboard.py; nie jest odświeżany po każdej zmianie, bo przy tysiącach firm byłoby to kosztowne
+index.html           wynik dashboard.py (te same tokeny designu co panel); nie jest odświeżany po każdej zmianie, bo przy tysiącach firm byłoby to kosztowne
 ```
 
 Układ kodu (`src/perno/`); zależności idą tylko „w dół", pilnuje tego `lint-imports` w `scripts/check.sh`:
@@ -235,6 +235,29 @@ Funkcja `render(ctx)` i handlery `handler(req, ctx)` dostają `AppContext` (`ctx
 logikę biznesową woła się z `services/`, a wyjątki zamienia na kody HTTP jedna tabela w `web/errors.py`.
 Strona pojawi się w menu; `layout.render_page` dokłada zakładki, wspólny wygląd i `APP` (statusy) dla JS.
 Wszystkie żądania POST z JS wysyłaj przez `api()` (`assets/common.js`) — serwer wymaga `Content-Type: application/json`.
+
+### Wygląd panelu (system designu)
+
+Styl wzorowany na Apple (jasny i ciemny motyw wybiera system, `prefers-color-scheme`; nie ma przełącznika). Całość jest
+wstawiana do strony inline (bez webfontów, plików CSS i zewnętrznych zasobów), więc zmiany widać po odświeżeniu przeglądarki.
+
+- **Tokeny**: `src/perno/design/tokens.css` to jedyne źródło kolorów, odstępów, promieni, cieni, typografii, ruchu i ikon
+  (maski SVG `--i-chev`, `--i-x`, `--i-link`…). Czyta je panel (`web/layout.py`) i statyczny `index.html` (`services/dashboard.py`,
+  placeholder `/*__TOKENS__*/`), dzięki czemu oba wyglądają tak samo. Nowy kolor dodajesz tu, w obu motywach.
+- **Prymitywy**: `assets/base.css` (nawigacja z segmented control, przyciski `.btn`/`.primary`/`.danger`, pola, odznaki
+  `.badge`, chipy, callouty `.banner`, karty `.card`, wspólna tabela, arkusz `dialog.sheet`, toast). `assets/kit.css` to tylko
+  to, co dotyczy list firm; pliki stron (`wysylka.css`, `automat.css`…) układają ekran, a nie definiują od nowa przycisków czy tabel.
+- **Kolory statusów** przychodzą z `STATUS_META`/`FIRMA_META` jako `style="--c:#hex"`; tło, tekst i kropka odznaki wynikają z `--c` i
+  motywu (`--ink-mix`), więc ten sam status jest czytelny w jasnym i ciemnym motywie. Nie wpisuj kolorów statusów w CSS.
+- **Komunikaty**: `showToast(tekst, 'ok' | 'error')` i `showSheet({title, message, confirmLabel, tone, focusCancel})` (obie w
+  `assets/common.js`; `showSheet` zwraca `Promise<boolean>`) zastępują `alert()`/`confirm()` i własne komunikaty stron. Treść
+  trafia do DOM jako tekst, bo zawiera nazwy firm ze skanowanych stron.
+- **Zasady dla nowego kodu**: bez własnych kolorów hex w CSS (wyjątek: biały tekst na akcencie) i bez atrybutów `style=` w znacznikach
+  (wyjątek: `--c`; szary `#6b7280` w JS to tylko kolor zastępczy nieznanego statusu), bez glifów ▾ ✕ 🔗 w tekście
+  (ikony rysuje CSS), kontrolki min. 30 px (44 px na ekranie dotykowym), widoczny `:focus-visible`, animacje wyłączane przez
+  `prefers-reduced-motion`.
+- **Kontrast** pilnuje `tests/test_design_contrast.py`: pary tekst/tło z tokenów w obu motywach (≥ 4,5:1, ikony ≥ 3:1) i odznaki
+  wszystkich statusów. Zmieniając token, uruchom ten test.
 
 ## 5. Skraper (`scrape.py` i zakładka „Skraper”)
 
@@ -471,7 +494,8 @@ wyniki wygenerowane z dawnej implementacji w przeglądarce) pilnuje, żeby SQL d
 (`tests/test_listing.py`). Stan filtrów, model listy (żądania, sklejanie, spóźnione odpowiedzi) i zaznaczanie
 (`filters.js`, `listmodel.js`, `selection.js` w `src/perno/web/pages/assets/`) sprawdzają testy w JavaScript
 (`tests/js/*.test.js`), które ten sam zestaw uruchamia przez Node.js 18+ (bez Node są pomijane; osobno:
-`node --test tests/js/*.test.js`); `tests/js/skaper_xss.test.js` uruchamia skrypt zakładki Skraper z wrogimi danymi
+`node --test tests/js/*.test.js`); `tests/js/sheet.test.js` sprawdza wspólny arkusz i toast (treść tylko jako tekst, wyniki potwierdzenia, Esc, fokus);
+`tests/js/skaper_xss.test.js` uruchamia skrypt zakładki Skraper z wrogimi danymi
 (`<script>`, `onerror=`, `javascript:`) i pilnuje, żeby żadne nie stało się znacznikiem ani atrybutem; `tests/js/kit_xss.test.js`
 robi to samo dla list (nazwy, segmenty i kraje w licznikach, wierszach i podsumowaniach z serwera). Dane do testów skali
 (50 000 firm) tworzy `scripts/seed_synthetic.py` (tylko w bazie `*_test`). Opcjonalny test

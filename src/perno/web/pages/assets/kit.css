@@ -25,8 +25,10 @@
 .kit-pop{position:relative;display:inline-block;}
 .kit-popover{position:absolute;z-index:var(--z-pop);top:calc(100% + 6px);left:0;min-width:240px;max-width:min(360px,92vw);max-height:360px;
   overflow:auto;padding:6px;border-radius:var(--r-lg);box-shadow:var(--sh-pop);
-  background:color-mix(in srgb,var(--surface) 90%,transparent);animation:pop-in var(--dur-1) var(--ease);}
+  background:color-mix(in srgb,var(--surface) 94%,transparent);animation:pop-in var(--dur-1) var(--ease);}
 .kit-popover.align-right{left:auto;right:0;}
+/* w kapsule akcji tło jest już materiałem, a zagnieżdżony blur nic nie rozmywa, więc menu dostaje pełne tło */
+.action-bar .kit-popover{background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none;}
 .kit-popover.up{top:auto;bottom:calc(100% + 8px);animation-name:pop-in-up;}
 @keyframes pop-in{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
 @keyframes pop-in-up{from{opacity:0;transform:translateY(4px) scale(.98)}to{opacity:1;transform:none}}

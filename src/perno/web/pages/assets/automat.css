@@ -4,7 +4,7 @@
 .page-head .controls.spaced{margin-top:var(--s-4);}
 
 /* kafle stanu u góry */
-.status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:var(--s-3);margin:var(--s-4) 0 0;}
+.status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s-3);margin:var(--s-4) 0 0;}
 .status-card{padding:var(--s-3) var(--s-4);background:var(--surface);border:1px solid var(--separator);border-radius:var(--r-lg);
   box-shadow:var(--sh-1);font-size:var(--fs-foot);font-weight:500;color:var(--label-2);}
 .status-card b{display:flex;align-items:center;margin-top:2px;font-size:20px;font-weight:600;letter-spacing:-.01em;color:var(--label);}

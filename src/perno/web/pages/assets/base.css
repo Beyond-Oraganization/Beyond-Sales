@@ -239,6 +239,10 @@ dialog.bulk-dialog[open],dialog.sheet[open]{animation:sheet-in var(--dur-2) var(
 .toast.is-leaving{opacity:0;transform:translateY(-6px);transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease);}
 @keyframes toast-in{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}
 
+/* rzędy przewijane w poziomie (nawigacja, chipy, pasek akcji) nie pokazują paska przewijania */
+.topnav,.kit-presets,.kit-statuses,.action-bar{scrollbar-width:none;}
+.topnav::-webkit-scrollbar,.kit-presets::-webkit-scrollbar,.kit-statuses::-webkit-scrollbar,.action-bar::-webkit-scrollbar{display:none;}
+
 /* ---- ruch i dostępność ------------------------------------------------------------------------------------------ */
 @media (pointer:coarse){
   .btn,.kit-btn,button.primary,.controls button,.kit-pager button,.pager button,:is(.bulk-form,.sheet-form) footer button,
