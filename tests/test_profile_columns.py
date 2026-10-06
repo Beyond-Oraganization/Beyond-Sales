@@ -42,7 +42,11 @@ class CountryValidationTests(unittest.TestCase):
         self.assertEqual(len(dbmod.LEGACY_COLUMNS), 19)
         self.assertEqual(dbmod.PROFILE_COLUMNS, ("country", "city", "address", "description"))
         self.assertEqual(dbmod.COLUMNS, dbmod.LEGACY_COLUMNS + dbmod.PROFILE_COLUMNS)
-        self.assertEqual({c.name for c in dbmod.maile.columns} - {"updated_at"}, set(dbmod.COLUMNS))
+        self.assertEqual(dbmod.LINK_COLUMNS, ("company_id", "position"))
+        self.assertEqual({c.name for c in dbmod.maile.columns} - {"updated_at"}, set(dbmod.COLUMNS) | set(dbmod.LINK_COLUMNS))
+        self.assertEqual(set(dbmod.COMPANY_COLUMNS) | set(dbmod.MAIL_COLUMNS), set(dbmod.COLUMNS))
+        self.assertFalse(set(dbmod.COMPANY_COLUMNS) & set(dbmod.MAIL_COLUMNS))
+        self.assertEqual({c.name for c in dbmod.companies.columns} - {"id", "updated_at"}, set(dbmod.COMPANY_COLUMNS))
 
 
 class ProfileRoundtripTests(unittest.TestCase):
@@ -102,16 +106,20 @@ class ProfileRoundtripTests(unittest.TestCase):
 class SchemaUpgradeTests(unittest.TestCase):
     def test_old_table_gets_new_columns_and_keeps_every_value(self):
         database = old_database(3)
-        self.assertEqual({c.name for c in database.missing_columns()}, set(dbmod.PROFILE_COLUMNS))
+        new_columns = set(dbmod.PROFILE_COLUMNS) | set(dbmod.LINK_COLUMNS)
+        self.assertEqual({c.name for c in database.missing_columns()}, new_columns)
         before = [dict(r) for r in database.engine.connect().execute(sa.text("SELECT * FROM maile ORDER BY id")).mappings()]
         added = database.upgrade_schema()
-        self.assertEqual(set(added), set(dbmod.PROFILE_COLUMNS))
+        self.assertEqual(set(added) & new_columns, new_columns)
+        self.assertIn("podmioty", added)  # nowa tabela firm
+        self.assertIn("uq_maile_company_email", added)  # unikalny indeks adresu w firmie powstaje jako ostatni
+        self.assertEqual(added[-1], "uq_maile_company_email")
         self.assertEqual(database.missing_columns(), [])
         after = [dict(r) for r in database.engine.connect().execute(sa.text("SELECT * FROM maile ORDER BY id")).mappings()]
         self.assertEqual(len(after), 3)
         for old, new in zip(before, after):
             self.assertEqual({k: new[k] for k in old}, old)  # żadna dotychczasowa wartość się nie zmieniła
-            self.assertTrue(all(new[c] is None for c in dbmod.PROFILE_COLUMNS))
+            self.assertTrue(all(new[c] is None for c in new_columns))
 
     def test_upgrade_is_idempotent(self):
         database = old_database()
@@ -122,6 +130,7 @@ class SchemaUpgradeTests(unittest.TestCase):
     def test_upgraded_database_works_with_the_application_layer(self):
         database = old_database(2)
         database.upgrade_schema()
+        database.adopt()
         row = database.apply_edit("eventy-001", {"country": "Polska", "city": "Kraków"})
         self.assertEqual((row["country"], row["city"]), ("PL", "Kraków"))
         self.assertEqual([r["country"] for r in database.fetch_all()], ["PL", ""])

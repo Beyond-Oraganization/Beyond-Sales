@@ -58,16 +58,17 @@ class MysqlSmokeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.database = dbmod.Database(dbmod.make_engine(resolve_test_url()))
         cls.info = cls.database.check_connection()
-        dbmod.maile.drop(cls.database.engine, checkfirst=True)
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
         cls.database.ensure_schema()
 
     @classmethod
     def tearDownClass(cls):
-        dbmod.maile.drop(cls.database.engine, checkfirst=True)
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
 
     def setUp(self):
         with self.database.transaction() as conn:
             conn.execute(dbmod.maile.delete())
+            conn.execute(dbmod.companies.delete())
 
     def put(self, *rows):
         with self.database.transaction() as conn:
@@ -198,7 +199,7 @@ class MysqlScraperSmokeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.database = dbmod.Database(dbmod.make_engine(resolve_test_url()))
         scraper_schema.skraper_metadata.drop_all(cls.database.engine)
-        dbmod.maile.drop(cls.database.engine, checkfirst=True)
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
         cls.database.ensure_schema()
         cls.store = Store(cls.database)
         cls.store.ensure_schema()
@@ -206,13 +207,14 @@ class MysqlScraperSmokeTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         scraper_schema.skraper_metadata.drop_all(cls.database.engine)
-        dbmod.maile.drop(cls.database.engine, checkfirst=True)
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
 
     def setUp(self):
         with self.database.transaction() as conn:
             for table in reversed(scraper_schema.skraper_metadata.sorted_tables):
                 conn.execute(table.delete())
             conn.execute(dbmod.maile.delete())
+            conn.execute(dbmod.companies.delete())
 
     def firm(self, n=1):
         return self.store.add_manual(f"https://firma{n}.example.com/", f"Firma {n}")["id"]
@@ -335,6 +337,83 @@ class MysqlScraperSmokeTests(unittest.TestCase):
         self.store.save_result(firma_id, run_id, self.page("/x", url=url, url_hash=url_hash(url)))
         self.assertEqual(self.store.get_firma(firma_id)["crawl_delay"], 1.5)
         self.assertGreater(len(self.store.get_firma(firma_id)["robots_txt"]), 150_000)
+
+
+MYSQL_OLD_TABLE = """
+CREATE TABLE maile (
+    id VARCHAR(32) NOT NULL PRIMARY KEY, segment VARCHAR(32) NOT NULL, `row_number` INT, company VARCHAR(255),
+    contact_person VARCHAR(255), email VARCHAR(320), website VARCHAR(1000), tag VARCHAR(255), mode VARCHAR(16),
+    subject VARCHAR(500), body_html MEDIUMTEXT, body_text MEDIUMTEXT, status VARCHAR(32) NOT NULL, generated_at DATETIME,
+    sent_at DATETIME, attachments TEXT, inline_images VARCHAR(255), error TEXT,
+    retry_count INT NOT NULL DEFAULT 0, updated_at DATETIME, country VARCHAR(2), city VARCHAR(120),
+    address VARCHAR(500), description TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+"""
+
+
+@unittest.skipUnless(TEST_DB, SKIP_REASON)
+class MysqlAdoptionTests(unittest.TestCase):
+    """Uaktualnienie i przejęcie na prawdziwym MySQL: DDL, indeks unikalny, `GET_LOCK`, `INSERT … SELECT`, porównanie
+    z NULL (`<=>`) i zachowanie przy dwóch jednoczesnych przejęciach."""
+
+    def setUp(self):
+        self.database = dbmod.Database(dbmod.make_engine(resolve_test_url()))
+        dbmod.metadata.drop_all(self.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
+        with self.database.engine.begin() as conn:
+            conn.execute(sa.text(MYSQL_OLD_TABLE))
+            for n in (1, 2, 3):
+                conn.execute(sa.text(
+                    "INSERT INTO maile (id, segment, `row_number`, company, email, status, retry_count, country) "
+                    "VALUES (:id, 'eventy', :n, :company, :email, 'wyslano', 0, 'PL')"),
+                    {"id": f"eventy-{n:03d}", "n": n, "company": f"Firma {n}", "email": f"f{n}@example.com"})
+        self.addCleanup(dbmod.metadata.drop_all, self.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
+
+    def test_upgrade_adopt_and_diagnose(self):
+        added = self.database.upgrade_schema()
+        self.assertIn("podmioty", added)
+        self.assertEqual(added[-1], "uq_maile_company_email")
+        self.assertEqual(self.database.upgrade_schema(), [])
+        report = self.database.adopt()
+        self.assertEqual((report.companies_added, report.rows_linked), (3, 3))
+        self.assertTrue(self.database.diagnose().clean, self.database.diagnose())
+        self.assertEqual(self.database.adopt().rows_linked, 0)
+        with self.database.engine.connect() as conn:
+            self.assertEqual(conn.execute(sa.text("SELECT IS_FREE_LOCK('perno_adopt')")).scalar(), 1)  # blokada zwolniona
+
+    def test_the_unique_index_refuses_a_duplicate_address_in_one_company(self):
+        self.database.upgrade_schema()
+        self.database.adopt()
+        with self.assertRaises(sa_exc.IntegrityError), self.database.engine.begin() as conn:
+            conn.execute(sa.text("INSERT INTO maile (id, segment, email, status, retry_count, company_id, position) "
+                                 "VALUES ('eventy-001~2', 'eventy', 'F1@EXAMPLE.COM', 'do_wyslania', 0, 'eventy-001', 2)"))
+
+    def test_mirror_drift_is_detected_with_null_safe_comparison(self):
+        self.database.upgrade_schema()
+        self.database.adopt()
+        with self.database.engine.begin() as conn:
+            conn.execute(sa.text("UPDATE maile SET city = 'Łódź' WHERE id = 'eventy-002'"))  # NULL w firmie, tekst w lustrze
+        self.assertEqual(self.database.diagnose().mirror_drift, 1)
+
+    def test_two_adopters_at_once_create_each_company_once(self):
+        self.database.upgrade_schema()
+        reports, errors = [], []
+        barrier = threading.Barrier(2)
+
+        def worker():
+            try:
+                barrier.wait()
+                reports.append(self.database.adopt())
+            except Exception as exc:  # noqa: BLE001 — test zbiera błędy wątków
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(sorted(r.companies_added for r in reports), [0, 3])
+        self.assertTrue(self.database.diagnose().clean)
 
 
 if __name__ == "__main__":

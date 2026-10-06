@@ -88,9 +88,9 @@ def build_app(config_path: str) -> App:
     info = db.check_connection()
     if not info["table_exists"]:
         raise DbError("Tabela maile nie istnieje. Uruchom migrate_csv_to_sql.py (lub: python3 -m perno.db --init).")
-    added = db.upgrade_schema()  # starsza baza dostaje nowe, opcjonalne kolumny (kraj, miasto, adres, opis)
+    added = db.prepare()  # starsza baza dostaje nową tabelę firm, kolumny i indeksy; maile bez firmy trafiają do firm
     if added:
-        print(f"Uaktualniono tabelę maile — dodano kolumny: {', '.join(added)}.")
+        print(f"Uaktualniono schemat bazy — dodano: {', '.join(added)}.")
     recovered = db.recover_stale_claims()
     if recovered:
         print(f"UWAGA: zawieszone wysyłki oznaczono jako błąd (sprawdź folder Wysłane): {', '.join(recovered)}")

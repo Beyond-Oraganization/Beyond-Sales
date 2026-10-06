@@ -14,10 +14,12 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 from urllib.parse import urlsplit
 
 from perno.db import Database, DbError, InvalidValue, format_value, from_api
+from perno.db import companies as companies_table
+from perno.db import maile as maile_table
 from perno.domain import countries
 from perno.domain import statuses as st
 from perno.scraper.urls import host_key
@@ -48,23 +50,35 @@ def domain_key(url: object) -> Optional[str]:
 
 # ---- kopia zapasowa ------------------------------------------------------------------
 
-def backup_table(db: Database, directory: str, label: str, now: Optional[datetime] = None) -> str:
-    """Zapisuje całą tabelę `maile` (wszystkie kolumny, które w niej są teraz) do CSV. Działa także na bazie sprzed
-    uaktualnienia schematu, bo bierze kolumny z samej tabeli, a nie z definicji w kodzie."""
-    os.makedirs(directory, exist_ok=True)
-    stamp = (now or datetime.now()).strftime("%Y%m%d_%H%M%S")
-    path = os.path.join(directory, f"Maile_{stamp}_przed-{label}.csv")
+def _unused_path(directory: str, prefix: str, stamp: str, label: str) -> str:
+    path = os.path.join(directory, f"{prefix}_{stamp}_przed-{label}.csv")
     counter = 1
     while os.path.exists(path):  # dwie kopie w tej samej sekundzie nie mogą się nadpisać — pierwsza jest stanem sprzed zmian
         counter += 1
-        path = os.path.join(directory, f"Maile_{stamp}_przed-{label}_{counter}.csv")
+        path = os.path.join(directory, f"{prefix}_{stamp}_przed-{label}_{counter}.csv")
+    return path
+
+
+def _dump_csv(db: Database, table: Any, path: str) -> None:
     tmp = path + ".tmp"
-    with db.dump_table() as (names, rows), open(tmp, "w", newline="", encoding="utf-8") as handle:
+    with db.dump_table(table) as (names, rows), open(tmp, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(names)
         for row in rows:
             writer.writerow([format_value(value) for value in row])
     os.replace(tmp, path)
+
+
+def backup_table(db: Database, directory: str, label: str, now: Optional[datetime] = None) -> str:
+    """Zapisuje całą tabelę `maile` (wszystkie kolumny, które w niej są teraz) do CSV, a gdy istnieje tabela firm
+    (`podmioty`), obok niej drugi plik `Podmioty_*`. Działa także na bazie sprzed uaktualnienia schematu, bo bierze
+    kolumny z samej tabeli, a nie z definicji w kodzie. Zwraca ścieżkę pliku z `maile`."""
+    os.makedirs(directory, exist_ok=True)
+    stamp = (now or datetime.now()).strftime("%Y%m%d_%H%M%S")
+    path = _unused_path(directory, "Maile", stamp, label)
+    _dump_csv(db, maile_table, path)
+    if db.has_table(companies_table.name):
+        _dump_csv(db, companies_table, _unused_path(directory, "Podmioty", stamp, label))
     return path
 
 

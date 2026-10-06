@@ -141,7 +141,8 @@ class EnrichmentCase(unittest.TestCase):
         return self.database.get(row_id)
 
     def backup_files(self):
-        return sorted(os.listdir(self.backups)) if os.path.isdir(self.backups) else []
+        """Kopie tabeli maile (obok każdej powstaje też kopia firm, `Podmioty_*`)."""
+        return sorted(name for name in os.listdir(self.backups) if name.startswith("Maile_")) if os.path.isdir(self.backups) else []
 
 
 class ListTests(EnrichmentCase):

@@ -95,7 +95,7 @@ def open_database(config: dict) -> Database:
     db = Database.from_config(config)
     if not db.check_connection()["table_exists"]:
         raise DbError("Tabela maile nie istnieje. Uruchom migrate_csv_to_sql.py (lub: python3 -m perno.db --init).")
-    db.upgrade_schema()  # idempotentne: dodaje brakujące, opcjonalne kolumny (kraj, miasto, adres, opis)
+    db.prepare()  # idempotentne: dodaje brakującą tabelę firm, kolumny i indeksy, przyjmuje maile bez firmy
     recovered = db.recover_stale_claims()
     if recovered:
         print(f"UWAGA: zawieszone wysyłki oznaczono jako błąd (sprawdź folder Wysłane): {', '.join(recovered)}")

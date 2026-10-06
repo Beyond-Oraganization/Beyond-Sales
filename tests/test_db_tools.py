@@ -81,7 +81,7 @@ class DbCheckTests(unittest.TestCase):
     def test_init_creates_the_table_and_reports_the_state(self):
         code, out, _ = self.run_cli("--init")
         self.assertEqual(code, 0)
-        self.assertIn("Tabela maile jest gotowa.", out)
+        self.assertIn("Tabele maile i podmioty są gotowe.", out)
         self.assertIn("Tabela maile: jest, wierszy: 0", out)
         self.assertIn("sqlite", out)
 

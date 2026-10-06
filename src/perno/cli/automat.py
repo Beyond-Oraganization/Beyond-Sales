@@ -50,6 +50,7 @@ def open_context(args: argparse.Namespace) -> Context:
     config = ConfigFile(args.config)
     db = Database.from_config(config.load())
     db.check_connection()
+    db.prepare()  # nowy demon na starej bazie: bez tego zapytania o firmy kończyłyby się błędem w pętli restartów
     store = AutomatStore(db)
     store.ensure_schema()
     return Context(config, db, store)

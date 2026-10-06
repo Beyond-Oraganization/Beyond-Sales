@@ -131,3 +131,18 @@ def old_database(rows: int = 2, url: str = "sqlite://", clock=None) -> dbmod.Dat
                 {"id": f"eventy-{n:03d}", "n": n, "company": f"Firma {n}", "email": f"f{n}@example.com",
                  "website": f"https://f{n}.example.com/", "body": f"<p>Treść {n}</p>"})
     return dbmod.Database(engine, clock=clock or FakeClock())
+
+
+def adopted_old_database(rows: int = 2, url: str = "sqlite://", clock=None) -> dbmod.Database:
+    """Baza po `--upgrade` i `--adopt`: stare wiersze (bez kolumn firmowych profilu) przypisane do firm."""
+    database = old_database(rows, url=url, clock=clock)
+    database.upgrade_schema()
+    database.adopt()
+    return database
+
+
+def assert_mirror_consistent(case, database: dbmod.Database) -> None:
+    """Każdy mail ma firmę, każda firma ma mail, a stare kolumny firmowe w `maile` zgadzają się z firmą (lustro dla starego
+    kodu). Wołaj po każdej ścieżce zapisu, która dotyka pól firmy."""
+    found = database.diagnose()
+    case.assertTrue(found.clean, found)

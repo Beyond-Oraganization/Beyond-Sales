@@ -63,9 +63,9 @@ def prepare_writes(db: Database, args, label: str) -> None:
     if not args.no_backup:
         path = firms.backup_table(db, cfg.BACKUP_DIR, label)
         print(f"Kopia zapasowa bazy: {path}")
-    added = db.upgrade_schema()
+    added = db.prepare()
     if added:
-        print(f"Dodano do tabeli maile kolumny: {', '.join(added)}.")
+        print(f"Uaktualniono schemat bazy — dodano: {', '.join(added)}.")
 
 
 def require_profile_columns(db: Database) -> None:

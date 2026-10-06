@@ -9,7 +9,7 @@ from typing import Any, Callable, Mapping, Optional
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
-from perno.db import migrations
+from perno.db import adoption, migrations
 from perno.db.engine import build_url, make_engine
 from perno.db.errors import DB_ERRORS, DbUnavailable
 from perno.db.mail_repository import MailRepository
@@ -85,6 +85,32 @@ class Database(MailRepository):
 
     def upgrade_schema(self) -> list:
         return migrations.upgrade_schema(self.engine)
+
+    def has_table(self, name: str) -> bool:
+        return sa.inspect(self.engine).has_table(name)
+
+    def adoption_state(self) -> adoption.AdoptionState:
+        with self.engine.connect() as conn:
+            return adoption.state(conn)
+
+    def adopt(self) -> adoption.AdoptionReport:
+        """Zakłada firmy z wierszy bez firmy (jawny krok danych: `python -m perno.db --adopt`, z kopią zapasową)."""
+        return adoption.adopt(self.engine, self.now())
+
+    def diagnose(self) -> adoption.Diagnostics:
+        with self.engine.connect() as conn:
+            return adoption.diagnose(conn)
+
+    def prepare(self) -> list:
+        """Start programu (panel, demon, terminal): uaktualnia schemat i przyjmuje wiersze bez firmy, które w międzyczasie
+        wstawił starszy kod. Odmawia (`NotAdopted`), gdy baza ma maile, ale ani jednej firmy — wtedy trzeba uruchomić
+        `--adopt`. Zwraca nazwy dodane do schematu."""
+        added = self.upgrade_schema()
+        current = self.adoption_state()
+        adoption.require_adopted(current)
+        if current.orphans:
+            self.adopt()
+        return added
 
     def check_connection(self) -> dict:
         try:

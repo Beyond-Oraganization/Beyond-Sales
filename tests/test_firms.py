@@ -26,7 +26,7 @@ from perno.services.firms_import import (
     read_import_csv,
     read_profile_csv,
 )
-from tests.fixtures import make_db, old_database, put, sample_row
+from tests.fixtures import adopted_old_database, make_db, old_database, put, sample_row
 
 
 def write_csv(path: str, header: list, rows: list, bom: bool = False) -> str:
@@ -328,7 +328,9 @@ class BackupTests(TempCase):
         self.assertEqual((row["country"], row["city"]), ("PL", "Kraków"))
 
 
-class CliTests(TempCase):
+class CliBase(TempCase):
+    adopt = True  # baza po `--upgrade` i `--adopt`; podklasa z `adopt = False` ma bazę sprzed uaktualnienia
+
     def setUp(self):
         super().setUp()
         self.db_url = f"sqlite:///{self.path('cli.db')}"
@@ -341,7 +343,8 @@ class CliTests(TempCase):
         for patcher in patches:
             patcher.start()
             self.addCleanup(patcher.stop)
-        self.database = old_database(2, url=self.db_url, clock=datetime.now)
+        make_database = adopted_old_database if self.adopt else old_database
+        self.database = make_database(2, url=self.db_url, clock=datetime.now)
         self.addCleanup(self.database.engine.dispose)
         self.new_csv = write_csv(self.path("nowe.csv"), IMPORT_HEADER, [
             ["Nowa A", "https://a-nowa.pl/", "Opis A"], ["Nowa B", "https://b-nowa.pl/", "Opis B"], ["Stara", "https://f1.example.com/", ""]])
@@ -355,24 +358,25 @@ class CliTests(TempCase):
         return code, out.getvalue(), err.getvalue()
 
     def backup_files(self):
-        return sorted(os.listdir(self.backups)) if os.path.isdir(self.backups) else []
+        """Kopie tabeli maile (obok każdej powstaje też kopia firm, `Podmioty_*`)."""
+        return sorted(name for name in os.listdir(self.backups) if name.startswith("Maile_")) if os.path.isdir(self.backups) else []
 
-    def test_import_dry_run_changes_nothing_not_even_the_schema(self):
+
+class CliTests(CliBase):
+    def test_import_dry_run_changes_nothing(self):
         code, out, _ = self.cli("import", self.new_csv, "--segment", "eventy", "--dry-run")
         self.assertEqual(code, 0)
         self.assertIn("Do dodania: 2 firm do segmentu eventy", out)
         self.assertIn("Stara  (jako eventy-001)", out)
         self.assertIn("--dry-run: nic nie zapisano", out)
         self.assertEqual(self.backup_files(), [])
-        self.assertEqual({c.name for c in self.database.missing_columns()}, set(dbmod.PROFILE_COLUMNS))
         count = self.database.engine.connect().execute(sa.text("SELECT COUNT(*) FROM maile")).scalar()
         self.assertEqual(count, 2)
 
-    def test_import_makes_a_backup_upgrades_the_schema_and_inserts(self):
+    def test_import_makes_a_backup_and_inserts(self):
         code, out, _ = self.cli("import", self.new_csv, "--segment", "eventy")
         self.assertEqual(code, 0, out)
         self.assertIn("Kopia zapasowa bazy:", out)
-        self.assertIn("Dodano do tabeli maile kolumny: country, city, address, description", out)
         self.assertIn("Dodano: 2 firm do segmentu eventy", out)
         self.assertIn("eventy-n001 … eventy-n002", out)
         self.assertEqual(len(self.backup_files()), 1)
@@ -380,7 +384,7 @@ class CliTests(TempCase):
         with open(os.path.join(self.backups, self.backup_files()[0]), newline="", encoding="utf-8") as handle:
             saved = list(csv.DictReader(handle))
         self.assertEqual([r["id"] for r in saved], ["eventy-001", "eventy-002"])  # kopia sprzed zmiany: bez nowych firm
-        self.assertNotIn("country", saved[0])
+        self.assertEqual(len(os.listdir(self.backups)), 2)  # obok kopii maili jest kopia firm
         self.assertEqual(self.database.count_rows(), 4)
         self.assertEqual(self.database.get("eventy-n002")["description"], "Opis B")
 
@@ -400,11 +404,6 @@ class CliTests(TempCase):
     def test_no_backup_flag(self):
         self.cli("import", self.new_csv, "--segment", "eventy", "--no-backup")
         self.assertEqual(self.backup_files(), [])
-
-    def test_countries_dry_run_needs_the_new_columns_and_explains_how_to_get_them(self):
-        code, _, err = self.cli("kraje", self.countries_csv, "--dry-run")
-        self.assertEqual(code, 1)
-        self.assertIn("python3 -m perno.db --upgrade", err)
 
     def test_countries_end_to_end(self):
         self.cli("import", self.new_csv, "--segment", "eventy")
@@ -443,7 +442,25 @@ class CliTests(TempCase):
         self.assertEqual(self.backup_files(), [])
         code, _, err = self.cli("import", self.path("nie-ma.csv"), "--segment", "eventy")
         self.assertEqual((code, "BŁĄD pliku" in err), (1, True))
-        self.assertEqual({c.name for c in self.database.missing_columns()}, set(dbmod.PROFILE_COLUMNS))
+        self.assertEqual(self.database.count_rows(), 2)
+
+
+class CliOldSchemaTests(CliBase):
+    """Baza sprzed uaktualnienia (stare 20 kolumn, bez firm): polecenia nie wolno uruchamiać na niej po cichu."""
+    adopt = False
+
+    def test_countries_dry_run_needs_the_new_columns_and_explains_how_to_get_them(self):
+        code, _, err = self.cli("kraje", self.countries_csv, "--dry-run")
+        self.assertEqual(code, 1)
+        self.assertIn("python3 -m perno.db --upgrade", err)
+
+    def test_import_on_an_unadopted_database_is_refused_and_changes_nothing(self):
+        self.database.upgrade_schema()
+        code, _, err = self.cli("import", self.new_csv, "--segment", "eventy")
+        self.assertEqual(code, 1)
+        self.assertIn("--adopt", err)
+        self.assertEqual(self.database.count_rows(), 2)
+        self.assertEqual(self.database.adoption_state().companies, 0)
 
 
 if __name__ == "__main__":

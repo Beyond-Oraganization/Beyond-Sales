@@ -14,11 +14,12 @@ from typing import Callable, Iterable, Iterator, Mapping, Optional
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
+from perno.db import company_writes as cw
 from perno.db.codec import from_api, to_api
 from perno.db.errors import InvalidValue, RowLocked, RowNotFound
 from perno.db.listing_queries import ListingQueries, has_body_expression, light_columns, to_light_row
 from perno.db.queries import ID_CHUNK, filter_clauses, id_chunks, ordering
-from perno.db.schema import COLUMNS, maile
+from perno.db.schema import COLUMNS, companies, maile
 from perno.domain import mail_rules
 from perno.domain import statuses as st
 from perno.domain.listing import DEFAULT_SORT
@@ -173,6 +174,8 @@ class MailRepository(ListingQueries):
                    maile.c.address, has_body]
         found = {}
         ordered = sorted(ids)
+        if lock:
+            self._lock_companies_of(conn, ordered)
         for start in range(0, len(ordered), ID_CHUNK):
             stmt = sa.select(*columns).where(maile.c.id.in_(ordered[start:start + ID_CHUNK])).order_by(maile.c.id)
             if lock:
@@ -180,6 +183,14 @@ class MailRepository(ListingQueries):
             for row in conn.execute(stmt).mappings():
                 found[row["id"]] = dict(row)
         return found
+
+    @staticmethod
+    def _lock_companies_of(conn, mail_ids: list) -> None:
+        """Blokady firm tych maili (rosnąco po id firmy) przed blokadą samych maili: ta sama kolejność co w edycji i wysyłce."""
+        owners = sorted(set(cw.company_ids_of(conn, mail_ids).values()))
+        for start in range(0, len(owners), ID_CHUNK):
+            conn.execute(sa.select(companies.c.id).where(companies.c.id.in_(owners[start:start + ID_CHUNK]))
+                         .order_by(companies.c.id).with_for_update()).all()
 
     def id_website_pairs(self, conn) -> list:
         """`[{id, website}]` wszystkich wierszy — do rozpoznawania firm po domenie przy imporcie."""
@@ -194,13 +205,15 @@ class MailRepository(ListingQueries):
             sa.select(maile.c.id, maile.c.website, maile.c.country, maile.c.city, maile.c.address)).mappings()]
 
     @contextmanager
-    def dump_table(self):
-        """`(nazwy kolumn, wiersze)` całej tabeli w kolejności id — także z kolumnami, których definicja w kodzie jeszcze
-        nie zna (baza sprzed uaktualnienia schematu). Kolumny mają typy z definicji tabeli, nieznane idą jako tekst."""
+    def dump_table(self, table: sa.Table = maile):
+        """`(nazwy kolumn, wiersze)` całej tabeli (`maile` albo `podmioty`) w kolejności id — także z kolumnami, których
+        definicja w kodzie jeszcze nie zna (baza sprzed uaktualnienia schematu). Kolumny mają typy z definicji tabeli,
+        nieznane idą jako tekst."""
+        by_name = {column.name: column for column in table.columns}
         with self.engine.connect() as conn:
-            present = [column["name"] for column in sa.inspect(conn).get_columns(maile.name)]
-            selected = [maile.c[name] if name in maile.c else sa.column(name) for name in present]
-            result = conn.execute(sa.select(*selected).select_from(maile).order_by(maile.c.id))
+            present = [column["name"] for column in sa.inspect(conn).get_columns(table.name)]
+            selected = [by_name[name] if name in by_name else sa.column(name) for name in present]
+            result = conn.execute(sa.select(*selected).select_from(table).order_by(by_name["id"]))
             yield list(result.keys()), result
 
     # ---- zapis --------------------------------------------------------
@@ -208,25 +221,29 @@ class MailRepository(ListingQueries):
     def update_rows(self, conn, updates: Iterable[tuple], now: datetime) -> None:
         """Zapisuje `[(id, {pole: wartość})]` w transakcji wywołującego i odnotowuje czas zmiany (`updated_at`).
         Wiersze z identycznymi zmianami idą jednym `UPDATE … WHERE id IN (…)` (partiami po `ID_CHUNK`): zmiana statusu
-        20 tys. firm to kilkadziesiąt zapytań zamiast 20 tys., czyli sekundy zamiast kilkunastu sekund na MySQL."""
-        groups: dict[tuple, list] = {}
-        for row_id, values in updates:
-            groups.setdefault(tuple(sorted(values.items())), []).append(row_id)
-        for changes, ids in groups.items():
+        20 tys. firm to kilkadziesiąt zapytań zamiast 20 tys., czyli sekundy zamiast kilkunastu sekund na MySQL. Pola
+        firmy (kraj, miasto, adres…) trafiają do firmy wiersza i do jej wszystkich adresów, pozostałe do samego maila."""
+        pending = [(row_id, *cw.split_values(values)) for row_id, values in updates]
+        owners = cw.company_ids_of(conn, [row_id for row_id, _, company in pending if company])
+        mail_groups: dict[tuple, list] = {}
+        company_groups: dict[tuple, set] = {}
+        for row_id, mail, company in pending:
+            if mail:
+                mail_groups.setdefault(tuple(sorted(mail.items())), []).append(row_id)
+            if company:
+                company_groups.setdefault(tuple(sorted(company.items())), set()).add(owners.get(row_id, row_id))
+        for changes, ids in mail_groups.items():
             for start in range(0, len(ids), ID_CHUNK):
                 part = ids[start:start + ID_CHUNK]
                 conn.execute(sa.update(maile).where(maile.c.id.in_(part)).values(**dict(changes), updated_at=now))
+        for changes, company_ids in company_groups.items():
+            cw.write_company_values(conn, sorted(company_ids), dict(changes), now)
 
     def insert_rows(self, conn, rows: list) -> int:
+        """Nowe firmy, każda z jednym adresem (adres główny ma id firmy). Dodatkowe adresy: `add_mail`."""
         stamp = self.now()
-        prepared = []
-        for row in rows:
-            values = from_api(row)
-            values["updated_at"] = stamp
-            prepared.append(values)
-        if prepared:
-            conn.execute(sa.insert(maile), prepared)
-        return len(prepared)
+        cw.insert_new_companies(conn, [from_api(row) for row in rows], stamp)
+        return len(rows)
 
     def upsert_generated(self, rows: list) -> dict:
         stats = {"inserted": 0, "updated": 0, "skipped": 0}
@@ -243,22 +260,22 @@ class MailRepository(ListingQueries):
             for row in rows:
                 values = from_api(row)
                 if row["id"] not in existing:
-                    values["updated_at"] = stamp
                     values["sent_at"] = None
                     values["error"] = None
-                    conn.execute(sa.insert(maile).values(**values))
+                    cw.insert_new_companies(conn, [values], stamp)
                     stats["inserted"] += 1
                     continue
                 if existing[row["id"]] in protected:
                     stats["skipped"] += 1
                     continue
-                changes = {name: values[name] for name in GENERATED}
-                changes.update(error=None, updated_at=stamp)
+                mail, company = cw.split_values({name: values[name] for name in GENERATED})
                 result = conn.execute(
                     sa.update(maile)
                     .where(maile.c.id == row["id"], maile.c.status.not_in(protected))
-                    .values(**changes)
+                    .values(**mail, error=None, updated_at=stamp)
                 )
+                if result.rowcount:
+                    cw.write_company_values(conn, [row["id"]], company, stamp)
                 stats["updated" if result.rowcount else "skipped"] += 1
         return stats
 
@@ -270,10 +287,13 @@ class MailRepository(ListingQueries):
         written = 0
         with self.engine.begin() as conn:
             for row_id, values in updates:
-                values = {**values, "status": st.STATUS_PENDING, "generated_at": now, "updated_at": now,
-                          "error": None, "sent_at": None}
+                mail, company = cw.split_values(values)
+                mail = {**mail, "status": st.STATUS_PENDING, "generated_at": now, "updated_at": now,
+                        "error": None, "sent_at": None}
                 result = conn.execute(sa.update(maile).where(
-                    maile.c.id == row_id, maile.c.status.in_(allowed_statuses)).values(**values))
+                    maile.c.id == row_id, maile.c.status.in_(allowed_statuses)).values(**mail))
+                if result.rowcount:
+                    cw.write_company_values(conn, [cw.company_ids_of(conn, [row_id])[row_id]], company, now)
                 written += result.rowcount
         return written
 
@@ -290,6 +310,10 @@ class MailRepository(ListingQueries):
         now = self.now()
 
         with self.engine.begin() as conn:
+            owner = cw.company_ids_of(conn, [row_id]).get(row_id)
+            if owner is None:
+                raise RowNotFound(f"Nie znaleziono wiersza {row_id}.")
+            cw.lock_company(conn, owner)
             found = conn.execute(
                 sa.select(maile).where(maile.c.id == row_id).with_for_update()
             ).mappings().first()
@@ -300,8 +324,9 @@ class MailRepository(ListingQueries):
                 raise RowLocked("Ten mail jest właśnie wysyłany — poczekaj na wynik.", to_api(current))
 
             update = mail_rules.resolve_edit(current, values, explicit_status=explicit_status, now=now)
-            update["updated_at"] = now
-            conn.execute(sa.update(maile).where(maile.c.id == row_id).values(**update))
+            mail, company = cw.split_values(update)
+            conn.execute(sa.update(maile).where(maile.c.id == row_id).values(**mail, updated_at=now))
+            cw.write_company_values(conn, [owner], company, now)
             return to_api(conn.execute(sa.select(maile).where(maile.c.id == row_id)).mappings().one())
 
     def claim_for_sending(self, row_id: str, allowed_from: tuple = (st.STATUS_PENDING, st.STATUS_ERROR)) -> Optional[dict]:

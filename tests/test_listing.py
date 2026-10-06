@@ -221,13 +221,13 @@ class MysqlVectorTests(VectorChecks, unittest.TestCase):
     def setUpClass(cls):
         cls.vectors = load_vectors()
         cls.database = dbmod.Database(dbmod.make_engine(resolve_test_url()))
-        dbmod.maile.drop(cls.database.engine, checkfirst=True)
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
         cls.database.ensure_schema()
         put(cls.database, *vector_rows(cls.vectors))
 
     @classmethod
     def tearDownClass(cls):
-        dbmod.maile.drop(cls.database.engine, checkfirst=True)
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
 
 
 if __name__ == "__main__":
