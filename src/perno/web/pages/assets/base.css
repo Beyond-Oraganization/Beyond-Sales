@@ -71,8 +71,7 @@ code{font:12px/1.4 var(--mono);background:var(--fill);border-radius:5px;padding:
 
 /* ---- przyciski -------------------------------------------------------------------------------------------------- */
 .btn,.kit-btn,button.primary,.controls button,.row-actions button,.kit-pager button,.pager button,
-.kit-more .kit-shortcuts button,.kit-menu .inline button,.kit-views .save button,.bulk-form footer button,
-.action-bar button:not(.kit-btn):not(.primary){
+.kit-more .kit-shortcuts button,.kit-menu .inline button,.kit-views .save button,.bulk-form footer button{
   display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:var(--control-h);padding:0 12px;
   font:500 var(--fs-ui)/1 var(--font);letter-spacing:-.003em;white-space:nowrap;text-decoration:none;
   color:var(--label);background:var(--btn);border:1px solid var(--field-border);border-radius:var(--r-md);box-shadow:var(--sh-1);
@@ -104,7 +103,7 @@ code{font:12px/1.4 var(--mono);background:var(--fill);border-radius:5px;padding:
   -webkit-mask:var(--i-chev) center/contain no-repeat;mask:var(--i-chev) center/contain no-repeat;}
 
 /* ---- pola ------------------------------------------------------------------------------------------------------- */
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="button"]):not([type="submit"]),
+input:where(:not([type="checkbox"],[type="radio"],[type="range"],[type="file"],[type="button"],[type="submit"])),
 select,textarea{
   min-height:var(--control-h);padding:0 10px;font:400 var(--fs-ui)/1.3 var(--font);color:var(--label);
   background:var(--surface);border:1px solid var(--field-border);border-radius:var(--r-md);
@@ -207,7 +206,7 @@ dialog.bulk-dialog[open],dialog.sheet[open]{animation:sheet-in var(--dur-2) var(
 /* ---- ruch i dostępność ------------------------------------------------------------------------------------------ */
 @media (pointer:coarse){
   .btn,.kit-btn,button.primary,.controls button,.kit-pager button,.pager button,.bulk-form footer button,
-  input:not([type="checkbox"]):not([type="radio"]),select{min-height:44px;}
+  input:where(:not([type="checkbox"],[type="radio"])),select{min-height:44px;}
   .topnav-link{height:34px;}
 }
 @media (prefers-reduced-motion: reduce){

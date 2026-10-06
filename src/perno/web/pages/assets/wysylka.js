@@ -50,7 +50,7 @@ function statusSelect(row){
   const options = values.map(value =>
     `<option value="${escapeHtml(value)}" ${value === row.status ? 'selected' : ''}>${escapeHtml((STATUS_LABELS[value] || [value])[0])}</option>`
   ).join('');
-  return `<select data-id="${escapeHtml(row.id)}" data-field="status" class="badge-select" style="background:${info[1]}">${options}</select>`;
+  return `<select data-id="${escapeHtml(row.id)}" data-field="status" class="badge-select" style="--c:${escapeHtml(info[1])}">${options}</select>`;
 }
 
 function cells(row){

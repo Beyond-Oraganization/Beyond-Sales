@@ -1,13 +1,20 @@
 <div class="page-head">
-  <h1>Wysyłka (Eventy + Driverzy)</h1>
+  <div class="head-row">
+    <div>
+      <h1>Wysyłka</h1>
+      <p class="page-sub">Eventy + Driverzy</p>
+    </div>
+    <div class="head-actions">
+      <button type="button" class="kit-btn" id="refreshBtn" title="Dogeneruj brakujące wiersze z data/*.csv — istniejących nie nadpisuje">Odśwież dane</button>
+      <button type="button" class="kit-btn" id="reloadBtn" title="Wczytaj listę z bazy jeszcze raz">Przeładuj listę</button>
+      <div class="kit-pop" id="columnsPop"><button type="button" class="kit-btn" aria-expanded="false">Kolumny</button><div class="kit-popover align-right" hidden></div></div>
+    </div>
+  </div>
   <div id="configBanner"></div>
   <div class="send-settings">
-    <label class="count">Opóźnienie (s): <input type="number" id="delayMin" value="45" min="0"> – <input type="number" id="delayMax" value="120" min="0"></label>
-    <label class="count">Dzienny limit: <input type="number" id="dailyCap" value="50" min="1"></label>
-    <span class="count" id="sentToday"></span>
-    <button type="button" class="kit-btn" id="refreshBtn" title="Dogeneruj brakujące wiersze z data/*.csv — istniejących nie nadpisuje">Odśwież dane</button>
-    <button type="button" class="kit-btn" id="reloadBtn" title="Wczytaj listę z bazy jeszcze raz">Przeładuj listę</button>
-    <div class="kit-pop" id="columnsPop"><button type="button" class="kit-btn" aria-expanded="false">Kolumny ▾</button><div class="kit-popover align-right" hidden></div></div>
+    <label class="count">Opóźnienie (s) <span class="range"><input type="number" id="delayMin" value="45" min="0" aria-label="Opóźnienie od (s)"><span aria-hidden="true">–</span><input type="number" id="delayMax" value="120" min="0" aria-label="Opóźnienie do (s)"></span></label>
+    <label class="count">Dzienny limit <input type="number" id="dailyCap" value="50" min="1"></label>
+    <span class="count sent-today" id="sentToday"></span>
   </div>
   <div id="filterBar"></div>
   <div id="log"></div>
@@ -38,12 +45,12 @@
 
 <div class="action-bar" id="actionBar">
   <span class="action-count" id="actionCount" aria-live="polite"></span>
-  <div class="kit-pop kit-menu"><button type="button" class="kit-btn" id="statusBtn" aria-expanded="false">Zmień status ▾</button><div class="kit-popover up" id="statusMenu" hidden></div></div>
+  <div class="kit-pop kit-menu"><button type="button" class="kit-btn" id="statusBtn" aria-expanded="false">Zmień status</button><div class="kit-popover up" id="statusMenu" hidden></div></div>
   <button type="button" class="kit-btn" id="dataBtn">Dane firmy…</button>
   <button type="button" class="kit-btn" id="copyBtn">Kopiuj e-maile</button>
-  <div class="kit-pop kit-menu"><button type="button" class="kit-btn" id="exportBtn" aria-expanded="false">Eksportuj ▾</button><div class="kit-popover up" id="exportMenu" hidden></div></div>
+  <div class="kit-pop kit-menu"><button type="button" class="kit-btn" id="exportBtn" aria-expanded="false">Eksportuj</button><div class="kit-popover up" id="exportMenu" hidden></div></div>
   <button type="button" class="kit-btn" id="undoBtn" hidden></button>
-  <span class="spacer"></span>
+  <span class="spacer" aria-hidden="true"></span>
   <button type="button" class="primary" id="sendBtn" disabled>Wyślij gotowe (0)</button>
 </div>
 

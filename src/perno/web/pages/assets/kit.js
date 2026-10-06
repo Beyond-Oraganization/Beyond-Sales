@@ -42,7 +42,7 @@
 
   function badge(status, ctx) {
     const info = ctx.statusMeta[status] || [status, '#6b7280'];
-    return `<span class="kit-badge" style="background:${escapeHtml(info[1])}">${escapeHtml(info[0])}</span>`;
+    return `<span class="kit-badge" style="--c:${escapeHtml(info[1])}">${escapeHtml(info[0])}</span>`;
   }
   function countryCell(row, ctx) {
     const code = row.country || '';
@@ -52,7 +52,7 @@
     return `<span title="${escapeHtml(name || code)}">${escapeHtml(ctx.countryFlags[code] || '')} ${escapeHtml(code)}</span>${city}`;
   }
   function websiteLink(url) {
-    return url ? `<a class="site-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(url)}">🔗</a>` : '';
+    return url ? `<a class="site-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(url)}" aria-label="Otwórz stronę firmy"></a>` : '';
   }
   function shortDate(iso) { return iso ? String(iso).replace('T', ' ').slice(0, 16) : ''; }
   function plural(n, one, few, many) {
@@ -126,10 +126,10 @@
           <div class="kit-searchrow">
             <input type="search" data-role="q" placeholder="Szukaj: słowa, „fraza”, -wyklucz…" aria-label="Szukaj" autocomplete="off">
             <select data-role="qfield" aria-label="Szukaj w polu" title="W którym polu szukać">${fieldOptions}</select>
-            <div class="kit-pop" data-role="segments"><button type="button" class="kit-btn" aria-expanded="false">Segment ▾</button><div class="kit-popover" hidden></div></div>
-            <div class="kit-pop" data-role="countries"><button type="button" class="kit-btn" aria-expanded="false">Kraj ▾</button><div class="kit-popover" hidden></div></div>
-            <button type="button" class="kit-btn" data-role="more-toggle" aria-expanded="false">Więcej filtrów ▾</button>
-            <div class="kit-pop kit-views" data-role="views"><button type="button" class="kit-btn" aria-expanded="false">Widoki ▾</button><div class="kit-popover align-right" hidden></div></div>
+            <div class="kit-pop" data-role="segments"><button type="button" class="kit-btn" aria-expanded="false">Segment</button><div class="kit-popover" hidden></div></div>
+            <div class="kit-pop" data-role="countries"><button type="button" class="kit-btn" aria-expanded="false">Kraj</button><div class="kit-popover" hidden></div></div>
+            <button type="button" class="kit-btn" data-role="more-toggle" aria-expanded="false">Więcej filtrów</button>
+            <div class="kit-pop kit-views" data-role="views"><button type="button" class="kit-btn" aria-expanded="false">Widoki</button><div class="kit-popover align-right" hidden></div></div>
             <button type="button" class="kit-btn" data-role="clear" hidden>Wyczyść filtry</button>
           </div>
           <div class="kit-more" data-role="more" hidden>
@@ -242,7 +242,7 @@
       const views = loadViews();
       bar.viewsPop.panel.innerHTML =
         (views.length ? views.map((v, i) => `<div class="view"><button type="button" class="apply" data-apply="${i}">${escapeHtml(v.name)}</button>` +
-          `<button type="button" class="remove" data-remove="${i}" aria-label="Usuń widok ${escapeHtml(v.name)}">✕</button></div>`).join('')
+          `<button type="button" class="remove" data-remove="${i}" aria-label="Usuń widok ${escapeHtml(v.name)}"></button></div>`).join('')
           : '<div class="empty">Nie masz jeszcze zapisanych widoków.</div>') +
         '<hr><div class="save"><input type="text" data-name placeholder="Nazwa bieżącego widoku" maxlength="60" aria-label="Nazwa widoku">' +
         '<button type="button" data-save>Zapisz</button></div>';
@@ -265,7 +265,7 @@
       const codes = ctx.statusOrder.concat(Object.keys(all).filter((c) => ctx.statusOrder.indexOf(c) === -1));
       bar.statuses.innerHTML = '<span class="kit-label">Status</span>' + codes.filter((c) => all[c] || state.statuses.indexOf(c) !== -1).map((c) => {
         const info = ctx.statusMeta[c] || [c, '#6b7280'], n = here.statuses[c] || 0, on = state.statuses.indexOf(c) !== -1;
-        return `<button type="button" class="kit-chip${n === 0 ? ' is-zero' : ''}" data-status="${escapeHtml(c)}" aria-pressed="${on}" style="--chip:${escapeHtml(info[1])}">` +
+        return `<button type="button" class="kit-chip${n === 0 ? ' is-zero' : ''}" data-status="${escapeHtml(c)}" aria-pressed="${on}" style="--c:${escapeHtml(info[1])}">` +
           `<span class="kit-dot"></span>${escapeHtml(info[0])}<span class="n">${n}</span></button>`;
       }).join('');
       // wyszukiwarka
@@ -294,14 +294,14 @@
       bar.clear.hidden = !parts.length && !only;
       bar.active.innerHTML = (only
         ? '<span class="muted">Pokazuję tylko zaznaczone — filtry są wstrzymane.</span>'
-        : parts.map((d) => `<button type="button" class="kit-tag" data-clear="${d.part}" title="Usuń ten filtr">${escapeHtml(d.text)} ✕</button>`).join('')) +
+        : parts.map((d) => `<button type="button" class="kit-tag" data-clear="${d.part}" title="Usuń ten filtr">${escapeHtml(d.text)}</button>`).join('')) +
         `<span class="kit-count">${model.total()} <span class="muted">z ${totals ? totals.all : '…'}</span></span>`;
     }
     function option(value, label, n, checked) {
       return `<label class="kit-option${n === 0 ? ' is-zero' : ''}"><input type="checkbox" data-value="${escapeHtml(value)}"${checked ? ' checked' : ''}> ${escapeHtml(label)}<span class="n">${n}</span></label>`;
     }
     function setPopButton(btn, label, picked) {
-      btn.textContent = picked.length ? `${label}: ${picked.length > 2 ? picked.length : picked.join(', ')} ▾` : `${label} ▾`;
+      btn.textContent = picked.length ? `${label}: ${picked.length > 2 ? picked.length : picked.join(', ')}` : label;
       btn.classList.toggle('is-active', picked.length > 0);
     }
 
@@ -368,7 +368,7 @@
       const extras = (opts.selectItems || []).map((item, i) => `<button type="button" class="item" data-extra="${i}"></button>`).join('');
       opts.selectEl.innerHTML = `
         <div class="kit-selectbar">
-          <div class="kit-pop kit-menu"><button type="button" class="kit-btn" aria-expanded="false">Zaznacz ▾</button>
+          <div class="kit-pop kit-menu"><button type="button" class="kit-btn" aria-expanded="false">Zaznacz</button>
             <div class="kit-popover" hidden>
               <button type="button" class="item" data-act="page"></button>
               <button type="button" class="item" data-act="all"></button>

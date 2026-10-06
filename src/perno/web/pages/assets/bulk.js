@@ -54,7 +54,7 @@ function createBulkUI(o) {
 
   function renderStatusMenu() {
     els.statusMenu.innerHTML = '<div class="inline muted">Ustaw status zaznaczonym:</div>' + APP.manualStatuses.map((code) =>
-      `<button type="button" class="item" data-status="${escapeHtml(code)}"><span class="status-menu-dot" style="background:${escapeHtml((ctx.statusMeta[code] || [code, '#6b7280'])[1])}"></span>${escapeHtml(statusLabel(code))}</button>`).join('');
+      `<button type="button" class="item" data-status="${escapeHtml(code)}"><span class="status-menu-dot" style="--c:${escapeHtml((ctx.statusMeta[code] || [code, '#6b7280'])[1])}"></span>${escapeHtml(statusLabel(code))}</button>`).join('');
   }
   function renderExportMenu(total) {
     const n = view.total();
@@ -63,7 +63,7 @@ function createBulkUI(o) {
       `<button type="button" class="item" data-export="selected:csv" ${total ? '' : 'disabled'}>Zaznaczone (${total}) — CSV</button><hr>` +
       `<button type="button" class="item" data-export="view:xlsx" ${n ? '' : 'disabled'}>Wszystko w widoku (${n}) — XLSX</button>` +
       `<button type="button" class="item" data-export="view:csv" ${n ? '' : 'disabled'}>Wszystko w widoku (${n}) — CSV</button><hr>` +
-      '<a class="item" href="/eksport" style="display:block;padding:7px 10px;font-size:13px;text-decoration:none;color:var(--accent)">Więcej opcji: kolumny, filtry →</a>';
+      '<a class="item more-link" href="/eksport">Więcej opcji: kolumny, filtry</a>';
   }
 
   // ---- okno zbiorczej zmiany -----------------------------------------------------------------
