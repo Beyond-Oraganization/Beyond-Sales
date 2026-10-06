@@ -1,8 +1,7 @@
 <div class="page-head">
   <h1>Skraper stron firm</h1>
-  <p class="muted lead">Uprzejmie pobiera strony firm (z poszanowaniem robots.txt), żeby zebrać kontekst i znaleźć kontakty. Skanowanie działa w osobnym procesie — przeżyje zamknięcie tej karty.</p>
+  <p class="lead">Uprzejmie pobiera strony firm (z poszanowaniem robots.txt), żeby zebrać kontekst i znaleźć kontakty. Skanowanie działa w osobnym procesie — przeżyje zamknięcie tej karty.</p>
   <div id="banners"></div>
-  <div id="notices"></div>
   <div class="summary" id="statusChips"></div>
   <div class="controls">
     <button id="seedBtn">Zaimportuj firmy z bazy maili</button>
@@ -40,14 +39,14 @@
     <select id="statusFilter"><option value="">Wszystkie statusy</option></select>
     <input type="text" id="search" placeholder="Szukaj po domenie lub nazwie…">
     <span class="count" id="count"></span>
-    <button id="prevBtn">‹ Poprzednia</button>
-    <button id="nextBtn">Następna ›</button>
+    <button id="prevBtn">Poprzednia</button>
+    <button id="nextBtn">Następna</button>
   </div>
   <div class="table-wrap">
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width:28px;"><input type="checkbox" id="headerCheckbox"></th>
+        <th class="col-check"><input type="checkbox" id="headerCheckbox" aria-label="Zaznacz widoczne"></th>
         <th>Firma</th><th>Status</th><th>Strony</th><th>MB</th><th>Głęb.</th><th>E-maile</th><th>Telefony</th>
         <th>Ostatni skan</th><th></th>
       </tr>
@@ -55,5 +54,5 @@
     <tbody id="tbody"></tbody>
   </table>
   </div>
-  <div class="empty-state" id="emptyState" style="display:none;">Brak firm. Zaimportuj je z bazy maili albo dodaj adres strony powyżej.</div>
+  <div class="empty-state" id="emptyState" hidden>Brak firm. Zaimportuj je z bazy maili albo dodaj adres strony powyżej.</div>
 </main>

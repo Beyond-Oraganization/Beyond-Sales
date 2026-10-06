@@ -1,30 +1,34 @@
-.export-page{max-width:1180px;}
-.export-page h1{margin:0 0 6px;font-size:20px;font-weight:650;}
-.export-page h2{margin:0 0 12px;font-size:15px;font-weight:650;}
-.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-top:16px;}
-.card fieldset{border:none;margin:0 0 16px;padding:0;}
-.card fieldset[hidden]{display:none;}
-.card legend{font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:0;margin-bottom:8px;}
-.choice{display:block;font-size:14px;margin:4px 0;cursor:pointer;}
-.choice input:disabled + *,.choice input:disabled{cursor:not-allowed;}
-.summary-line{font-size:14px;font-weight:600;margin:4px 0 14px;}
-.btn{display:inline-block;padding:9px 18px;border-radius:8px;border:1px solid var(--border);font-size:14px;
-     font-weight:600;text-decoration:none;color:var(--text);background:var(--card);}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
-.btn.primary:hover:not(:disabled){background:var(--accent-dark);}
-.btn:disabled{opacity:.5;cursor:not-allowed;}
-.export-msg{font-size:13px;margin:10px 0 0;min-height:18px;}
+/* Zakładka Eksport: dwa kroki (wybór firm, wybór pliku). Lista firm korzysta z kit.css, wspólne bloki z base.css. */
+
+.export-page{padding-top:var(--s-4);}
+.export-page .card{margin-top:var(--s-4);padding:var(--s-5) var(--s-6);}
+.export-page .card:first-child{margin-top:0;}
+.card fieldset{margin:0 0 var(--s-5);padding:0;border:none;}
+.card legend{margin-bottom:var(--s-2);padding:0;font-size:var(--fs-foot);font-weight:600;color:var(--label-2);}
+
+/* grupy radio jako segmented control */
+.seg > .choice{display:inline-flex;align-items:center;gap:6px;height:26px;margin:0;padding:0 14px;border-radius:6px;
+  font-size:var(--fs-ui);font-weight:500;cursor:pointer;user-select:none;transition:background var(--dur-1) var(--ease);}
+.seg > .choice input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
+.seg > .choice:hover{background:var(--fill);}
+.seg > .choice:has(input:checked){background:var(--surface);box-shadow:var(--sh-seg);font-weight:600;}
+.seg > .choice:has(input:focus-visible){outline:3px solid var(--accent-ring);outline-offset:1px;}
+.seg > .choice:has(input:disabled){opacity:.45;cursor:not-allowed;}
+
+.summary-line{margin:var(--s-1) 0 var(--s-4);font-size:var(--fs-body);font-weight:600;}
+#download{min-height:36px;padding:0 22px;font-size:var(--fs-body);}
+.export-msg{min-height:20px;margin:var(--s-3) 0 0;font-size:var(--fs-ui);}
 .export-msg.ok{color:var(--ok);}
 .export-msg.error{color:var(--danger);}
 
-.company-cell{font-weight:600;}
-.column-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
-.column-details{margin-top:6px;}
-.column-details summary{cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;}
-.column-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px 22px;margin-top:12px;}
-.column-group-head{display:flex;gap:8px;align-items:baseline;font-size:12px;margin-bottom:4px;}
-.column-group-head b{text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-size:11.5px;}
-.column-group-head button{border:none;background:none;color:var(--accent);font-size:12px;font-weight:600;padding:0;cursor:pointer;}
-.column-groups .choice{font-size:13px;margin:2px 0;}
-.column-groups .code{font-size:11px;font-family:ui-monospace,Menlo,monospace;}
+.company-cell{font-weight:500;}
+.column-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:var(--s-2);}
+.column-details{margin-top:var(--s-2);}
+.column-details summary{cursor:pointer;font-size:var(--fs-ui);font-weight:500;color:var(--accent-ink);}
+.column-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:var(--s-4) var(--s-6);margin-top:var(--s-3);}
+.column-group-head{display:flex;gap:var(--s-2);align-items:baseline;margin-bottom:var(--s-1);font-size:var(--fs-foot);}
+.column-group-head b{font-weight:600;color:var(--label-2);}
+.column-group-head button{padding:0;border:none;background:none;color:var(--accent-ink);font-size:var(--fs-foot);font-weight:500;}
+.column-groups .choice{display:flex;align-items:center;gap:var(--s-2);margin:2px 0;font-size:var(--fs-ui);cursor:pointer;}
+.column-groups .code{font:11px var(--mono);}
 .kit-toolbar #selectBar{flex:1 1 auto;}

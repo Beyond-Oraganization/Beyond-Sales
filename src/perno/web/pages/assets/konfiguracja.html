@@ -1,14 +1,13 @@
-<div class="page-head">
+<div class="page-head is-narrow">
   <h1>Konfiguracja</h1>
-  <p class="muted lead">Ustawienia z pliku <code>config.env</code>: poczta, powiadomienia automatu i skraper. Zapis jest atomowy, poprzednia wersja pliku zostaje w <code>config.env.bak</code>. Hasła i tematy są tylko do zapisu — panel nigdy ich nie pokazuje. Dane bazy (<code>DB_*</code>) ustawia się raz, ręcznie (README, sekcja 2): błędna wartość uniemożliwiłaby następny start programu.</p>
+  <p class="lead">Ustawienia z pliku <code>config.env</code>: poczta, powiadomienia automatu i skraper. Zapis jest atomowy, poprzednia wersja pliku zostaje w <code>config.env.bak</code>. Hasła i tematy są tylko do zapisu — panel nigdy ich nie pokazuje. Dane bazy (<code>DB_*</code>) ustawia się raz, ręcznie (README, sekcja 2): błędna wartość uniemożliwiłaby następny start programu.</p>
   <div id="banners"></div>
   <div class="controls spaced">
     <button id="saveBtn" class="primary">Zapisz zmiany</button>
     <button id="reloadBtn">Cofnij niezapisane</button>
     <button id="smtpBtn">Sprawdź połączenie SMTP</button>
-    <span class="count" id="toast"></span>
   </div>
   <div id="smtpResult" class="muted small"></div>
 </div>
 
-<main class="page-main cfg-main" id="groups">Ładowanie…</main>
+<main class="page-main is-narrow cfg-main" id="groups">Ładowanie…</main>

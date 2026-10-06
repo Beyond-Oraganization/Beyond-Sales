@@ -80,11 +80,6 @@
 .kit-table tbody tr.kit-row.is-selected > td{background:var(--accent-tint);}
 .kit-table.row-toggle tbody tr.kit-row{cursor:pointer;}
 .kit-table.is-loading tbody{opacity:.5;cursor:progress;transition:opacity var(--dur-2) var(--ease);}
-.kit-table .site-link{display:inline-grid;place-content:center;width:18px;height:18px;margin-left:6px;vertical-align:-3px;
-  border-radius:var(--r-sm);color:var(--label-3);}
-.kit-table .site-link::before,.data-table .site-link::before{content:"";width:12px;height:12px;background:currentColor;
-  -webkit-mask:var(--i-link) center/contain no-repeat;mask:var(--i-link) center/contain no-repeat;}
-.kit-table .site-link:hover{color:var(--accent-ink);background:var(--accent-tint);text-decoration:none;}
 .kit-table .country-cell{white-space:nowrap;font-size:var(--fs-foot);}
 .kit-table .country-cell .city{font-size:var(--fs-caption);}
 .kit-table .dim{color:var(--label-2);white-space:nowrap;}

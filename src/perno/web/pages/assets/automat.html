@@ -1,6 +1,6 @@
-<div class="page-head">
+<div class="page-head is-narrow">
   <h1>Automat wysyłki</h1>
-  <p class="muted lead">Wysyła maile sam, przez kilka dni: tylko w wybranych dniach i godzinach, do dziennego limitu, z losowymi odstępami. Działa w osobnym procesie (demon) — przeżyje zamknięcie tej karty. Limity zapisują się i obowiązują, dopóki ich nie zmienisz; każdy Start pyta o potwierdzenie.</p>
+  <p class="lead">Wysyła maile sam, przez kilka dni: tylko w wybranych dniach i godzinach, do dziennego limitu, z losowymi odstępami. Działa w osobnym procesie (demon) — przeżyje zamknięcie tej karty. Limity zapisują się i obowiązują, dopóki ich nie zmienisz; każdy Start pyta o potwierdzenie.</p>
   <div id="banners"></div>
   <div id="statusBox"></div>
   <div class="controls spaced">
@@ -8,11 +8,10 @@
     <button id="pauseBtn">Pauza</button>
     <button id="resumeBtn">Wznów</button>
     <button id="stopBtn">Zatrzymaj plan</button>
-    <span class="count" id="toast"></span>
   </div>
 </div>
 
-<main class="page-main automat-main">
+<main class="page-main is-narrow automat-main">
   <section class="card">
     <h2>Demon (proces w tle)</h2>
     <p class="muted small">Demon wysyła maile także przy zamkniętej karcie i zamkniętym terminalu. Zainstalowany startuje sam po każdym zalogowaniu na Macu i po awarii.</p>
@@ -56,12 +55,16 @@
   <section class="card"><h2>Dziennik zdarzeń</h2><div id="eventsBox" class="muted">Ładowanie…</div></section>
 </main>
 
-<dialog id="confirmDlg" class="bulk-dialog">
-  <h2>Uzbroić automat z tymi limitami?</h2>
-  <div id="confirmBody"></div>
-  <label class="ack"><input type="checkbox" id="ackBox"> Sprawdziłem limity i kolejkę</label>
-  <div class="controls spaced">
-    <button id="confirmOk" class="primary" disabled>Uzbrój plan</button>
-    <button id="confirmCancel">Anuluj</button>
+<dialog id="confirmDlg" class="sheet">
+  <div class="sheet-form">
+    <header><h2>Uzbroić automat z tymi limitami?</h2></header>
+    <div class="sheet-body">
+      <div id="confirmBody"></div>
+      <label class="ack"><input type="checkbox" id="ackBox"> Sprawdziłem limity i kolejkę</label>
+    </div>
+    <footer>
+      <button id="confirmCancel" class="btn">Anuluj</button>
+      <button id="confirmOk" class="btn primary" disabled>Uzbrój plan</button>
+    </footer>
   </div>
 </dialog>
