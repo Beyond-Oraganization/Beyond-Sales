@@ -17,7 +17,7 @@ from typing import Callable, Mapping, Optional
 
 from perno import settings as cfg
 from perno.db import DB_ERRORS, Database, RowNotFound
-from perno.domain import mail_rules
+from perno.domain import company_rules, mail_rules
 from perno.domain import statuses as st
 from perno.mailer import image_prep, mime_builder, smtp_client
 from perno.settings import ConfigError, Environment, SmtpSettings, require_smtp
@@ -103,8 +103,10 @@ def send_row(
     """Wysyła jeden wiersz: zajmuje go w bazie, wysyła i zapisuje wynik; błąd SMTP kończy się statusem „Błąd” z komunikatem."""
     claimed = db.claim_for_sending(row_id, allowed_from)
     if claimed is None:
-        return SendResult("skipped", db.get(row_id),
-                          "zmieniony status lub brak e-maila/treści — nic nie wysłano")
+        row = db.get(row_id)
+        reason = company_rules.hold_message(row["hold"]) if row and row.get("hold") else (
+            "zmieniony status, brak e-maila/treści albo inny adres tej firmy jest właśnie wysyłany")
+        return SendResult("skipped", row, f"{reason} — nic nie wysłano")
     try:
         message = build_message_for_row(claimed, claimed["email"], mailer.sender)
         with mailer.smtp_factory() as client:

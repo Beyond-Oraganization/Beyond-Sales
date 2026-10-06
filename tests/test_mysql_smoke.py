@@ -455,6 +455,32 @@ class MysqlSiblingTests(unittest.TestCase):
                          [("eventy-n001", "1"), ("eventy-n001~3", "2")])
         self.assertTrue(self.database.diagnose().clean, self.database.diagnose())
 
+    def test_claim_has_exactly_one_winner_among_the_siblings_of_a_company(self):
+        ids = ["eventy-n001", self.database.add_mail("eventy-n001", "b@beta.pl")["id"],
+               self.database.add_mail("eventy-n001", "c@beta.pl")["id"]]
+        winners, barrier = [], threading.Barrier(9)
+
+        def worker(row_id):
+            barrier.wait()
+            if self.database.claim_for_sending(row_id):
+                winners.append(row_id)
+
+        threads = [threading.Thread(target=worker, args=(ids[n % 3],)) for n in range(9)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(len(winners), 1)
+        self.assertEqual(self.database.count_rows(RowFilter(statuses=(st.STATUS_SENDING,))), 1)
+
+    def test_claim_is_refused_while_a_sibling_holds_the_company(self):
+        sibling = self.database.add_mail("eventy-n001", "b@beta.pl")["id"]
+        self.database.apply_edit("eventy-n001", {"status": st.STATUS_DO_NOT_CONTACT})
+        self.assertIsNone(self.database.claim_for_sending(sibling))
+        self.assertEqual(self.database.list_ids(RowFilter(ready=True), "default"), ["eventy-n0010"])
+        self.assertEqual([r["id"] for r in self.database.select_candidates(limit=None, unheld=True, per_company=True)],
+                         ["eventy-n0010"])
+
     def test_the_unique_index_is_case_insensitive_on_mysql(self):
         self.database.add_mail("eventy-n001", "b@beta.pl")
         with self.assertRaises(dbmod.InvalidValue):

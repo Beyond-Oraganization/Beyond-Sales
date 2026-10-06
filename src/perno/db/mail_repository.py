@@ -17,7 +17,14 @@ from sqlalchemy.engine import Engine
 from perno.db import company_writes as cw
 from perno.db.codec import from_api, to_api
 from perno.db.company_mails import CompanyMails
-from perno.db.company_sql import column_for, company_key, extra_columns, select_mails
+from perno.db.company_sql import (
+    column_for,
+    company_key,
+    extra_columns,
+    first_of_company,
+    no_holding_sibling,
+    select_mails,
+)
 from perno.db.errors import InvalidValue, RowLocked, RowNotFound
 from perno.db.listing_queries import ListingQueries, has_body_expression, light_columns, to_light_row
 from perno.db.queries import ID_CHUNK, filter_clauses, id_chunks, ordering
@@ -85,17 +92,24 @@ class MailRepository(ListingQueries, CompanyMails):
     def select_candidates(
         self, *, segment: str = "both", row_id: str = "", company: str = "",
         statuses: tuple = (st.STATUS_PENDING,), limit: Optional[int] = 20, countries: tuple = (),
+        unheld: bool = False, per_company: bool = False,
     ) -> list:
+        """Wiersze w danych statusach (kolejność: id firmy, numer adresu). `unheld` pomija adresy wstrzymane przez inny adres
+        firmy, `per_company` zostawia z każdej firmy jeden, pierwszy adres."""
         stmt = select_mails(*self._api_columns()).where(maile.c.status.in_(statuses))
         if segment and segment != "both":
             stmt = stmt.where(companies.c.segment == segment)
         if countries:
             stmt = stmt.where(*filter_clauses(RowFilter(countries=tuple(countries))))
+        if unheld:
+            stmt = stmt.where(no_holding_sibling())
+        if per_company:
+            stmt = stmt.where(first_of_company(tuple(statuses)))
         if row_id:
             stmt = stmt.where(maile.c.id == row_id)
         if company:
             stmt = stmt.where(sa.func.lower(companies.c.company).contains(company.lower(), autoescape=True))
-        stmt = stmt.order_by(maile.c.id)
+        stmt = stmt.order_by(company_key(), maile.c.position, maile.c.id)
         if limit is not None:
             stmt = stmt.limit(limit)
         with self.engine.connect() as conn:
@@ -354,7 +368,16 @@ class MailRepository(ListingQueries, CompanyMails):
             return self.get(row_id, conn) or {}
 
     def claim_for_sending(self, row_id: str, allowed_from: tuple = (st.STATUS_PENDING, st.STATUS_ERROR)) -> Optional[dict]:
+        """Zajmuje adres do wysyłki (None = nie wolno albo ktoś był pierwszy). Pod blokadą firmy: nie zajmie adresu, gdy inny
+        adres tej firmy jest właśnie wysyłany albo ma status z `COMPANY_STOPS` — dzięki temu ani panel, ani terminal, ani
+        demon nie obejdą blokady i dwa adresy jednej firmy nie wyjdą równocześnie."""
         with self.engine.begin() as conn:
+            owner = cw.company_ids_of(conn, [row_id]).get(row_id)
+            if owner is None:
+                return None
+            cw.lock_company(conn, owner)
+            if self._company_blocks(conn, owner, row_id):
+                return None
             result = conn.execute(
                 sa.update(maile)
                 .where(maile.c.id == row_id, maile.c.status.in_(allowed_from),
@@ -364,6 +387,14 @@ class MailRepository(ListingQueries, CompanyMails):
             if result.rowcount != 1:
                 return None
             return self.get(row_id, conn)
+
+    @staticmethod
+    def _company_blocks(conn, company_id: str, row_id: str) -> bool:
+        """Czy inny adres firmy jest wysyłany albo wstrzymuje ją (status z `COMPANY_STOPS`)."""
+        busy = [st.STATUS_SENDING, *st.COMPANY_STOPS]
+        stmt = sa.select(maile.c.id).where(maile.c.company_id == company_id, maile.c.id != row_id,
+                                           maile.c.status.in_(busy)).limit(1)
+        return conn.execute(stmt).first() is not None
 
     def mark_sent(self, row_id: str) -> Optional[dict]:
         now = self.now()

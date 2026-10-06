@@ -8,7 +8,7 @@ from typing import Iterator
 import sqlalchemy as sa
 from sqlalchemy import ColumnElement
 
-from perno.db.company_sql import company_key
+from perno.db.company_sql import company_key, no_holding_sibling
 from perno.db.listing_sql import search_clauses
 from perno.db.schema import companies, maile
 from perno.domain import statuses as st
@@ -112,6 +112,10 @@ def _mail_clauses(flt: RowFilter) -> list:
     clauses += day_range(maile.c.generated_at, flt.generated_from, flt.generated_to)
     if flt.ready:
         clauses += [maile.c.status.in_(st.SENDABLE_STATUSES), trimmed_filled(maile.c.email), filled(maile.c.body_html)]
+    if flt.unheld or flt.ready:
+        clauses.append(no_holding_sibling())
+    if flt.exclude_companies:
+        clauses.append(~company_key().in_(list(flt.exclude_companies)))
     return clauses
 
 

@@ -46,6 +46,24 @@ def hold_expression():
     return sa.func.coalesce(stop, "")
 
 
+def no_holding_sibling():
+    """Warunek: żaden INNY adres tej firmy nie ma statusu z `COMPANY_STOPS` (adres nie jest wstrzymany). Skorelowane
+    `NOT EXISTS` — MySQL robi z tego anti-join po indeksie `(company_id, status)`."""
+    sibling = maile.alias("sibling_stop")
+    return ~sa.exists().where(sibling.c.company_id == maile.c.company_id, sibling.c.id != maile.c.id,
+                              sibling.c.status.in_(st.COMPANY_STOPS)).correlate(maile)
+
+
+def first_of_company(statuses: tuple):
+    """Warunek: ten adres jest pierwszym (wg numeru, potem id) spośród adresów firmy w podanych statusach — z każdej firmy
+    wybieramy jeden adres naraz."""
+    earlier = maile.alias("earlier_mail")
+    before = sa.or_(earlier.c.position < maile.c.position,
+                    sa.and_(earlier.c.position == maile.c.position, earlier.c.id < maile.c.id))
+    return ~sa.exists().where(earlier.c.company_id == maile.c.company_id, earlier.c.id != maile.c.id,
+                              earlier.c.status.in_(statuses), before).correlate(maile)
+
+
 def extra_columns() -> list:
     """Pola wyliczane (`schema.EXTRA_COLUMNS`) w kolejności, w jakiej dołączamy je do wiersza API."""
     return [company_key().label("company_id"), maile.c.position, mail_count_expression().label("mail_count"),

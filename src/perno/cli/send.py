@@ -83,6 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Ogranicz do firm z tych krajów: kody ISO lub nazwy po przecinku (PL,GB), "
                              "none = firmy bez kraju.")
     parser.add_argument("--company", help="Ogranicz do wierszy, których nazwa zawiera ten tekst.")
+    parser.add_argument("--all-addresses", action="store_true",
+                        help="Wysyłaj do wszystkich adresów firmy w tym przebiegu (domyślnie najwyżej jeden adres na firmę).")
     parser.add_argument("--yes", action="store_true", help="Pomiń potwierdzenie przed realną wysyłką.")
     parser.add_argument("--allow-empty-db", action="store_true",
                         help="Zezwól na generowanie do PUSTEJ bazy (tylko świeża instalacja bez historii).")
@@ -159,7 +161,7 @@ def send_pending(db: Database, mailer: sending.Mailer, args: argparse.Namespace)
     limit = min(args.limit, mail_rules.daily_quota_left(sent_today, args.daily_cap))
     to_send = db.select_candidates(
         segment=args.segment, row_id=args.id or "", company=args.company or "", countries=args.country,
-        statuses=(st.STATUS_PENDING,), limit=limit) if limit > 0 else []
+        statuses=(st.STATUS_PENDING,), limit=limit, unheld=True, per_company=not args.all_addresses) if limit > 0 else []
     if not to_send:
         print(f"\nBrak maili do wysłania (dzisiaj już wysłano {sent_today}, limit dzienny {args.daily_cap}).")
         return 0
