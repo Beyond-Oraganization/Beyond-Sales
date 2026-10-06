@@ -14,6 +14,19 @@
 
 <main class="page-main automat-main">
   <section class="card">
+    <h2>Demon (proces w tle)</h2>
+    <p class="muted small">Demon wysyła maile także przy zamkniętej karcie i zamkniętym terminalu. Zainstalowany startuje sam po każdym zalogowaniu na Macu i po awarii.</p>
+    <div class="controls">
+      <button id="daemonInstallBtn" class="primary">Zainstaluj i uruchom</button>
+      <button id="daemonRestartBtn">Uruchom ponownie</button>
+      <button id="daemonRemoveBtn">Usuń demona</button>
+      <button id="doctorBtn">Sprawdź gotowość</button>
+      <button id="notifyBtn">Próbne powiadomienie</button>
+    </div>
+    <div id="doctorBox" class="muted small"></div>
+  </section>
+
+  <section class="card">
     <h2>Limity</h2>
     <div class="settings-grid">
       <label>Dzienny limit maili <input type="number" id="f_daily_cap" min="1" max="500"></label>

@@ -163,7 +163,7 @@ class BuildAppTests(unittest.TestCase):
     def test_an_empty_database_gets_a_warning_but_the_app_starts(self):
         app, out = self.build()
         self.assertIn("baza jest pusta", out)
-        self.assertEqual([page.key for page in app.ctx.pages], ["wysylka", "automat", "eksport", "skaper"])
+        self.assertEqual([page.key for page in app.ctx.pages], ["wysylka", "automat", "eksport", "skaper", "konfiguracja"])
 
     def test_the_search_collation_warning_is_shown_at_start(self):
         put(self.database, sample_row(1))

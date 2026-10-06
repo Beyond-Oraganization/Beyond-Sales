@@ -35,3 +35,9 @@ dialog.bulk-dialog h2{margin:0 0 10px;font-size:16px;}
 .ack{display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px;font-weight:600;}
 .sum-list{margin:6px 0;padding:0;list-style:none;font-size:13px;}
 .sum-list li{padding:2px 0;}
+.doctor-list{list-style:none;margin:8px 0 0;padding:0;font-size:13px;}
+.doctor-list li{padding:3px 0;}
+.doctor-list .lvl{display:inline-block;min-width:54px;font-weight:600;}
+.doctor-list .lvl.ok{color:var(--ok);}
+.doctor-list .lvl.warn{color:#b8860b;}
+code.cmd{display:inline-block;margin-top:4px;padding:3px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;user-select:all;}

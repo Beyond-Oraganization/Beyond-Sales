@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import tempfile
 import threading
 from dataclasses import dataclass, field
 from typing import Mapping, Optional
@@ -96,6 +98,86 @@ def load_config(path: str) -> dict:
             key, _, value = line.partition("=")
             config[key.strip()] = value.strip()
     return config
+
+
+_KEY_RE = re.compile(r"[A-Z][A-Z0-9_]*")
+_WRITE_LOCK = threading.Lock()
+
+
+def _check_config_entry(key: str, value: Optional[str]) -> None:
+    if not _KEY_RE.fullmatch(key):
+        raise ConfigError(f"Nieprawidłowa nazwa ustawienia: {key!r}.")
+    if value is not None and (value != value.strip() or any(ch in value for ch in "\r\n\x00")):
+        raise ConfigError(f"Wartość ustawienia {key} nie może zaczynać się ani kończyć spacją ani zawierać znaków nowej linii.")
+
+
+def _line_key(line: str, *, commented: bool) -> Optional[str]:
+    """Nazwa ustawienia z linii `KEY=…` (albo `# KEY=…`, gdy `commented`); None, gdy to nie ta postać."""
+    body = line.strip()
+    if commented:
+        if not body.startswith("#"):
+            return None
+        body = body[1:].strip()
+    elif body.startswith("#"):
+        return None
+    name, sep, _ = body.partition("=")
+    name = name.strip()
+    return name if sep and _KEY_RE.fullmatch(name) else None
+
+
+def _edit_config_lines(lines: list, changes: Mapping[str, Optional[str]]) -> list:
+    """Linie pliku po zmianach: istniejące ustawienie jest podmieniane w miejscu (duplikaty znikają, bo program czyta
+    ostatnie wystąpienie), zakomentowany wzór `# KEY=…` zostaje odkomentowany, a nowe klucze lądują na końcu."""
+    lines = list(lines)
+    for key, value in changes.items():
+        active = [i for i, line in enumerate(lines) if _line_key(line, commented=False) == key]
+        if value is None:
+            lines = [line for i, line in enumerate(lines) if i not in active]
+            continue
+        new_line = f"{key}={value}"
+        if active:
+            lines[active[0]] = new_line
+            lines = [line for i, line in enumerate(lines) if i not in active[1:]]
+            continue
+        commented = next((i for i, line in enumerate(lines) if _line_key(line, commented=True) == key), None)
+        if commented is not None:
+            lines[commented] = new_line
+        else:
+            lines.append(new_line)
+    return lines
+
+
+def update_config(path: str, changes: Mapping[str, Optional[str]]) -> list:
+    """Zmienia ustawienia w pliku `KEY=value`: `None` usuwa klucz, tekst ustawia wartość. Komentarze i kolejność zostają.
+    Zapis jest atomowy (plik tymczasowy + zamiana), poprzednia wersja ląduje w `<plik>.bak`, a prawa dostępu to 0600
+    (plik zawiera hasła). Zwraca listę kluczy, których wartość faktycznie się zmieniła. To jedyne miejsce, które pisze config.env."""
+    for key, value in changes.items():
+        _check_config_entry(key, value)
+    with _WRITE_LOCK:
+        before = load_config(path)
+        exists = os.path.exists(path)
+        text = open(path, encoding="utf-8").read() if exists else ""  # noqa: SIM115 — jednorazowy odczyt całego pliku
+        edited = _edit_config_lines(text.splitlines(), changes)
+        new_text = "\n".join(edited) + ("\n" if edited else "")
+        if new_text == text:
+            return []
+        directory = os.path.dirname(os.path.abspath(path))
+        if exists:
+            backup = path + ".bak"
+            shutil.copyfile(path, backup)
+            os.chmod(backup, 0o600)
+        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".config-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(new_text)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        except BaseException:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
+        after = load_config(path)
+    return sorted(key for key in changes if before.get(key) != after.get(key))
 
 
 class ConfigFile:

@@ -136,3 +136,46 @@ class StartTests(AutomatWebCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DaemonWebTests(AutomatWebCase):
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        self.control = mock.patch.multiple("perno.services.automat_control", install_daemon=mock.DEFAULT,
+                                           restart_daemon=mock.DEFAULT, remove_daemon=mock.DEFAULT)
+        self.mocks = self.control.start()
+        self.mocks["remove_daemon"].return_value = True
+        self.addCleanup(self.control.stop)
+
+    def test_install_restart_remove(self):
+        self.assertEqual(self.call("POST", "/api/automat/daemon", {"action": "install"}).status, 200)
+        self.assertEqual(self.call("POST", "/api/automat/daemon", {"action": "restart"}).status, 200)
+        self.assertEqual(self.data(self.call("POST", "/api/automat/daemon", {"action": "remove"})), {"ok": True})
+        self.mocks["install_daemon"].assert_called_once()
+        self.mocks["restart_daemon"].assert_called_once()
+
+    def test_unknown_action_is_a_400(self):
+        for payload in ({}, {"action": "kill"}, {"action": 5}):
+            with self.subTest(payload=payload):
+                self.assertEqual(self.call("POST", "/api/automat/daemon", payload).status, 400)
+
+    def test_launchd_and_request_errors_are_400_with_a_message(self):
+        from perno.services.automat_control import DaemonRequestError
+        from perno.system.launchd import LaunchdError
+        self.mocks["install_daemon"].side_effect = LaunchdError("launchctl bootstrap nie powiódł się: odmowa")
+        resp = self.call("POST", "/api/automat/daemon", {"action": "install"})
+        self.assertEqual(resp.status, 400)
+        self.assertIn("odmowa", self.data(resp)["error"])
+        self.mocks["restart_daemon"].side_effect = DaemonRequestError("Demon nie jest zainstalowany")
+        self.assertEqual(self.call("POST", "/api/automat/daemon", {"action": "restart"}).status, 400)
+
+    def test_doctor_lists_checks_and_the_wake_command(self):
+        data = self.data(self.call("GET", "/api/automat/doctor"))
+        self.assertTrue(all(c["level"] in ("OK", "UWAGA") for c in data["checks"]))
+        self.assertTrue(any("baza:" in c["text"] for c in data["checks"]))
+        self.assertEqual(data["pmset"], "sudo pmset repeat wakeorpoweron MTWRF 08:55:00")
+
+    def test_test_notify_reports_channels(self):
+        data = self.data(self.call("POST", "/api/automat/test-notify", {}))
+        self.assertEqual(set(data), {"sent", "failed", "skipped"})

@@ -57,3 +57,19 @@ test('formularz porównuje zapisane i wpisane wartości (nie wysyła nieprzyjęt
   assert.equal(dirty('normalized({daily_cap: 50, countries: ["PL"], weekdays: [1, 0]}) === normalized({daily_cap: "50", countries: ["PL"], weekdays: [1, 0]})'), true);
   assert.equal(dirty('normalized({daily_cap: 50, weekdays: [0]}) === normalized({daily_cap: 51, weekdays: [0]})'), false);
 });
+
+test('wyniki kontroli gotowości i próby powiadomień są zeskapowane', async () => {
+  const page = createPage((url) => {
+    if (url.startsWith('/api/automat/doctor')) return {checks: [{level: EVIL.attr, text: EVIL.script}], pmset: EVIL.img};
+    return respond(url);
+  });
+  vm.runInContext(read('common.js') + '\n' + read('automat.js'), page.context);
+  await settle();
+  vm.runInContext('doctor()', page.context);
+  await settle();
+  vm.runInContext('testNotify = testNotify;', page.context);
+  const html = page.written.join('\n');
+  assert.ok(html.includes('&lt;script&gt;'));
+  assert.ok(!/<script/i.test(html) && !/<img/i.test(html));
+  assert.deepEqual(attributeNames(html).filter((name) => /^on/i.test(name)), []);
+});

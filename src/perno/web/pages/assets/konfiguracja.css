@@ -1,0 +1,25 @@
+.page-head{background:var(--bg);border-bottom:1px solid var(--border);padding:14px 24px 12px;}
+.page-head h1{margin:0 0 4px;font-size:19px;font-weight:650;}
+.lead{margin:0 0 10px;font-size:13px;max-width:900px;}
+.small{font-size:12px;}
+code{font-size:12px;background:var(--card);border:1px solid var(--border);border-radius:5px;padding:0 4px;}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.controls.spaced{margin-top:8px;}
+.controls button{font-family:inherit;font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:8px;
+    background:var(--card);color:var(--text);cursor:pointer;}
+.controls button.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.controls button:disabled{opacity:.5;cursor:not-allowed;}
+.cfg-main{display:flex;flex-direction:column;gap:14px;max-width:1000px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;}
+.card h2{margin:0 0 2px;font-size:15px;}
+.card .group-note{margin:0 0 10px;font-size:12.5px;}
+.cfg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px 16px;}
+.cfg-field{display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--muted);}
+.cfg-field .name{color:var(--text);font-weight:600;}
+.cfg-field input[type="text"],.cfg-field input[type="password"],.cfg-field select{font-family:inherit;font-size:13px;padding:6px 8px;
+    border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);}
+.cfg-field .help{font-size:11.5px;}
+.cfg-field .tag{font-size:11px;color:var(--ok);font-weight:600;}
+.cfg-field .tag.off{color:var(--muted);font-weight:400;}
+.cfg-field label.inline{display:flex;gap:6px;align-items:center;font-size:12px;}
+.banner button{margin-left:10px;}

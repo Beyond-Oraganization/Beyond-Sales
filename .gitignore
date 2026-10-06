@@ -1,5 +1,6 @@
 # Sekrety i konfiguracja lokalna (wzór: config.example.env)
 config.env
+config.env.bak
 .env
 
 # Środowisko i cache narzędzi

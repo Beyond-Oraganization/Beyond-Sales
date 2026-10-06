@@ -8,21 +8,23 @@ wartościach, których nikt nie sprawdził.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Callable, Mapping, Optional
 
+from perno import settings as env_cfg
 from perno.db import Database
 from perno.db.automat_store import AutomatState, AutomatStore
 from perno.domain import automat_events as ev
 from perno.domain import automat_rules as ar
 from perno.domain.rowfilter import FOREIGN_COUNTRY, HOME_COUNTRY, NO_COUNTRY, country_selected
-from perno.notify import Notifier
+from perno.notify import Notification, Notifier
 from perno.notify.factory import build_notifier
 from perno.services import sending
 from perno.services.automat_log import EventLog
-from perno.settings import ConfigError, NotifySettings
+from perno.settings import ConfigError, NotifySettings, smtp_configured
 from perno.system import launchd, power
 
 _STAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"
@@ -48,6 +50,10 @@ class Cached:
         self._fn, self._ttl, self._clock = fn, ttl, clock
         self._at: Optional[float] = None
         self._value: Any = None
+
+    def invalidate(self) -> None:
+        """Następny odczyt pobierze świeżą wartość (po zmianie, którą sami wywołaliśmy)."""
+        self._at = None
 
     def get(self) -> Any:
         now = self._clock()
@@ -141,6 +147,83 @@ def resume(store: AutomatStore, log: EventLog) -> None:
     """Wznawia wstrzymaną wysyłkę (zeruje serię błędów)."""
     store.resume()
     log.emit(ev.EVENT_RESUMED, "Wysyłka wznowiona ręcznie.", notify=False)
+
+
+# ---- demon (LaunchAgent) --------------------------------------------------------------------------------------------
+
+
+class DaemonRequestError(Exception):
+    """Operacji na demonie nie da się wykonać (komunikat jest dla użytkownika)."""
+
+
+def install_daemon(probes: Probes) -> str:
+    """Zakłada LaunchAgenta tym samym Pythonem, który uruchomił program, i ładuje go (demon rusza od razu i po każdym
+    zalogowaniu). Ponowna instalacja jest bezpieczna. Zwraca ścieżkę pliku plist."""
+    os.makedirs(env_cfg.LOG_DIR, exist_ok=True)
+    content = launchd.build_plist(python=sys.executable, base_dir=env_cfg.BASE_DIR,
+                                  log_path=os.path.join(env_cfg.LOG_DIR, "automat_launchd.log"))
+    path = launchd.install(home=os.path.expanduser("~"), content=content)
+    probes.launchd.invalidate()
+    return str(path)
+
+
+def restart_daemon(probes: Probes) -> None:
+    """Uruchamia demona ponownie (np. po zmianie ustawień powiadomień); gdy nie jest załadowany, ładuje go na nowo."""
+    status = launchd.status(home=os.path.expanduser("~"))
+    if not status.installed:
+        raise DaemonRequestError("Demon nie jest zainstalowany — najpierw użyj „Zainstaluj i uruchom”.")
+    if not status.loaded:
+        install_daemon(probes)
+        return
+    launchd.kickstart()
+    probes.launchd.invalidate()
+
+
+def remove_daemon(probes: Probes) -> bool:
+    """Zdejmuje LaunchAgenta (demon przestaje wstawać po zalogowaniu); zwraca, czy coś było zainstalowane."""
+    was = launchd.uninstall(home=os.path.expanduser("~"))
+    probes.launchd.invalidate()
+    return was
+
+
+def pmset_command(settings: ar.AutomatSettings) -> str:
+    """Polecenie wybudzające Maca 5 minut przed oknem wysyłki (wymaga sudo, więc tylko je pokazujemy)."""
+    start = datetime.combine(datetime(2000, 1, 3), settings.window_start) - timedelta(minutes=5)
+    return f"sudo pmset repeat wakeorpoweron MTWRF {start:%H:%M}:00"
+
+
+def doctor_report(db: Database, store: AutomatStore, config: Mapping, probes: Probes) -> list:
+    """Kontrole gotowości: lista `{"level": "OK"|"UWAGA", "text"}` (świeże odczyty systemu, nie z podręcznej pamięci)."""
+    probes.launchd.invalidate()
+    probes.power.invalidate()
+    notify = notify_settings(config)
+    agent, battery = probes.launchd.get(), probes.power.get()
+    checks = [(True, f"baza: {db.describe()}"),
+              (smtp_configured(config), "SMTP skonfigurowany" if smtp_configured(config) else "brak kompletnych danych SMTP (zakładka Konfiguracja)"),
+              (True, "kanały powiadomień: " + ", ".join(notify.configured_channels() or ["brak"]))]
+    if not notify.ntfy_topic:
+        checks.append((False, "brak NTFY_TOPIC — nie dostaniesz powiadomień na telefon (zakładka Konfiguracja)"))
+    if not notify.healthcheck_url:
+        checks.append((False, "brak HEALTHCHECK_URL — nikt nie powie Ci, gdy Mac będzie wyłączony lub uśpiony w oknie wysyłki"))
+    checks.append((agent["loaded"], f"LaunchAgent załadowany (pid {agent['pid']})" if agent["loaded"]
+                   else "LaunchAgent niezainstalowany — użyj „Zainstaluj i uruchom”"))
+    checks.append((bool(store.active_run()), "demon działa" if store.active_run() else "demon nie działa"))
+    if battery.on_battery:
+        checks.append((False, f"Mac na baterii ({battery.percent}%) — zamknięcie klapy uśpi wysyłkę"))
+    if any(part in env_cfg.BASE_DIR for part in ("/Desktop/", "/Documents/")):
+        checks.append((False, "projekt leży w Desktop/Documents: LaunchAgent może dostać odmowę dostępu (macOS TCC). Jeśli "
+                              "logs/automat_launchd.log pokazuje „Operation not permitted”, nadaj Pythonowi z .venv Pełny dostęp "
+                              "do dysku albo przenieś projekt."))
+    if not env_cfg.Environment.from_environ().real_smtp_allowed:
+        checks.append((False, "PERNO_DB_URL blokuje prawdziwy SMTP"))
+    return [{"level": "OK" if ok else "UWAGA", "text": text} for ok, text in checks]
+
+
+def test_notifications(log: EventLog) -> dict:
+    """Próbne powiadomienie każdym kanałem (macOS, ntfy, e-mail) i wynik dla każdego."""
+    result = log.notifier.dispatch(Notification("Automat: próba", "Próbne powiadomienie z automatu wysyłki Perno.", "info"),
+                                   ("macos", "ntfy", "email"))
+    return {"sent": result.sent, "failed": result.failed, "skipped": result.skipped}
 
 
 # ---- odczyty dla panelu ---------------------------------------------------------------------------------------------

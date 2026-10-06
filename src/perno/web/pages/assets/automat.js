@@ -79,17 +79,20 @@ function renderStatus() {
   el('pauseBtn').disabled = !s.armed || s.paused;
   el('resumeBtn').disabled = !s.paused;
   el('stopBtn').disabled = !s.armed;
+  el('daemonInstallBtn').disabled = s.launchd.loaded;
+  el('daemonRestartBtn').disabled = !s.launchd.loaded;
+  el('daemonRemoveBtn').disabled = !s.launchd.installed && !s.launchd.loaded;
   el('savedInfo').textContent = s.stamp ? 'Ostatnia zmiana limitów: ' + fmtTime(s.stamp) : 'Limity domyślne — jeszcze nie zapisane.';
 }
 
 function renderBanners() {
   const s = STATE;
   const notes = [];
-  if (s.armed && !s.daemon.running) notes.push('warn|Plan jest uzbrojony, ale demon nie działa — nic się nie wyśle. Uruchom w terminalu: python3 automat.py install');
-  else if (!s.launchd.loaded && !s.daemon.running) notes.push('warn|Demon nie jest zainstalowany (nie wystartuje po włączeniu komputera). Terminal: python3 automat.py install');
+  if (s.armed && !s.daemon.running) notes.push('warn|Plan jest uzbrojony, ale demon nie działa — nic się nie wyśle. Kliknij „Zainstaluj i uruchom” poniżej.');
+  else if (!s.launchd.loaded && !s.daemon.running) notes.push('warn|Demon nie jest zainstalowany (nie wystartuje po włączeniu komputera). Kliknij „Zainstaluj i uruchom” poniżej.');
   if (s.paused) notes.push('warn|Wysyłka wstrzymana: ' + (s.pause_reason || ''));
   if (s.power && s.power.on_battery) notes.push('warn|Mac jest na baterii' + (s.power.percent == null ? '' : ' (' + s.power.percent + '%)') + ' — zamknięcie klapy uśpi wysyłkę. Podłącz zasilacz i zostaw klapę otwartą.');
-  if (!s.channels.includes('ntfy')) notes.push('warn|Brak powiadomień na telefon (NTFY_TOPIC w config.env) — alerty zobaczysz tylko na Macu.');
+  if (!s.channels.includes('ntfy')) notes.push('warn|Brak powiadomień na telefon (NTFY_TOPIC w zakładce Konfiguracja) — alerty zobaczysz tylko na Macu.');
   if (!s.settings_ok) notes.push('warn|Zapisane limity były nieczytelne — używam domyślnych. Zapisz je ponownie.');
   el('banners').innerHTML = notes.map((note) => {
     const [kind, text] = note.split('|');
@@ -173,6 +176,33 @@ async function simple(path, okText) {
   await loadStatus();
 }
 
+async function daemonAction(action, okText) {
+  const {ok, data} = await api('/api/automat/daemon', {action});
+  toast(ok ? okText : (data.error || 'Operacja na demonie nie powiodła się.'));
+  STATE = null;
+  await loadStatus();
+  setTimeout(loadStatus, 4000);  // demon potrzebuje chwili, żeby zapisać pierwszy puls
+}
+
+async function doctor() {
+  const {ok, data} = await apiGet('/api/automat/doctor');
+  if (!ok) { el('doctorBox').textContent = data.error || 'Nie udało się sprawdzić.'; return; }
+  const items = data.checks.map((check) => '<li><span class="lvl ' + (check.level === 'OK' ? 'ok' : 'warn') + '">'
+    + escapeHtml(check.level) + '</span>' + escapeHtml(check.text) + '</li>').join('');
+  el('doctorBox').innerHTML = '<ul class="doctor-list">' + items + '</ul>'
+    + '<p>Wybudzanie Maca przed oknem (wymaga hasła administratora, wykonaj w Terminalu): <code class="cmd">'
+    + escapeHtml(data.pmset) + '</code></p>';
+}
+
+async function testNotify() {
+  const {ok, data} = await api('/api/automat/test-notify', {});
+  if (!ok) { toast(data.error || 'Nie udało się wysłać próby.'); return; }
+  const parts = data.sent.map((name) => 'OK ' + name)
+    .concat(Object.entries(data.failed).map(([name, why]) => 'BŁĄD ' + name + ': ' + why))
+    .concat(data.skipped.map((name) => 'pominięto ' + name + ' (nieskonfigurowany)'));
+  el('doctorBox').innerHTML = '<ul class="doctor-list">' + parts.map((text) => '<li>' + escapeHtml(text) + '</li>').join('') + '</ul>';
+}
+
 function poll() {
   clearTimeout(pollTimer);
   pollTimer = setTimeout(async () => { await loadStatus(); poll(); }, 3000);
@@ -185,6 +215,13 @@ el('startBtn').addEventListener('click', openConfirm);
 el('pauseBtn').addEventListener('click', () => simple('/api/automat/pause', 'Wstrzymano.'));
 el('resumeBtn').addEventListener('click', () => simple('/api/automat/resume', 'Wznowiono.'));
 el('stopBtn').addEventListener('click', () => { if (confirm('Zatrzymać plan? Nic więcej nie zostanie wysłane, dopóki nie uzbroisz go ponownie.')) simple('/api/automat/stop', 'Plan zatrzymany.'); });
+el('daemonInstallBtn').addEventListener('click', () => daemonAction('install', 'Demon zainstalowany i uruchomiony.'));
+el('daemonRestartBtn').addEventListener('click', () => daemonAction('restart', 'Demon uruchomiony ponownie.'));
+el('daemonRemoveBtn').addEventListener('click', () => {
+  if (confirm('Usunąć demona? Przestanie wstawać po zalogowaniu i nic nie wyśle, dopóki go nie zainstalujesz ponownie.')) daemonAction('remove', 'Demon usunięty.');
+});
+el('doctorBtn').addEventListener('click', doctor);
+el('notifyBtn').addEventListener('click', testNotify);
 el('ackBox').addEventListener('change', () => { el('confirmOk').disabled = !el('ackBox').checked; });
 el('confirmOk').addEventListener('click', confirmStart);
 el('confirmCancel').addEventListener('click', () => el('confirmDlg').close());

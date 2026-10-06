@@ -22,6 +22,7 @@ class PlistTests(unittest.TestCase):
         self.assertEqual((data["RunAtLoad"], data["KeepAlive"], data["WorkingDirectory"]), (True, {"SuccessfulExit": False}, "/p"))
         self.assertEqual((data["StandardOutPath"], data["StandardErrorPath"]), ("/p/logs/a.log", "/p/logs/a.log"))
         self.assertIn("/opt/homebrew/bin", data["EnvironmentVariables"]["PATH"])
+        self.assertEqual(data["ExitTimeOut"], 60)
 
 
 class LaunchctlTests(unittest.TestCase):
@@ -44,6 +45,17 @@ class LaunchctlTests(unittest.TestCase):
     def test_install_reports_launchctl_failure(self):
         with self.assertRaisesRegex(launchd.LaunchdError, "bootstrap.*Input/output error"):
             launchd.install(self.run_stub({"bootstrap": done(5, "", "Input/output error")}), home=self.home, content=b"x", uid=501)
+
+    def test_kickstart_restarts_the_loaded_agent(self):
+        launchd.kickstart(self.run_stub(), uid=501)
+        self.assertEqual(self.calls, [["kickstart", "-k", "gui/501/pl.perno.automat"]])
+        with self.assertRaisesRegex(launchd.LaunchdError, "kickstart"):
+            launchd.kickstart(self.run_stub({"kickstart": done(113, "", "Could not find service")}), uid=501)
+
+    def test_guard_from_the_test_package_blocks_real_commands(self):
+        with self.assertRaises(launchd.LaunchdError):
+            launchd.kickstart(uid=501)  # bez wstrzykniętej atrapy: bezpiecznik z tests/__init__.py
+        self.assertEqual(power.read_power_state(), power.PowerState(None))
 
     def test_uninstall(self):
         launchd.install(self.run_stub(), home=self.home, content=b"x", uid=501)

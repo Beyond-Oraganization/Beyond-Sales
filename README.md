@@ -111,6 +111,9 @@ Otwiera `http://localhost:8765/` (serwer słucha wyłącznie na `127.0.0.1`). Me
   polami technicznymi: identyfikator, tag, liczba prób…) albo ręczny wybór. Komórki zaczynające się od `= + - @` są
   zabezpieczone przed wykonaniem jako formuły.
 
+- **Konfiguracja** — ustawienia z `config.env` w formularzu: poczta (SMTP, z przyciskiem „Sprawdź połączenie”),
+  powiadomienia automatu i domyślne ustawienia skrapera. Szczegóły w sekcji 5b.
+
 - **Automat** — wysyłka w tle przez kilka dni: limity, plan, stan demona, prognoza i dziennik. Szczegóły w sekcji 5a.
 
 - **Skraper** — firmy do przeskanowania, start/stop przebiegu, postęp na żywo, a po kliknięciu w firmę: znalezione
@@ -329,9 +332,15 @@ każde połączenie poza `127.0.0.1`. Do uruchomień demo i testów procesów s�
 Wysyła maile **sam, przez kilka dni**: tylko w wybranych dniach tygodnia i godzinach, do dziennego limitu, z losowymi
 odstępami. Robi to osobny proces (demon), więc zamknięcie karty, panelu czy terminala niczego nie przerywa.
 
+**Wszystko da się zrobić z przeglądarki** (zakładka „Automat”); terminal jest opcjonalny. Kolejność: w zakładce
+„Konfiguracja” wpisz dane SMTP i powiadomień, w „Automat” ustaw limity i kliknij **Zainstaluj i uruchom** (demon), potem
+**Sprawdź gotowość**, **Próbne powiadomienie** i **Start…**. Przyciski „Uruchom ponownie” i „Usuń demona” obsługują
+resztę. Jedyna rzecz wymagająca terminala to ewentualne wybudzanie Maca przed oknem (`sudo`): panel pokazuje gotowe polecenie.
+
 **Jak to działa.**
-- Demon (`python3 automat.py run`) uruchamia **launchd** po każdym zalogowaniu i po awarii (`install` zakłada LaunchAgenta
-  `pl.perno.automat`; `uninstall` go zdejmuje). Działa stale, ale wysyła tylko wtedy, gdy plan jest **uzbrojony** (Start).
+- Demon (`python3 automat.py run`) uruchamia **launchd** po każdym zalogowaniu i po awarii (przycisk „Zainstaluj i uruchom”
+  albo `install` zakłada LaunchAgenta `pl.perno.automat`; „Usuń demona” / `uninstall` go zdejmuje). Działa stale, ale wysyła
+  tylko wtedy, gdy plan jest **uzbrojony** (Start).
 - Co ~30 s sprawdza plan i wysyła najwyżej jeden mail: pierwszy „Do wysłania” z adresem i treścią, w kolejności panelu,
   w wybranym segmencie i krajach. Wiersze w statusie „Błąd” nie są ponawiane automatycznie.
 - Każdy mail idzie tą samą drogą co z panelu (zajęcie wiersza w bazie), więc ręczna wysyłka obok automatu nie zrobi
@@ -361,9 +370,9 @@ automat wstrzymuje się i prosi o sprawdzenie folderu „Wysłane” — nie wys
 **Powiadomienia** (zdarzenie → kanały: macOS / telefon przez [ntfy](https://docs.ntfy.sh/) / e-mail do siebie):
 podsumowanie dnia (wszystkie), koniec planu lub pusta kolejka (wszystkie), pauza po błędach i „sprawdź Wysłane”
 (wszystkie), pominięty dzień i awaria bazy (macOS + telefon), start planu i wznowienia (tylko macOS). Konfiguracja w
-`config.env` (wszystkie klucze opcjonalne): `NTFY_TOPIC` (długi, losowy sekret — kto go zna, może czytać i pisać),
+`config.env` — najwygodniej w zakładce „Konfiguracja” (wszystkie klucze opcjonalne): `NTFY_TOPIC` (długi, losowy sekret — kto go zna, może czytać i pisać),
 `NTFY_SERVER`, `NOTIFY_EMAIL`, `NOTIFY_MACOS=false`, `HEALTHCHECK_URL`. Zmianę kluczy zobaczy demon po ponownym
-uruchomieniu (`python3 automat.py install`). Powiadomienia systemowe wymagają jednorazowej zgody — uruchom
+uruchomieniu (po zapisie w „Konfiguracji” pojawia się przycisk „Uruchom ponownie demona”). Powiadomienia systemowe wymagają jednorazowej zgody — uruchom
 `test-notify` z Terminala. Do telefonu nie idą adresy e-mail odbiorców, tylko nazwy firm i ogólne komunikaty.
 
 **Czego nie da się zagwarantować (MacBook).** Zamknięcie klapy na baterii usypia Maca i wysyłka stoi do wybudzenia.
@@ -378,6 +387,21 @@ ochrona) albo przenieś projekt poza Desktop/Documents.
 
 **Języki.** Treści maili są dziś generowane tylko po polsku, także dla firm spoza Polski; filtr krajów w limitach pozwala
 wysyłać automatem tylko do wybranych krajów (np. `--countries PL`).
+
+## 5b. Konfiguracja z przeglądarki (zakładka „Konfiguracja”)
+
+Edytuje `config.env` bez otwierania pliku: Poczta (SMTP), Powiadomienia automatu i Skraper. Zasady:
+- **Sekrety są tylko do zapisu** (hasło SMTP, `NTFY_TOPIC`, `HEALTHCHECK_URL`): panel pokazuje wyłącznie „ustawione” albo
+  „puste”, nigdy wartość. Puste pole sekretu oznacza „bez zmian”; usunięcie wymaga zaznaczenia „usuń to ustawienie”.
+- Wysyłane i zapisywane są tylko pola, które zmieniłeś. Pusta wartość zwykłego pola usuwa klucz (wraca wartość domyślna).
+  Każda wartość jest sprawdzana (zakresy, https, format adresu) i odrzucana z komunikatem, zanim cokolwiek trafi do pliku.
+- Zapis jest atomowy (plik tymczasowy i zamiana), komentarze i kolejność w pliku zostają, poprzednia wersja ląduje w
+  `config.env.bak` (poza repozytorium), a plik ma prawa `0600`. Nowe wartości działają od razu (SMTP, skraper); ustawienia
+  powiadomień wymagają ponownego uruchomienia demona (panel to podpowiada przyciskiem).
+- **Bazy (`DB_*`) tu nie ma**: błędna wartość uniemożliwiłaby następny start, a działający panel nie miałby jak ostrzec.
+  Ustawiasz ją raz, ręcznie (sekcja 2).
+- „Sprawdź połączenie SMTP” loguje się na serwer pocztowy (bez wysyłania maila) i pokazuje wynik; przy bazie demo
+  (`PERNO_DB_URL`) jest zablokowane tak samo jak wysyłka.
 
 ## 6. Terminal (`send_emails.py`)
 

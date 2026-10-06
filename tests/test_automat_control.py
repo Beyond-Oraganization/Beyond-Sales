@@ -214,3 +214,83 @@ class EventLogTests(ControlCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DaemonControlTests(ControlCase):
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        self.probes = ctl.Probes(launchd=ctl.Cached(lambda: {"installed": True, "loaded": False, "pid": None}),
+                                 power=ctl.Cached(lambda: PowerState(False, 100)))
+        self.mock = mock
+
+    def test_install_builds_the_plist_for_this_python_and_refreshes_the_probe(self):
+        from perno.system import launchd
+        self.probes.launchd.get()
+        with self.mock.patch.object(launchd, "install", return_value="/x/pl.perno.automat.plist") as install, \
+                self.mock.patch("perno.services.automat_control.env_cfg.LOG_DIR", tempfile_dir()):
+            path = ctl.install_daemon(self.probes)
+        self.assertEqual(path, "/x/pl.perno.automat.plist")
+        self.assertIn(b"perno.cli.automat", install.call_args.kwargs["content"])
+        self.assertIsNone(self.probes.launchd._at)
+
+    def test_restart_needs_an_installed_agent_and_kickstarts_a_loaded_one(self):
+        from perno.system import launchd
+        with self.mock.patch.object(launchd, "status", return_value=launchd.LaunchdStatus(False, False)):
+            with self.assertRaisesRegex(ctl.DaemonRequestError, "najpierw"):
+                ctl.restart_daemon(self.probes)
+        with self.mock.patch.object(launchd, "status", return_value=launchd.LaunchdStatus(True, True, 5)), \
+                self.mock.patch.object(launchd, "kickstart") as kick:
+            ctl.restart_daemon(self.probes)
+        kick.assert_called_once()
+
+    def test_restart_reloads_an_installed_but_unloaded_agent(self):
+        from perno.system import launchd
+        with self.mock.patch.object(launchd, "status", return_value=launchd.LaunchdStatus(True, False)), \
+                self.mock.patch.object(ctl, "install_daemon") as install:
+            ctl.restart_daemon(self.probes)
+        install.assert_called_once_with(self.probes)
+
+    def test_remove_reports_whether_something_was_installed(self):
+        from perno.system import launchd
+        with self.mock.patch.object(launchd, "uninstall", return_value=True):
+            self.assertTrue(ctl.remove_daemon(self.probes))
+
+    def test_pmset_command_follows_the_saved_window(self):
+        self.assertEqual(ctl.pmset_command(ar.DEFAULT_SETTINGS), "sudo pmset repeat wakeorpoweron MTWRF 08:55:00")
+        self.assertEqual(ctl.pmset_command(ar.settings_from_mapping({"window_start": "00:03"})),
+                         "sudo pmset repeat wakeorpoweron MTWRF 23:58:00")
+
+    def test_doctor_report_is_fresh_and_flags_problems(self):
+        reads = []
+        probes = ctl.Probes(launchd=ctl.Cached(lambda: reads.append(1) or {"installed": False, "loaded": False, "pid": None}),
+                            power=ctl.Cached(lambda: PowerState(True, 40)))
+        probes.launchd.get()
+        report = ctl.doctor_report(self.db, self.store, {}, probes)
+        self.assertEqual(len(reads), 2)  # odświeżony, nie z podręcznej pamięci
+        text = "\n".join(f"{r['level']} {r['text']}" for r in report)
+        for expected in ("OK baza:", "UWAGA brak kompletnych danych SMTP", "UWAGA brak NTFY_TOPIC", "UWAGA brak HEALTHCHECK_URL",
+                         "UWAGA LaunchAgent niezainstalowany", "UWAGA demon nie działa", "UWAGA Mac na baterii (40%)"):
+            self.assertIn(expected, text)
+
+    def test_doctor_report_all_good(self):
+        probes = ctl.Probes(launchd=ctl.Cached(lambda: {"installed": True, "loaded": True, "pid": 9}),
+                            power=ctl.Cached(lambda: PowerState(False, 100)))
+        self.store.start_run(9)
+        config = {"SMTP_HOST": "h", "SMTP_PORT": "465", "SMTP_USER": "u", "SMTP_PASSWORD": "p",
+                  "NTFY_TOPIC": "bardzo-tajny-temat", "HEALTHCHECK_URL": "https://hc.example/x"}
+        text = "\n".join(f"{r['level']} {r['text']}" for r in ctl.doctor_report(self.db, self.store, config, probes))
+        self.assertIn("OK LaunchAgent załadowany (pid 9)", text)
+        self.assertIn("OK demon działa", text)
+        self.assertIn("kanały powiadomień: macos, ntfy", text)
+        self.assertNotIn("brak NTFY_TOPIC", text)
+
+    def test_test_notifications_report_each_channel(self):
+        data = ctl.test_notifications(self.log)
+        self.assertEqual((data["sent"], data["failed"]), (["macos"], {}))
+        self.assertEqual(self.macos.got[0].title, "Automat: próba")
+
+
+def tempfile_dir():
+    import tempfile
+    return tempfile.mkdtemp()

@@ -57,6 +57,30 @@ def api_resume(req: Request, ctx: AppContext) -> Response:
     return json_response({"ok": True})
 
 
+def api_doctor(req: Request, ctx: AppContext) -> Response:
+    store = ctx.automat_store.get()
+    return json_response({
+        "checks": automat_control.doctor_report(ctx.db, store, ctx.config.load(), ctx.automat_probes),
+        "pmset": automat_control.pmset_command(store.get_state().settings)})
+
+
+def api_test_notify(req: Request, ctx: AppContext) -> Response:
+    return json_response(automat_control.test_notifications(ctx.automat_log()))
+
+
+def api_daemon(req: Request, ctx: AppContext) -> Response:
+    action, probes = req.json.get("action"), ctx.automat_probes
+    if action == "install":
+        automat_control.install_daemon(probes)
+    elif action == "restart":
+        automat_control.restart_daemon(probes)
+    elif action == "remove":
+        return json_response({"ok": automat_control.remove_daemon(probes)})
+    else:
+        raise HttpError(400, "Pole action musi mieć wartość install, restart albo remove.")
+    return json_response({"ok": True})
+
+
 PAGE = Page(
     key="automat", label="Automat", path="/automat", render=render, order=15,
     routes={
@@ -67,5 +91,8 @@ PAGE = Page(
         ("POST", "/api/automat/stop"): api_stop,
         ("POST", "/api/automat/pause"): api_pause,
         ("POST", "/api/automat/resume"): api_resume,
+        ("GET", "/api/automat/doctor"): api_doctor,
+        ("POST", "/api/automat/test-notify"): api_test_notify,
+        ("POST", "/api/automat/daemon"): api_daemon,
     },
 )

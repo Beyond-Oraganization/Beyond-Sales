@@ -17,12 +17,10 @@ Polecenie `run` to sam demon (uruchamia go launchd; ręcznie: do prób w termina
 from __future__ import annotations
 
 import argparse
-import os
 import signal
 import sys
 import threading
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Callable, Optional
 
 from perno import settings as cfg
@@ -33,11 +31,10 @@ from perno.logging_setup import configure_logging
 from perno.notify import Notification
 from perno.notify.factory import build_pinger
 from perno.services import automat, automat_control, sending
-from perno.settings import ConfigError, ConfigFile, smtp_configured
+from perno.settings import ConfigError, ConfigFile
 from perno.system import launchd, power
 
 DAY_NAMES = {"pn": 0, "wt": 1, "sr": 2, "śr": 2, "cz": 3, "pt": 4, "sb": 5, "nd": 6}
-PMSET_COMMAND = "sudo pmset repeat wakeorpoweron MTWRF {hhmm}:00"
 
 
 @dataclass
@@ -190,16 +187,14 @@ def cmd_run(args: argparse.Namespace, ctx: Context) -> int:
 
 
 def cmd_install(args: argparse.Namespace, ctx: Context) -> int:
-    os.makedirs(cfg.LOG_DIR, exist_ok=True)
-    content = launchd.build_plist(python=sys.executable, base_dir=cfg.BASE_DIR,
-                                  log_path=os.path.join(cfg.LOG_DIR, "automat_launchd.log"))
-    path = launchd.install(home=os.path.expanduser("~"), content=content)
+    path = automat_control.install_daemon(automat_control.Probes())
     print(f"Zainstalowano LaunchAgent: {path}\nDemon startuje po każdym zalogowaniu i po awarii. Sprawdź: python3 automat.py doctor")
     return 0
 
 
 def cmd_uninstall(args: argparse.Namespace, ctx: Context) -> int:
-    print("Usunięto LaunchAgent." if launchd.uninstall(home=os.path.expanduser("~")) else "LaunchAgent nie był zainstalowany.")
+    removed = automat_control.remove_daemon(automat_control.Probes())
+    print("Usunięto LaunchAgent." if removed else "LaunchAgent nie był zainstalowany.")
     return 0
 
 
@@ -217,10 +212,8 @@ def cmd_test_notify(args: argparse.Namespace, ctx: Context) -> int:
 
 
 def cmd_print_pmset(args: argparse.Namespace, ctx: Context) -> int:
-    state = ctx.store.get_state()
-    start = ar.window_bounds(ctx.db.now().date(), state.settings)[0] - timedelta(minutes=5)
     print("Wybudzanie Maca przed oknem wysyłki (wymaga hasła administratora; tego polecenia nie uruchamiam sam):")
-    print("  " + PMSET_COMMAND.format(hhmm=f"{start:%H:%M}"))
+    print("  " + automat_control.pmset_command(ctx.store.get_state().settings))
     print("Cofnięcie: sudo pmset repeat cancel   |   Podgląd: pmset -g sched")
     print("Uwaga: zamknięta klapa na baterii nie utrzyma Maca w pracy — zostaw klapę otwartą i podłącz zasilacz.")
     return 0
@@ -228,29 +221,8 @@ def cmd_print_pmset(args: argparse.Namespace, ctx: Context) -> int:
 
 def doctor_lines(ctx: Context) -> list:
     """Lista kontroli gotowości: (poziom, tekst); poziom „OK” albo „UWAGA”."""
-    config = ctx.config.load()
-    lines = [("OK", f"baza: {ctx.db.describe()}")]
-    lines.append(("OK", "SMTP skonfigurowany") if smtp_configured(config) else ("UWAGA", "brak kompletnych danych SMTP w config.env"))
-    notify = automat_control.notify_settings(config)
-    lines.append(("OK", "kanały powiadomień: " + ", ".join(notify.configured_channels() or ["brak"])))
-    if not notify.ntfy_topic:
-        lines.append(("UWAGA", "brak NTFY_TOPIC — nie dostaniesz powiadomień na telefon"))
-    if not notify.healthcheck_url:
-        lines.append(("UWAGA", "brak HEALTHCHECK_URL — nikt nie powie Ci, gdy Mac będzie wyłączony lub uśpiony w oknie wysyłki"))
-    agent = launchd.status(home=os.path.expanduser("~"))
-    lines.append(("OK", f"LaunchAgent załadowany (pid {agent.pid})") if agent.loaded
-                 else ("UWAGA", "LaunchAgent niezainstalowany — `python3 automat.py install`"))
-    lines.append(("OK", "demon działa") if ctx.store.active_run() else ("UWAGA", "demon nie działa"))
-    state = power.read_power_state()
-    if state.on_battery:
-        lines.append(("UWAGA", f"Mac na baterii ({state.percent}%) — zamknięcie klapy uśpi wysyłkę"))
-    if any(part in cfg.BASE_DIR for part in ("/Desktop/", "/Documents/")):
-        lines.append(("UWAGA", "projekt leży w Desktop/Documents: LaunchAgent może dostać odmowę dostępu (macOS TCC). "
-                                "Jeśli log logs/automat_launchd.log pokazuje „Operation not permitted”, nadaj Pythonowi "
-                                "Pełny dostęp do dysku albo przenieś projekt."))
-    if not cfg.Environment.from_environ().real_smtp_allowed:
-        lines.append(("UWAGA", "PERNO_DB_URL blokuje prawdziwy SMTP"))
-    return lines
+    report = automat_control.doctor_report(ctx.db, ctx.store, ctx.config.load(), automat_control.Probes())
+    return [(item["level"], item["text"]) for item in report]
 
 
 def cmd_doctor(args: argparse.Namespace, ctx: Context) -> int:

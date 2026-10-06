@@ -14,6 +14,7 @@ from typing import Callable, Optional
 
 LABEL = "pl.perno.automat"
 LAUNCHCTL = "/bin/launchctl"
+_system_run = subprocess.run  # podmieniane w tests/__init__.py: testy nie mogą ruszać prawdziwego launchctl
 DEFAULT_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 
@@ -44,15 +45,16 @@ def build_plist(*, python: str, base_dir: str, log_path: str, path_env: str = DE
         "RunAtLoad": True,
         "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": 30,
+        "ExitTimeOut": 60,  # wysyłka w toku (do 30 s SMTP) ma czas się dokończyć przy zatrzymaniu
         "StandardOutPath": log_path,
         "StandardErrorPath": log_path,
         "EnvironmentVariables": {"PATH": path_env, "PYTHONUNBUFFERED": "1"},
     })
 
 
-def _launchctl(run: Callable, *args: str, check: bool = True):
+def _launchctl(run: Optional[Callable], *args: str, check: bool = True):
     try:
-        done = run([LAUNCHCTL, *args], capture_output=True, text=True, timeout=20, check=False)
+        done = (run or _system_run)([LAUNCHCTL, *args], capture_output=True, text=True, timeout=20, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
         raise LaunchdError(f"Nie udało się uruchomić launchctl: {exc}") from exc
     if check and done.returncode != 0:
@@ -65,7 +67,7 @@ def domain(uid: Optional[int] = None) -> str:
     return f"gui/{os.getuid() if uid is None else uid}"
 
 
-def status(run: Callable = subprocess.run, *, home: str, uid: Optional[int] = None) -> LaunchdStatus:
+def status(run: Optional[Callable] = None, *, home: str, uid: Optional[int] = None) -> LaunchdStatus:
     """Stan LaunchAgenta; nie rzuca wyjątków (brak launchctl = „nie załadowany”)."""
     installed = plist_path(home).exists()
     try:
@@ -79,7 +81,7 @@ def status(run: Callable = subprocess.run, *, home: str, uid: Optional[int] = No
     return LaunchdStatus(installed, True, pid)
 
 
-def install(run: Callable = subprocess.run, *, home: str, content: bytes, uid: Optional[int] = None) -> Path:
+def install(run: Optional[Callable] = None, *, home: str, content: bytes, uid: Optional[int] = None) -> Path:
     """Zapisuje plist i ładuje go (ponowna instalacja najpierw zdejmuje poprzednią wersję)."""
     path = plist_path(home)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -90,7 +92,12 @@ def install(run: Callable = subprocess.run, *, home: str, content: bytes, uid: O
     return path
 
 
-def uninstall(run: Callable = subprocess.run, *, home: str, uid: Optional[int] = None) -> bool:
+def kickstart(run: Optional[Callable] = None, *, uid: Optional[int] = None) -> None:
+    """Uruchamia agenta ponownie (zabija działający proces; `KeepAlive` nie jest potrzebny, bo kickstart startuje go od razu)."""
+    _launchctl(run, "kickstart", "-k", f"{domain(uid)}/{LABEL}")
+
+
+def uninstall(run: Optional[Callable] = None, *, home: str, uid: Optional[int] = None) -> bool:
     """Zdejmuje agenta i usuwa plik; zwraca, czy coś było zainstalowane."""
     path = plist_path(home)
     was = path.exists()

@@ -6,9 +6,11 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 PMSET = "/usr/bin/pmset"
+_system_run = subprocess.run  # podmieniane w tests/__init__.py: testy nie mogą uruchamiać prawdziwych poleceń systemu
+_system_popen = subprocess.Popen
 CAFFEINATE = "/usr/bin/caffeinate"
 _PERCENT = re.compile(r"(\d{1,3})%")
 
@@ -28,10 +30,10 @@ def parse_battery(output: str) -> PowerState:
     return PowerState(on_battery, int(percent.group(1)) if percent else None)
 
 
-def read_power_state(run: Callable = subprocess.run) -> PowerState:
+def read_power_state(run: Optional[Callable] = None) -> PowerState:
     """Aktualne zasilanie; błąd odczytu to „nie wiadomo”, nigdy wyjątek (to tylko ostrzeżenie dla użytkownika)."""
     try:
-        done = run([PMSET, "-g", "batt"], capture_output=True, text=True, timeout=5, check=False)
+        done = (run or _system_run)([PMSET, "-g", "batt"], capture_output=True, text=True, timeout=5, check=False)
     except (OSError, subprocess.SubprocessError):
         return PowerState(None)
     return parse_battery(done.stdout or "") if done.returncode == 0 else PowerState(None)
@@ -42,10 +44,10 @@ class SleepGuard:
 
     Nie powstrzyma uśpienia po zamknięciu klapy na baterii — tego macOS nie pozwala obejść bez zmiany ustawień systemu."""
 
-    def __init__(self, popen: Callable = subprocess.Popen, pid: Optional[int] = None):
+    def __init__(self, popen: Optional[Callable] = None, pid: Optional[int] = None):
         self._popen = popen
         self._pid = pid or os.getpid()
-        self._proc = None
+        self._proc: Any = None
 
     @property
     def active(self) -> bool:
@@ -55,7 +57,7 @@ class SleepGuard:
         """Włącza albo zwalnia blokadę zależnie od tego, czy trwa okno wysyłki."""
         if needed and not self.active:
             try:
-                self._proc = self._popen([CAFFEINATE, "-i", "-w", str(self._pid)], stdout=subprocess.DEVNULL,
+                self._proc = (self._popen or _system_popen)([CAFFEINATE, "-i", "-w", str(self._pid)], stdout=subprocess.DEVNULL,
                                          stderr=subprocess.DEVNULL)
             except OSError:
                 self._proc = None  # brak caffeinate nie może zatrzymać wysyłki
