@@ -6,6 +6,7 @@ import html
 import json
 import os
 
+from perno.design import read_tokens
 from perno.domain import countries
 from perno.domain import statuses as st
 
@@ -46,11 +47,12 @@ def render_page(ctx, *, title: str, active_key: str, body: str, css: str = "", j
     return (
         '<!DOCTYPE html>\n<html lang="pl">\n<head>\n<meta charset="UTF-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+        '<meta name="color-scheme" content="light dark">\n'
         f'<title>Perno — {html.escape(title)}</title>\n'
-        f'<style>\n{read_asset("base.css")}\n{kit_css}{css}\n</style>\n</head>\n<body>\n'
-        '<nav class="topnav">'
+        f'<style>\n{read_tokens()}\n{read_asset("base.css")}\n{kit_css}{css}\n</style>\n</head>\n<body>\n'
+        '<nav class="topnav" aria-label="Główna nawigacja">'
         '<span class="topnav-brand">Perno</span>'
-        f'{links}'
+        f'<div class="topnav-seg">{links}</div>'
         f'<span class="topnav-db" title="Baza danych">{html.escape(ctx.db.describe())}</span>'
         '</nav>\n'
         f'{body}\n'
