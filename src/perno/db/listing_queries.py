@@ -15,10 +15,10 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
 from perno.db.codec import format_value
-from perno.db.company_sql import column_for, mail_company_join, select_mails
+from perno.db.company_sql import column_for, extra_columns, mail_company_join, select_mails
 from perno.db.listing_sql import sort_clauses
 from perno.db.queries import blank, filled, filter_clauses, ordering, trimmed_filled
-from perno.db.schema import LIGHT_COLUMNS, companies, maile
+from perno.db.schema import EXTRA_COLUMNS, LIGHT_COLUMNS, companies, maile
 from perno.domain.rowfilter import FOREIGN_COUNTRY, HOME_COUNTRY, NO_COUNTRY, RowFilter, country_selected
 
 FACETS = {
@@ -34,14 +34,16 @@ def has_body_expression() -> Any:
 
 
 def light_columns() -> list:
-    """Kolumny listy: wszystko poza treścią maili, plus `has_body`."""
-    return [*[column_for(name) for name in LIGHT_COLUMNS], has_body_expression().label("has_body")]
+    """Kolumny listy: wszystko poza treścią maili, plus `has_body` i pola wyliczane (firma, numer adresu, liczba adresów,
+    blokada)."""
+    return [*[column_for(name) for name in LIGHT_COLUMNS], has_body_expression().label("has_body"), *extra_columns()]
 
 
 def to_light_row(row: Mapping) -> dict:
     """Wiersz listy w formacie API (daty jako tekst ISO) i z `has_body` jako wartością logiczną."""
     light: dict[str, Any] = {name: format_value(row[name]) for name in LIGHT_COLUMNS}
     light["has_body"] = bool(row["has_body"])
+    light.update({name: format_value(row[name]) for name in EXTRA_COLUMNS})
     return light
 
 

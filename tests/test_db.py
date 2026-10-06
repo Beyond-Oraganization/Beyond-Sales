@@ -23,7 +23,10 @@ class ApiShapeTests(unittest.TestCase):
         database = make_db()
         row = sample_row(3, status="wyslano", sent_at="2026-09-29T14:23:11", retry_count="1")
         put(database, row)
-        self.assertEqual(database.get("eventy-003"), row)
+        stored = database.get("eventy-003")
+        self.assertEqual({name: stored[name] for name in dbmod.COLUMNS}, row)
+        self.assertEqual({name: stored[name] for name in dbmod.EXTRA_COLUMNS},
+                         {"company_id": "eventy-003", "position": "1", "mail_count": "1", "hold": ""})
 
     def test_null_becomes_empty_string_and_empty_becomes_null(self):
         database = make_db()
@@ -43,10 +46,10 @@ class ApiShapeTests(unittest.TestCase):
         with self.assertRaises(dbmod.InvalidValue):
             dbmod.from_api(sample_row(1, status=""))
 
-    def test_api_rows_have_exactly_the_legacy_keys(self):
+    def test_api_rows_have_the_legacy_keys_followed_by_the_computed_ones(self):
         database = make_db()
         put(database, sample_row(1))
-        self.assertEqual(tuple(database.get("eventy-001")), dbmod.COLUMNS)
+        self.assertEqual(tuple(database.get("eventy-001")), dbmod.COLUMNS + dbmod.EXTRA_COLUMNS)
 
 
 class UpsertTests(unittest.TestCase):

@@ -78,6 +78,7 @@ class AutomatRunner:
         self.d.store.recover_dead_runs()
         stuck = self.d.db.recover_stale_claims()
         self.run_id = self.d.store.start_run(self.pid)
+        self.d.store.heartbeat(self.run_id, {"v": ar.DAEMON_VERSION})  # panel widzi od razu, że demon zna reguły firm
         self._last_beat = self.d.db.now()
         state = self.d.store.get_state()
         self.log.emit(ev.EVENT_DAEMON_START, f"Demon automatu wystartował (pid {self.pid}).", notify=state.armed)
@@ -189,7 +190,7 @@ class AutomatRunner:
         working = state.armed and not state.paused and ar.in_window(now, state.settings)
         if self.run_id is not None:
             self.d.store.heartbeat(self.run_id, {
-                "stan": decision.action, "powod": decision.reason, "dzis": sent_today, "limit": state.settings.daily_cap,
+                "v": ar.DAEMON_VERSION, "stan": decision.action, "powod": decision.reason, "dzis": sent_today, "limit": state.settings.daily_cap,
                 "do": decision.until.strftime("%Y-%m-%dT%H:%M:%S") if decision.until else None})
         if self.d.guard is not None:
             self.d.guard.set_needed(working)

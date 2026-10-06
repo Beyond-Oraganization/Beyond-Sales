@@ -21,6 +21,7 @@ HARD_MAX_DAILY_CAP = 500
 MIN_DELAY = 10.0  # sekund; poniżej tego odstęp przestaje przypominać człowieka
 MAX_DELAY = 3600.0
 MAX_HORIZON_DAYS = 60
+DAEMON_VERSION = 2  # rośnie, gdy demon poznaje nowe reguły (2 = blokada firmy i odstęp); panel odmawia dodawania adresów starszemu
 TICK_SECONDS = 30.0  # najdłuższy sen pętli; krótszy niż to, co uznajemy za „zniknięcie” procesu
 GAP_THRESHOLD = 180.0  # przerwa między tyknięciami dłuższa niż to = komputer spał albo proces stał
 _COUNTRY_RE = re.compile(r"[A-Z]{2}")

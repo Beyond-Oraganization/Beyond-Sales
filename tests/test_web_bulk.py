@@ -153,7 +153,7 @@ class LightListTests(BulkWebCase):
 
     def test_default_list_is_unchanged(self):
         rows = self.data(self.call("GET", "/api/maile"))["rows"]
-        self.assertEqual(set(rows[0]), set(dbmod.COLUMNS))
+        self.assertEqual(set(rows[0]), set(dbmod.COLUMNS) | set(dbmod.EXTRA_COLUMNS))
         self.assertEqual(rows[0]["body_html"], "<p>Treść 1</p>")
 
     def test_single_row_has_the_full_content(self):

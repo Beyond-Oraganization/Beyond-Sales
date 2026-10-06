@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from perno.services import bulk, generation, listing, sending
+from perno.services import bulk, company_mails, generation, listing, sending
 from perno.settings import smtp_configured
 from perno.web import layout
 from perno.web.context import AppContext
@@ -53,7 +53,17 @@ def api_maile_row(req: Request, ctx: AppContext) -> Response:
     row = ctx.db.get(row_id)
     if row is None:
         raise HttpError(404, f"Nie znaleziono wiersza {row_id}.")
-    return json_response({"row": row})
+    return json_response({"row": row, "mails": ctx.db.company_mails(row["company_id"])})
+
+
+def api_add_mail(req: Request, ctx: AppContext) -> Response:
+    """Dodaje adres do firmy: `{company_id, email, copy_text?}` (patrz `services.company_mails`)."""
+    return json_response(company_mails.add_address(ctx.db, ctx.automat_store.get(), req.json))
+
+
+def api_delete_mail(req: Request, ctx: AppContext) -> Response:
+    """Usuwa dodatkowy adres firmy, który nigdy nie dostał maila: `{id}`."""
+    return json_response(company_mails.delete_address(ctx.db, req.json))
 
 
 def api_status(req: Request, ctx: AppContext) -> Response:
@@ -134,6 +144,8 @@ PAGE = Page(
         ("POST", "/api/mailing/ids"): api_list_ids,
         ("POST", "/api/mailing/selection"): api_selection,
         ("POST", "/api/mailing/emails"): api_selected_emails,
+        ("POST", "/api/mailing/mails"): api_add_mail,
+        ("POST", "/api/mailing/mails/delete"): api_delete_mail,
         ("POST", "/api/bulk-update"): api_bulk_update,
         ("POST", "/api/bulk-undo"): api_bulk_undo,
         ("GET", "/api/bulk-log"): api_bulk_log,

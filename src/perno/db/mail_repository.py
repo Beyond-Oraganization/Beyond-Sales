@@ -16,11 +16,12 @@ from sqlalchemy.engine import Engine
 
 from perno.db import company_writes as cw
 from perno.db.codec import from_api, to_api
-from perno.db.company_sql import column_for, company_key, select_mails
+from perno.db.company_mails import CompanyMails
+from perno.db.company_sql import column_for, company_key, extra_columns, select_mails
 from perno.db.errors import InvalidValue, RowLocked, RowNotFound
 from perno.db.listing_queries import ListingQueries, has_body_expression, light_columns, to_light_row
 from perno.db.queries import ID_CHUNK, filter_clauses, id_chunks, ordering
-from perno.db.schema import COLUMNS, companies, maile
+from perno.db.schema import COLUMNS, MAIL_COLUMNS, companies, maile
 from perno.domain import mail_rules
 from perno.domain import statuses as st
 from perno.domain.listing import DEFAULT_SORT
@@ -41,7 +42,7 @@ def _default_clock() -> datetime:
     return datetime.now()
 
 
-class MailRepository(ListingQueries):
+class MailRepository(ListingQueries, CompanyMails):
     def __init__(self, engine: Engine, clock: Optional[Callable[[], datetime]] = None):
         self.engine = engine
         self._clock = clock or _default_clock
@@ -60,8 +61,13 @@ class MailRepository(ListingQueries):
         if light:
             stmt = select_mails(*light_columns()).order_by(*ordering())
             return [to_light_row(r) for r in conn.execute(stmt).mappings()]
-        stmt = select_mails(*[column_for(name) for name in COLUMNS]).order_by(*ordering())
+        stmt = select_mails(*self._api_columns()).order_by(*ordering())
         return [to_api(r) for r in conn.execute(stmt).mappings()]
+
+    @staticmethod
+    def _api_columns() -> list:
+        """Kolumny pełnego wiersza API: pola z `COLUMNS` (firmy z `podmioty`) i pola wyliczane."""
+        return [*[column_for(name) for name in COLUMNS], *extra_columns()]
 
     def fetch_index(self) -> dict:
         stmt = sa.select(maile.c.id, maile.c.status, maile.c.sent_at, maile.c.retry_count)
@@ -73,15 +79,14 @@ class MailRepository(ListingQueries):
         if conn is None:
             with self.engine.connect() as own:
                 return self.get(row_id, own)
-        row = conn.execute(select_mails(*[column_for(name) for name in COLUMNS])
-                           .where(maile.c.id == row_id)).mappings().first()
+        row = conn.execute(select_mails(*self._api_columns()).where(maile.c.id == row_id)).mappings().first()
         return to_api(row) if row else None
 
     def select_candidates(
         self, *, segment: str = "both", row_id: str = "", company: str = "",
         statuses: tuple = (st.STATUS_PENDING,), limit: Optional[int] = 20, countries: tuple = (),
     ) -> list:
-        stmt = select_mails(*[column_for(name) for name in COLUMNS]).where(maile.c.status.in_(statuses))
+        stmt = select_mails(*self._api_columns()).where(maile.c.status.in_(statuses))
         if segment and segment != "both":
             stmt = stmt.where(companies.c.segment == segment)
         if countries:
@@ -334,19 +339,19 @@ class MailRepository(ListingQueries):
                 raise RowNotFound(f"Nie znaleziono wiersza {row_id}.")
             cw.lock_company(conn, owner)
             found = conn.execute(
-                sa.select(maile).where(maile.c.id == row_id).with_for_update()
+                sa.select(*[maile.c[name] for name in MAIL_COLUMNS]).where(maile.c.id == row_id).with_for_update()
             ).mappings().first()
             if found is None:
                 raise RowNotFound(f"Nie znaleziono wiersza {row_id}.")
             current = dict(found)
             if mail_rules.edit_blocked_by_sending(current["status"], editable):
-                raise RowLocked("Ten mail jest właśnie wysyłany — poczekaj na wynik.", to_api(current))
+                raise RowLocked("Ten mail jest właśnie wysyłany — poczekaj na wynik.", self.get(row_id, conn))
 
             update = mail_rules.resolve_edit(current, values, explicit_status=explicit_status, now=now)
             mail, company = cw.split_values(update)
             conn.execute(sa.update(maile).where(maile.c.id == row_id).values(**mail, updated_at=now))
             cw.write_company_values(conn, [owner], company, now)
-            return to_api(conn.execute(sa.select(maile).where(maile.c.id == row_id)).mappings().one())
+            return self.get(row_id, conn) or {}
 
     def claim_for_sending(self, row_id: str, allowed_from: tuple = (st.STATUS_PENDING, st.STATUS_ERROR)) -> Optional[dict]:
         with self.engine.begin() as conn:

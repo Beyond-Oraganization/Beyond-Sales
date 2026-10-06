@@ -19,6 +19,31 @@ class EmailKeyTests(unittest.TestCase):
         self.assertEqual(rules.email_key("   "), "")
 
 
+class EmailProblemTests(unittest.TestCase):
+    def test_ordinary_addresses_are_fine(self):
+        for address in ("a@b.pl", "imie.nazwisko+tag@firma.co.uk", "x@sub.domena.example.com"):
+            self.assertIsNone(rules.email_problem(address), address)
+
+    def test_an_empty_address_asks_for_one(self):
+        self.assertEqual(rules.email_problem(""), "Podaj adres e-mail.")
+
+    def test_wrong_shapes_are_refused_with_the_text_shown(self):
+        for address in ("bez-malpy", "a@b", "@firma.pl", "a@@firma.pl", "a b@firma.pl", "a@fir ma.pl", "a@b."):
+            self.assertIn("nie wygląda na adres e-mail", rules.email_problem(address) or "", address)
+        self.assertIn("„bez-malpy”", rules.email_problem("bez-malpy"))
+
+    def test_length_limit_is_the_column_width(self):
+        longest = "a" * (rules.MAX_EMAIL_LENGTH - len("@b.pl")) + "@b.pl"
+        self.assertEqual(len(longest), 320)
+        self.assertIsNone(rules.email_problem(longest))
+        self.assertIn("za długi", rules.email_problem("a" + longest))
+
+    def test_a_very_long_wrong_text_is_cut_in_the_message(self):
+        message = rules.email_problem("x" * 100)
+        self.assertIn("x" * 60 + "”", message)
+        self.assertNotIn("x" * 61, message)
+
+
 class HoldTests(unittest.TestCase):
     def test_every_company_stop_status_holds_the_siblings(self):
         for status in st.COMPANY_STOPS:

@@ -11,6 +11,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 
 from perno.db.schema import COMPANY_COLUMNS, companies, maile
+from perno.domain import statuses as st
 
 mail_company_join = maile.join(companies, companies.c.id == maile.c.company_id, isouter=True)
 
@@ -23,6 +24,32 @@ def column_for(name: str):
 def select_mails(*columns):
     """`SELECT <columns>` z maili z dołączoną firmą: jedyny sposób czytania pól firmy i adresu w jednym zapytaniu."""
     return sa.select(*columns).select_from(mail_company_join)
+
+
+def mail_count_expression():
+    """Ile adresów ma firma tego maila (mail bez firmy liczy się jako jedyny)."""
+    sibling = maile.alias("sibling_count")
+    count = (sa.select(sa.func.count()).select_from(sibling).where(sibling.c.company_id == maile.c.company_id)
+             .correlate(maile).scalar_subquery())
+    return sa.case((maile.c.company_id.is_(None), 1), else_=count)
+
+
+def hold_expression():
+    """Status innego adresu tej firmy z `COMPANY_STOPS` (ważniejszy pierwszy) albo pusty tekst: ten adres jest wtedy
+    wstrzymany. Własnego statusu wiersza nie liczymy."""
+    sibling = maile.alias("sibling_hold")
+    rank = sa.case({status: i for i, status in enumerate(st.COMPANY_STOPS)}, value=sibling.c.status, else_=len(st.COMPANY_STOPS))
+    stop = (sa.select(sibling.c.status)
+            .where(sibling.c.company_id == maile.c.company_id, sibling.c.id != maile.c.id,
+                   sibling.c.status.in_(st.COMPANY_STOPS))
+            .order_by(rank).limit(1).correlate(maile).scalar_subquery())
+    return sa.func.coalesce(stop, "")
+
+
+def extra_columns() -> list:
+    """Pola wyliczane (`schema.EXTRA_COLUMNS`) w kolejności, w jakiej dołączamy je do wiersza API."""
+    return [company_key().label("company_id"), maile.c.position, mail_count_expression().label("mail_count"),
+            hold_expression().label("hold")]
 
 
 def company_key():

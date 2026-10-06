@@ -3,6 +3,7 @@ maili i warunki usunięcia adresu. Czysta logika bez bazy i zegara (dzień przyc
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, time, timedelta
 from typing import Iterable, Mapping, Optional
 
@@ -10,11 +11,25 @@ from perno.domain import statuses as st
 
 MAIL_ID_SEPARATOR = "~"  # id dodatkowego maila: `<id firmy>~<numer>`; adres główny ma id firmy
 MAX_MAIL_ID_LENGTH = 32  # długość kolumny maile.id
+MAX_EMAIL_LENGTH = 320  # długość kolumny maile.email
+_EMAIL_SHAPE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 
 def email_key(email: Optional[str]) -> str:
     """Adres w postaci porównywanej: bez spacji i wielkości liter (MySQL porównuje bez wielkości liter, sqlite z nią)."""
     return (email or "").strip().lower()
+
+
+def email_problem(address: str) -> Optional[str]:
+    """Dlaczego tekst nie może być nowym adresem firmy (None = może). Sprawdzamy tylko kształt `a@b.c`: czy adres istnieje,
+    wie dopiero serwer pocztowy."""
+    if not address:
+        return "Podaj adres e-mail."
+    if len(address) > MAX_EMAIL_LENGTH:
+        return f"Adres e-mail jest za długi (maks. {MAX_EMAIL_LENGTH} znaków)."
+    if not _EMAIL_SHAPE.fullmatch(address):
+        return f"„{address[:60]}” nie wygląda na adres e-mail (oczekiwano postaci nazwa@domena.pl)."
+    return None
 
 
 def hold_reason(sibling_statuses: Iterable[str]) -> Optional[str]:

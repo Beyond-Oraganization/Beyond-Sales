@@ -96,6 +96,13 @@ class RunnerCase(unittest.TestCase):
 
 
 class TickTests(RunnerCase):
+    def test_the_daemon_announces_its_version_at_start_and_on_every_beat(self):
+        self.rows(1)
+        self.runner.start()
+        self.assertEqual(self.store.active_run()["statystyki"]["v"], ar.DAEMON_VERSION)  # panel wie od razu, że demon jest aktualny
+        self.runner.tick()
+        self.assertEqual(self.store.active_run()["statystyki"]["v"], ar.DAEMON_VERSION)
+
     def test_not_armed_sends_nothing(self):
         self.rows(2)
         self.runner.start()

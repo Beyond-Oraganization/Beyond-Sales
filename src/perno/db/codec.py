@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any, Mapping
 
 from perno.db.errors import InvalidValue
-from perno.db.schema import COLUMNS
+from perno.db.schema import COLUMNS, EXTRA_COLUMNS
 from perno.domain import countries
 
 _INT_FIELDS = ("row_number", "retry_count")
@@ -33,7 +33,10 @@ def format_value(value) -> str:
 
 
 def to_api(row: Mapping) -> dict:
-    return {name: format_value(row[name]) for name in COLUMNS}
+    """Wiersz API: pola `COLUMNS` oraz pola wyliczane (`EXTRA_COLUMNS`), jeśli odczyt je dołączył."""
+    api = {name: format_value(row[name]) for name in COLUMNS}
+    api.update({name: format_value(row[name]) for name in EXTRA_COLUMNS if name in row})
+    return api
 
 
 def _parse_dt(value: str, name: str) -> datetime:

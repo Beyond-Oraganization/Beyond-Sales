@@ -416,5 +416,53 @@ class MysqlAdoptionTests(unittest.TestCase):
         self.assertTrue(self.database.diagnose().clean)
 
 
+@unittest.skipUnless(TEST_DB, SKIP_REASON)
+class MysqlSiblingTests(unittest.TestCase):
+    """Adresy-siostry na prawdziwym MySQL: indeks unikalny bez wielkości liter, podzapytania `hold` i `mail_count`,
+    kolejność z `~` w id, usuwanie z renumeracją."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.database = dbmod.Database(dbmod.make_engine(resolve_test_url()))
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
+        cls.database.ensure_schema()
+
+    @classmethod
+    def tearDownClass(cls):
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
+
+    def setUp(self):
+        with self.database.transaction() as conn:
+            conn.execute(dbmod.maile.delete())
+            conn.execute(dbmod.companies.delete())
+            self.database.insert_rows(conn, [
+                sample_row(1, id="eventy-n001", row_number="", company="Beta", email="a@beta.pl"),
+                sample_row(2, id="eventy-n0010", row_number="", company="Alfa", email="a@alfa.pl")])
+
+    def test_add_hold_order_and_delete(self):
+        self.database.add_mail("eventy-n001", "b@beta.pl")
+        third = self.database.add_mail("eventy-n001", "c@beta.pl")
+        self.assertEqual(self.database.list_ids(RowFilter(), "default"),
+                         ["eventy-n001", "eventy-n001~2", "eventy-n001~3", "eventy-n0010"])
+        self.assertEqual(self.database.list_ids(RowFilter(), "company"),
+                         ["eventy-n0010", "eventy-n001", "eventy-n001~2", "eventy-n001~3"])
+        self.database.apply_edit("eventy-n001", {"status": st.STATUS_REPLIED})
+        self.assertEqual((self.database.get(third["id"])["hold"], self.database.get(third["id"])["mail_count"]),
+                         (st.STATUS_REPLIED, "3"))
+        self.assertEqual(self.database.get("eventy-n0010")["hold"], "")
+        self.database.delete_mail("eventy-n001~2")
+        self.assertEqual([(m["id"], m["position"]) for m in self.database.company_mails("eventy-n001")],
+                         [("eventy-n001", "1"), ("eventy-n001~3", "2")])
+        self.assertTrue(self.database.diagnose().clean, self.database.diagnose())
+
+    def test_the_unique_index_is_case_insensitive_on_mysql(self):
+        self.database.add_mail("eventy-n001", "b@beta.pl")
+        with self.assertRaises(dbmod.InvalidValue):
+            self.database.add_mail("eventy-n001", "B@BETA.PL")
+        with self.assertRaises(sa_exc.IntegrityError), self.database.engine.begin() as conn:  # bez kontroli w kodzie
+            conn.execute(sa.text("INSERT INTO maile (id, segment, email, status, retry_count, company_id, position) "
+                                 "VALUES ('x', 'eventy', 'B@Beta.pl', 'do_wyslania', 0, 'eventy-n001', 9)"))
+
+
 if __name__ == "__main__":
     unittest.main()

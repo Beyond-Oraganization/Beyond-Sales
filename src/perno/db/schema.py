@@ -21,6 +21,9 @@ COMPANY_COLUMNS = ("segment", "row_number", "company", "website", "tag", "countr
 MAIL_COLUMNS = tuple(name for name in COLUMNS if name not in COMPANY_COLUMNS)
 # Łącze adresu z firmą (NULL do czasu `--adopt`): id firmy i numer adresu w firmie (1 = adres główny).
 LINK_COLUMNS = ("company_id", "position")
+# Pola wyliczane w odczycie i widoczne w API obok `COLUMNS`: firma i numer adresu, ile adresów ma firma oraz status innego
+# adresu, który wstrzymuje ten (`domain.statuses.COMPANY_STOPS`; pusty = brak blokady).
+EXTRA_COLUMNS = ("company_id", "position", "mail_count", "hold")
 
 
 def legacy_key(name: str) -> str:
