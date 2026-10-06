@@ -111,7 +111,8 @@ code{font:12px/1.4 var(--mono);background:var(--fill);border-radius:5px;padding:
 .btn.plain,.kit-btn.plain{background:transparent;border-color:transparent;box-shadow:none;color:var(--accent-ink);}
 .btn.plain:hover:not(:disabled),.kit-btn.plain:hover:not(:disabled){background:var(--accent-tint);}
 .btn.danger,.row-actions button.danger{color:var(--danger);}
-.btn.danger.primary{background:var(--danger);color:#fff;}
+.btn.danger.primary{background:var(--danger-fill);color:#fff;}
+.btn.danger.primary:hover:not(:disabled){background:color-mix(in srgb,var(--danger-fill) 88%,#000);}
 .kit-btn.is-active,.kit-btn[aria-expanded="true"]{background:var(--accent-tint);border-color:transparent;color:var(--accent-ink);}
 
 /* strzałka rozwijanego menu rysowana CSS-em: znacznik nie zawiera już glifu ▾ */
@@ -149,7 +150,7 @@ input[type="checkbox"]:disabled,input[type="radio"]:disabled{opacity:.4;cursor:n
 /* ---- odznaki i chipy statusów: kolor statusu przychodzi jako --c, reszta (tło, tekst) wynika z motywu -------------- */
 .badge,.kit-badge{--c:var(--label-2);display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--r-pill);
   font-size:var(--fs-foot);font-weight:500;line-height:1;white-space:nowrap;
-  background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) 62%,var(--label));}
+  background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) var(--ink-mix),var(--label));}
 .badge::before,.kit-badge::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--c);}
 
 .kit-pill,.kit-chip,.summary .chip{--c:var(--accent-ink);display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;
@@ -163,7 +164,7 @@ input[type="checkbox"]:disabled,input[type="radio"]:disabled{opacity:.4;cursor:n
 .kit-chip .kit-dot,.summary .chip::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--c);}
 .kit-chip .kit-dot{display:inline-block;}
 .kit-chip[aria-pressed="true"],.summary .chip.active{background:color-mix(in srgb,var(--c) 18%,transparent);
-  border-color:color-mix(in srgb,var(--c) 45%,transparent);color:color-mix(in srgb,var(--c) 70%,var(--label));font-weight:600;}
+  border-color:color-mix(in srgb,var(--c) 45%,transparent);color:color-mix(in srgb,var(--c) var(--ink-mix),var(--label));font-weight:600;}
 
 .dot{display:inline-block;flex:none;width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--label-3);}
 .dot.live{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 25%,transparent);animation:pulse 2s var(--ease) infinite;}

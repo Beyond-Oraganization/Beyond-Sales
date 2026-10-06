@@ -36,7 +36,7 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
   header h1{margin:0 0 var(--s-3);font-size:var(--fs-page);font-weight:700;letter-spacing:-.02em;line-height:1.2;}
   .summary{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--s-3);}
   .summary .chip{--c:var(--label-2);display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:var(--r-pill);
-                 background:color-mix(in srgb,var(--c) 14%,transparent);color:color-mix(in srgb,var(--c) 70%,var(--label));
+                 background:color-mix(in srgb,var(--c) 14%,transparent);color:color-mix(in srgb,var(--c) var(--ink-mix),var(--label));
                  font-size:var(--fs-foot);font-weight:500;}
   .summary .chip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--c);}
   .controls{display:flex;gap:var(--s-2);flex-wrap:wrap;align-items:center;}
@@ -60,7 +60,7 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
   tbody tr:hover > td{background:var(--fill);}
   .badge{--c:var(--label-2);display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--r-pill);
          font-size:var(--fs-foot);font-weight:500;white-space:nowrap;
-         background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) 62%,var(--label));}
+         background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) var(--ink-mix),var(--label));}
   .badge::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--c);}
   .site-link{display:inline-grid;place-content:center;width:18px;height:18px;margin-left:6px;vertical-align:-3px;border-radius:var(--r-sm);
              color:var(--label-3);text-decoration:none;}

@@ -30,7 +30,7 @@
 /* status jako pigułka-lista: kolor przychodzi jako --c, kropka i strzałka są tłem */
 .badge-select{--c:var(--label-2);height:24px;min-height:0;padding:0 24px 0 21px;border:none;border-radius:var(--r-pill);cursor:pointer;
   font:500 var(--fs-foot)/1 var(--font);white-space:nowrap;
-  background-color:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) 62%,var(--label));
+  background-color:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) var(--ink-mix),var(--label));
   background-image:radial-gradient(circle at 11px 50%,var(--c) 0 3px,transparent 3.5px),var(--select-chev);
   background-repeat:no-repeat;background-position:0 0,right 7px center;background-size:auto,10px;}
 .badge-select option{font-weight:400;}
