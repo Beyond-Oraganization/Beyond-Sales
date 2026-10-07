@@ -20,7 +20,23 @@ function fmtTime(iso) {
 
 const toast = (text, tone) => showToast(text, tone);
 
+// Segmenty to dowolne etykiety z bazy (APP.segmentOrder); zapisany w ustawieniach segment, którego już nie ma, też zostaje na liście.
+function fillSegmentOptions(current) {
+  const select = el('f_segment');
+  const known = typeof APP === 'undefined' ? [] : (APP.segmentOrder || []);
+  const names = ['both', ...known];
+  if (current && !names.includes(current)) names.push(current);
+  select.textContent = '';
+  for (const name of names) {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name === 'both' ? 'wszystkie' : name;
+    select.appendChild(option);
+  }
+}
+
 function fillForm(settings) {
+  fillSegmentOptions(settings.segment);
   for (const key of FIELDS) el('f_' + key).value = settings[key];
   el('f_countries').value = (settings.countries || []).join(',');
   for (let day = 0; day < 7; day++) el('d' + day).checked = (settings.weekdays || []).includes(day);

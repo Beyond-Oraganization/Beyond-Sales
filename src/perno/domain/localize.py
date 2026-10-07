@@ -17,6 +17,8 @@ LANGUAGE_BY_COUNTRY = {
     "ES": "es",
 }
 
+ICEBREAKER = "icebreaker"  # pierwszy mail do zimnego kontaktu: jeden szablon dla wszystkich segmentów
+
 LANGUAGE_NAMES = {"pl": "polski", "en": "angielski", "de": "niemiecki", "es": "hiszpański"}
 
 # bez „ó": występuje też po hiszpańsku (información), więc nie jest cechą wyłącznie polską
@@ -28,10 +30,10 @@ def language_for(country: Optional[str]) -> Optional[str]:
     return LANGUAGE_BY_COUNTRY.get((country or "").strip().upper())
 
 
-def template_path(segment: str, language: str) -> str:
-    """Ścieżka szablonu segmentu w danym języku (`segment.html` dla polskiego, `segment.xx.html` dla pozostałych)."""
-    name = f"{segment}.html" if language == "pl" else f"{segment}.{language}.html"
-    return os.path.join(cfg.BASE_DIR, "templates", name)
+def template_path(name: str, language: str) -> str:
+    """Ścieżka szablonu o danej nazwie w danym języku (`nazwa.html` dla polskiego, `nazwa.xx.html` dla pozostałych)."""
+    file_name = f"{name}.html" if language == "pl" else f"{name}.{language}.html"
+    return os.path.join(cfg.BASE_DIR, "templates", file_name)
 
 
 def looks_polish(*texts: str) -> bool:

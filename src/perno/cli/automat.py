@@ -27,6 +27,7 @@ from perno import settings as cfg
 from perno.db import Database, DbError
 from perno.db.automat_store import AutomatStore, DaemonActive
 from perno.domain import automat_rules as ar
+from perno.domain import segments
 from perno.logging_setup import configure_logging
 from perno.notify import Notification
 from perno.notify.factory import build_pinger
@@ -254,7 +255,8 @@ def build_parser() -> argparse.ArgumentParser:
     limits.add_argument("--days", metavar="pn,wt,... lub pn-pt")
     limits.add_argument("--delay-min", type=float)
     limits.add_argument("--delay-max", type=float)
-    limits.add_argument("--segment", choices=["both", "eventy", "driverzy"])
+    limits.add_argument("--segment", type=lambda text: "both" if text == "both" else segments.normalize(text),
+                        help="both albo nazwa segmentu (np. eventy, kancelarie).")
     limits.add_argument("--countries", help="kody ISO po przecinku (np. PL,DE); „_foreign” = spoza Polski; puste = wszystkie")
     limits.add_argument("--horizon", type=int, help="na ile dni uzbrajamy plan")
     limits.add_argument("--max-errors", type=int, help="po ilu błędach z rzędu automat się wstrzymuje")

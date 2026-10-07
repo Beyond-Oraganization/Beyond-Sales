@@ -30,11 +30,15 @@ class SettingsTests(unittest.TestCase):
                {"weekdays": []}, {"weekdays": [7]}, {"weekdays": "pn"}, {"window_start": "25:00"},
                {"window_start": "9"}, {"window_start": "16:00"}, {"window_end": "09:00"},
                {"delay_min": 5}, {"delay_min": 200}, {"delay_max": 5000}, {"delay_min": "abc"},
-               {"segment": "inny"}, {"countries": ["Polska"]}, {"countries": "PL"}, {"countries": [1]},
+               {"segment": "Inny segment"}, {"countries": ["Polska"]}, {"countries": "PL"}, {"countries": [1]},
                {"horizon_days": 0}, {"horizon_days": 61}, {"max_consecutive_errors": 0}, {"max_consecutive_errors": 21}]
         for raw in bad:
             with self.subTest(raw=raw), self.assertRaises(ar.SettingsInvalid):
                 ar.settings_from_mapping(raw)
+
+    def test_segment_is_any_valid_label_not_only_the_built_in_ones(self):
+        for name in ("both", "eventy", "kancelarie", "szkoly-jazdy"):
+            self.assertEqual(ar.settings_from_mapping({"segment": name}).segment, name)
 
     def test_countries_accept_codes_and_markers_without_duplicates(self):
         s = ar.settings_from_mapping({"countries": ["PL", "DE", "PL", "_foreign", "_none"]})

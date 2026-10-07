@@ -13,7 +13,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from typing import Mapping, Optional, Sequence
 
-from perno.domain import mail_rules
+from perno.domain import mail_rules, segments
 from perno.domain import statuses as st
 from perno.domain.rowfilter import FOREIGN_COUNTRY, NO_COUNTRY, RowFilter
 
@@ -114,7 +114,7 @@ def _countries(raw: object) -> tuple:
 
 
 def _segment(raw: object) -> str:
-    if raw != "both" and raw not in st.SEGMENT_ORDER:
+    if raw != "both" and not segments.is_valid(raw):
         raise SettingsInvalid(f"Nieznany segment: {raw!r}.")
     return str(raw)
 

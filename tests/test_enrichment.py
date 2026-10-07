@@ -15,8 +15,10 @@ import sqlalchemy as sa
 
 from perno import settings as cfg
 from perno.cli import enrich
+from perno.db.schema import maile
 from perno.scraper.schema import firmy, kontakty, strony, strony_tresc
 from perno.scraper.store import Store
+from perno.services import enrichment as enrichment_service
 from perno.services import firms_import
 from tests.fixtures import FakeClock, make_db, put, sample_row
 
@@ -352,3 +354,102 @@ class WriteTests(EnrichmentCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AddressTests(EnrichmentCase):
+    """`wypelnij.py adresy`: adres ze skanu do wierszy „Brak e-maila”, bez treści i bez możliwości wysyłki."""
+
+    def set_row(self, row_id, **values):
+        with self.database.engine.begin() as conn:
+            conn.execute(sa.update(maile).where(maile.c.id == row_id).values(**values))
+
+    def test_dry_run_shows_the_choice_and_writes_nothing(self):
+        code, out, _ = self.cli("adresy", "--dry-run")
+        self.assertEqual(code, 0)
+        self.assertIn("eventy-001", out)
+        self.assertIn("biuro@alfa.example.pl", out)  # ogólna skrzynka w domenie, nie jan@gmail.com
+        self.assertNotIn("jan@gmail.com", out)
+        self.assertIn("nic nie zapisano", out)
+        self.assertEqual(self.row("eventy-001")["email"], "")
+        self.assertEqual(self.backup_files(), [])
+
+    def test_saves_the_address_with_status_awaiting_copy_and_a_backup(self):
+        code, out, _ = self.cli("adresy")
+        self.assertEqual(code, 0)
+        self.assertIn("Zapisano 3 wierszy", out)
+        row = self.row("eventy-001")
+        self.assertEqual((row["email"], row["status"]), ("biuro@alfa.example.pl", "oczekuje_na_tresc"))
+        self.assertEqual(self.row("driverzy-001")["email"], "info@echo.example.de")
+        self.assertEqual(len(self.backup_files()), 1)
+        self.assertIn("adresami-ze-skanu", self.backup_files()[0])
+
+    def test_the_row_is_not_sendable_without_content(self):
+        self.cli("adresy")
+        row = self.row("eventy-001")
+        self.assertNotEqual(row["status"], "do_wyslania")
+        self.assertFalse(row["body_html"])
+
+    def test_rows_that_are_already_awaiting_copy_or_not_scanned_stay_as_they_are(self):
+        self.cli("adresy")
+        self.assertEqual(self.row("eventy-002")["email"], "")  # „Czeka na treść”: wybór adresu należy do autora treści
+        self.assertEqual(self.row("eventy-005")["email"], "")  # skan niezakończony
+        self.assertEqual(self.row("eventy-004")["status"], "wyslano")
+
+    def test_an_address_typed_by_hand_is_not_replaced(self):
+        self.set_row("eventy-001", email="reczny@alfa.example.pl")
+        code, out, _ = self.cli("adresy")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.row("eventy-001")["email"], "reczny@alfa.example.pl")
+        self.assertNotIn("eventy-001", out)
+
+    def test_firms_without_any_scanned_address_are_reported_not_filled(self):
+        with self.database.engine.begin() as conn:
+            conn.execute(sa.delete(kontakty).where(kontakty.c.firma_id == self.firm_id("eventy-003")))
+        _, out, _ = self.cli("adresy", "--dry-run")
+        line = next(line for line in out.splitlines() if "eventy-003" in line)
+        self.assertIn("skan nie znalazł adresów", line)
+        self.assertIn("Adres wybrany dla 2 firm, bez adresu zostaje 1", out)
+
+    def test_a_row_edited_between_plan_and_write_is_not_overwritten(self):
+        plan = enrichment_service.plan_address_adoption(self.store)
+        self.set_row("eventy-001", email="reczny@alfa.example.pl")
+        written = enrichment_service.write_addresses(self.database, plan)
+        self.assertEqual(written, 2)
+        self.assertEqual(self.row("eventy-001")["email"], "reczny@alfa.example.pl")
+
+    def test_a_second_run_changes_nothing(self):
+        self.cli("adresy")
+        code, out, _ = self.cli("adresy")
+        self.assertEqual(code, 0)
+        self.assertIn("Adres wybrany dla 0 firm", out)
+        self.assertIn("Nie ma czego zapisać", out)
+        self.assertEqual(len(self.backup_files()), 1)
+
+
+class SharedTemplateTests(EnrichmentCase):
+    def test_the_template_name_in_an_entry_must_be_a_plain_identifier(self):
+        for bad in ("../x", "a b", "A", ""):
+            code, _, err = self.zapisz([entry("eventy-001", "biuro@alfa.example.pl", szablon=bad or "../")], "--dry-run")
+            self.assertEqual(code, 1, bad)
+            self.assertIn("nazwa to małe litery", err)
+
+    def test_an_entry_can_pick_another_template_from_the_folder(self):
+        code, _, err = self.zapisz([entry("eventy-001", "biuro@alfa.example.pl", szablon="nie_ma")], "--dry-run")
+        self.assertEqual(code, 1)
+        self.assertIn("brak szablonu nie_ma.html", err)
+
+    def test_a_segment_without_its_own_template_uses_the_shared_one(self):
+        with self.database.engine.begin() as conn:
+            conn.execute(sa.text("UPDATE maile SET segment = 'spoldzielnie' WHERE id = 'eventy-001'"))
+        code, out, _ = self.zapisz([entry("eventy-001", "biuro@alfa.example.pl")], "--dry-run")
+        self.assertEqual(code, 0, out)
+
+    def test_a_missing_language_file_is_refused_with_a_message_instead_of_a_crash(self):
+        def missing(name, language):
+            return os.path.join(os.path.dirname(__file__), "no-such-dir", f"{name}.{language}.html")
+
+        with mock.patch("perno.domain.localize.template_path", missing):
+            code, _, err = self.zapisz([entry("eventy-001", "biuro@alfa.example.pl")], "--dry-run")
+        self.assertEqual(code, 1)
+        self.assertIn("eventy-001: brak szablonu icebreaker", err)
+        self.assertEqual(self.backup_files(), [])

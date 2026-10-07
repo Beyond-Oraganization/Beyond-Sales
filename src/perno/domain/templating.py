@@ -30,6 +30,11 @@ def render(template: str, values: dict, escape: bool = True) -> str:
     return out
 
 
+def drop_empty_paragraphs(html_body: str) -> str:
+    """Usuwa puste akapity `<p></p>` (np. opcjonalne zdanie, którego firma nie ma)."""
+    return re.sub(r"<p>\s*</p>\s*", "", html_body)
+
+
 def _link_to_text(match: re.Match) -> str:
     href, label = match.group(1), match.group(2).strip()
     return label if label == href else f"{label} ({href})"

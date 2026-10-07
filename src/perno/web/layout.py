@@ -39,7 +39,7 @@ def render_page(ctx, *, title: str, active_key: str, body: str, css: str = "", j
         "manualStatuses": list(st.MANUAL_STATUSES),
         "sendable": list(st.SENDABLE_STATUSES),
         "countries": [list(item) for item in countries.choices()],  # [kod, nazwa po polsku, flaga]
-        "segmentOrder": list(st.SEGMENT_ORDER),
+        "segmentOrder": list(dict.fromkeys([*st.SEGMENT_ORDER, *ctx.db.distinct_segments()])),
         "keepsSentAt": list(st.KEEPS_SENT_AT),
     })
     kit_css = "".join(read_asset(name) + "\n" for name in KIT_CSS) if kit else ""

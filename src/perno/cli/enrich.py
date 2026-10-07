@@ -2,6 +2,8 @@
 """Uzupełnia tabelę `maile` (e-mail, temat, treść) firmami z zakończonym skanem stron.
 
   python3 wypelnij.py lista                       # które firmy się kwalifikują (skan zakończony, brak maila w tabeli)
+  python3 wypelnij.py adresy --dry-run            # jaki adres ze skanu trafiłby do której firmy (nic nie zapisuje)
+  python3 wypelnij.py adresy                      # wpisuje adresy ze skanu: status „Czeka na treść” (bez treści nie wyśle)
   python3 wypelnij.py kontekst --out DIR          # po jednym pliku .md na firmę: opis, kontakty, treść stron
   python3 wypelnij.py zapisz tresci.json --dry-run   # walidacja i podgląd, nic nie zapisuje
   python3 wypelnij.py zapisz tresci.json
@@ -9,7 +11,8 @@
   python3 wypelnij.py zapisz tresci.json --ponownie   # przelicz też wiersze „Do wysłania”, których jeszcze nie wysłano
 
 `tresci.json` to lista obiektów: {id, email, subject, mode, tag, obs, pitch, channel_summary}
-(+ opcjonalnie contact_person, city, address, description). Pola obs/pitch/channel_summary/subject muszą być
+(+ opcjonalnie season, contact_person, city, address, description; `season` to jedno zdanie o sezonowości, bez niego akapitu nie ma w mailu;
+zasady pisania pól: templates/icebreaker.md). Pola obs/pitch/channel_summary/subject/season muszą być
 w języku kraju siedziby firmy (PL→polski, GB/IE→angielski, DE/AT→niemiecki, ES→hiszpański); szablon wybiera się
 z kraju zapisanego w tabeli. channel_summary to czynność w bezokoliczniku z dopełniaczem (po „Nie musi już Pan…”: „potwierdzać rezerwacji”,
 nie „rezerwacje”) i BEZ płatności (szablon sam dopisuje „i osobno rozliczać płatności”), a pitch kończy się bezokolicznikiem („…wprowadzić płatność online”). Adres e-mail musi pochodzić z kontaktów znalezionych przez skraper (nie wymyślamy adresów).
@@ -47,6 +50,22 @@ def cmd_list(args) -> int:
         lang = localize.language_for(r["country"])
         emails = len(store.scraped_emails(r["firma_id"]))
         print(f"  {r['id']:<14} {r['company'][:34]:<34} kraj={r['country'] or '—':<3} język={lang or 'BRAK'}  e-maile ze skanu={emails}  stron={r['stron_pobranych']}")
+    return 0
+
+
+def cmd_addresses(args) -> int:
+    db, store = open_stores(args)
+    plan = enrichment.plan_address_adoption(store)
+    for row_id, company, email in plan.picks:
+        print(f"  OK  {row_id:<18} {company[:34]:<34} {email}")
+    for row_id, company, reason in plan.unresolved:
+        print(f"  ---  {row_id:<18} {company[:34]:<34} {reason}")
+    print(f"Adres wybrany dla {len(plan.picks)} firm, bez adresu zostaje {len(plan.unresolved)}.")
+    if args.dry_run or not plan.picks:
+        print("--dry-run: nic nie zapisano." if args.dry_run else "Nie ma czego zapisać.")
+        return 0
+    print(f"Kopia zapasowa bazy: {firms_import.backup_table(db, cfg.BACKUP_DIR, 'adresami-ze-skanu')}")
+    print(f"Zapisano {enrichment.write_addresses(db, plan)} wierszy (status „Czeka na treść”).")
     return 0
 
 
@@ -91,6 +110,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", default=cfg.DEFAULT_CONFIG)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("lista")
+    addresses = sub.add_parser("adresy", help="Wpisz adresy ze skanu w wiersze bez e-maila (status „Czeka na treść”).")
+    addresses.add_argument("--dry-run", action="store_true")
     ctx = sub.add_parser("kontekst")
     ctx.add_argument("--out", required=True)
     ctx.add_argument("--id", nargs="*")
@@ -107,7 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        return {"lista": cmd_list, "kontekst": cmd_context, "zapisz": cmd_save}[args.command](args)
+        return {"lista": cmd_list, "adresy": cmd_addresses, "kontekst": cmd_context, "zapisz": cmd_save}[args.command](args)
     except DbError as exc:
         print(f"Błąd bazy: {exc}", file=sys.stderr)
         return 2

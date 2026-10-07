@@ -20,6 +20,7 @@ class MetaTests(unittest.TestCase):
         self.assertEqual(list(st.STATUS_META), [
             "do_wyslania", "wysylanie", "wyslano", "odpowiedzial", "zainteresowany",
             "blad", "pominieto_brak_email", "pominieto_klient", "oczekuje_na_tresc", "nie_kontaktowac",
+            "pominieto_dopasowanie",
         ])
 
     def test_new_statuses_can_be_picked_by_hand_but_never_sent_from(self):

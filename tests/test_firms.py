@@ -121,6 +121,20 @@ class ImportFirmsTests(TempCase):
                          ("", "", "", "", "0"))
         self.assertEqual(database.get("eventy-001")["company"], "Firma 1")  # istniejące wiersze nietknięte
 
+    def test_a_new_segment_label_gets_its_own_numbering(self):
+        database = make_db()
+        put(database, sample_row(1))
+        result = import_firms(database, self.rows(("Kancelaria A", "https://ka.pl/", "Prawo")), "kancelarie")
+        self.assertEqual([n["id"] for n in result.new], ["kancelarie-n001"])
+        self.assertEqual(database.get("kancelarie-n001")["segment"], "kancelarie")
+        self.assertIn("kancelarie", database.distinct_segments())
+
+    def test_a_segment_that_is_not_an_identifier_is_refused(self):
+        database = make_db()
+        for bad in ("Kancelarie prawne", "", "x"):
+            with self.subTest(segment=bad), self.assertRaises(FirmsError):
+                import_firms(database, self.rows(("A", "https://a.pl", "")), bad)
+
     def test_import_is_idempotent_and_continues_the_sequence(self):
         database = make_db()
         put(database, sample_row(1))
@@ -171,9 +185,11 @@ class ImportFirmsTests(TempCase):
         self.assertIn("za długie", str(ctx.exception))
         self.assertEqual(database.count_rows(), 1)
 
-    def test_unknown_segment(self):
-        with self.assertRaises(FirmsError):
-            import_firms(make_db(), self.rows(("A", "https://a.pl", "")), "inny")
+    def test_the_cooperatives_segment_is_accepted_and_numbered_separately(self):
+        database = make_db()
+        put(database, sample_row(1))
+        result = import_firms(database, self.rows(("Admin SM", "https://admin-sm.pl/", "Obsługa spółdzielni")), "spoldzielnie")
+        self.assertEqual([n["id"] for n in result.new], ["spoldzielnie-n001"])
 
     def test_imported_firms_can_never_be_sent_by_accident(self):
         database = make_db()

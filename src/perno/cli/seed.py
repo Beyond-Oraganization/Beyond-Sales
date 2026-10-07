@@ -6,7 +6,7 @@
 Oba pliki wyjściowe są w pełni odtwarzane przy każdym uruchomieniu — nie są
 miejscem do ręcznej edycji treści. Treść Eventy edytuje się w tablicy JS
 `index.html` (skąd ten skrypt ją weźmie przy następnym przebiegu); treść
-Driverzy — w templates/driverzy.html.
+Driverzy — w src/perno/services/seed/driverzy.py (szablon maila jest wspólny: templates/icebreaker.html).
 
 Uruchom ponownie, gdy folder Firmy/Eventy urośnie o kolejne dossier.
 """

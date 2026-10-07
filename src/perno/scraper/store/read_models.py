@@ -89,11 +89,37 @@ class ReadModels(StoreCore):
             ).mappings().all()
         return [dict(r) for r in rows]
 
+    def scan_counts_by_segment(self) -> dict:
+        """`{(segment, status skanu): liczba firm}`. Segment bierzemy z firmy skrapera, a gdy go nie ma (firma dodana
+        ręcznie), z powiązanej firmy w tabeli maile; bez żadnego pusty tekst."""
+        segment = sa.func.coalesce(firmy.c.segment, sa.func.min(companies.c.segment))
+        stmt = (sa.select(segment, firmy.c.skan_status, sa.func.count(sa.distinct(firmy.c.id)))
+                .select_from(firmy.outerjoin(firmy_maile, firmy_maile.c.firma_id == firmy.c.id)
+                             .outerjoin(maile, maile.c.id == firmy_maile.c.maile_id)
+                             .outerjoin(companies, companies.c.id == maile.c.company_id))
+                .group_by(firmy.c.id, firmy.c.segment, firmy.c.skan_status))
+        counts: dict = {}
+        with self._read() as conn:
+            for name, status, _n in conn.execute(stmt):
+                counts[(name or "", status)] = counts.get((name or "", status), 0) + 1
+        return counts
+
+    def brief_pages(self, firma_id: int, limit: int) -> list:
+        """`[(url, tytuł, opis, tekst)]` najpłytszych pobranych stron firmy, najwyżej `limit` (do skrótu dla autora treści)."""
+        with self._read() as conn:
+            return [tuple(row) for row in conn.execute(
+                sa.select(strony.c.url, strony.c.tytul, strony.c.opis, strony_tresc.c.tekst)
+                .select_from(strony.outerjoin(strony_tresc, strony_tresc.c.strona_id == strony.c.id))
+                .where(strony.c.firma_id == firma_id, strony.c.status == st.STRONA_POBRANO)
+                .order_by(strony.c.glebokosc, strony.c.id).limit(max(1, limit))
+            ).all()]
+
     def scraped_emails(self, firma_id: int) -> list:
         """E-maile znalezione na stronach firmy: w domenie firmy pierwsze, potem wg liczby stron, na których wystąpiły."""
         with self._read() as conn:
             return [dict(r) for r in conn.execute(
-                sa.select(kontakty.c.wartosc, kontakty.c.w_domenie, kontakty.c.rola, kontakty.c.zrodlo_url)
+                sa.select(kontakty.c.wartosc, kontakty.c.w_domenie, kontakty.c.rola, kontakty.c.zrodlo_url,
+                          kontakty.c.liczba_stron)
                 .where(kontakty.c.firma_id == firma_id, kontakty.c.typ == "email")
                 .order_by(kontakty.c.w_domenie.desc(), kontakty.c.liczba_stron.desc())
             ).mappings()]

@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 from perno.db import Database, DbError, InvalidValue, format_value, from_api
 from perno.db import companies as companies_table
 from perno.db import maile as maile_table
-from perno.domain import countries
+from perno.domain import countries, segments
 from perno.domain import statuses as st
 from perno.scraper.urls import host_key
 
@@ -143,8 +143,8 @@ def _next_sequence(ids: Iterable[str], segment: str) -> int:
 def import_firms(db: Database, rows: list, segment: str, *, dry_run: bool = False) -> ImportResult:
     """Dodaje firmy z `rows` (patrz `read_import_csv`) do segmentu. Firmy, których domena jest już w bazie
     (w jakimkolwiek segmencie), pomija. Wszystko albo nic: błąd w jednym wierszu cofa cały import."""
-    if segment not in st.SEGMENT_ORDER:
-        raise FirmsError(f"Nieznany segment: {segment!r} (dozwolone: {', '.join(st.SEGMENT_ORDER)}).")
+    if not segments.is_valid(segment):
+        raise FirmsError(f"Niepoprawna nazwa segmentu: {segment!r} (małe litery, cyfry i myślniki, np. „kancelarie”).")
     result = ImportResult(segment=segment, dry_run=dry_run)
     with db.transaction() as conn:
         existing: dict[str, str] = {}

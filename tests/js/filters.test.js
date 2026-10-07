@@ -10,6 +10,7 @@ const STATUS_META = {
   do_wyslania: ['Do wysłania', '#2f6feb'], wysylanie: ['Wysyłanie…', '#8e44ad'], wyslano: ['Wysłano', '#1a7f4b'],
   odpowiedzial: ['Odpowiedział', '#0e7490'], zainteresowany: ['Zainteresowany', '#be185d'], blad: ['Błąd', '#c0392b'],
   pominieto_brak_email: ['Brak e-maila', '#6b7280'], pominieto_klient: ['Już klient', '#8a5a00'],
+  pominieto_dopasowanie: ['Nie pasuje', '#475569'],
   oczekuje_na_tresc: ['Czeka na treść', '#b8860b'], nie_kontaktowac: ['Nie kontaktować', '#7f1d1d']
 };
 const COUNTRIES = [['PL', 'Polska', '🇵🇱'], ['DE', 'Niemcy', '🇩🇪'], ['GB', 'Wielka Brytania', '🇬🇧'], ['IE', 'Irlandia', '🇮🇪']];

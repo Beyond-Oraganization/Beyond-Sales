@@ -13,6 +13,7 @@ migrate_csv_to_sql.py  jednorazowa migracja dawnego Maile.csv do bazy           
 scrape.py            skraper stron firm (kontekst i kontakty) — z terminala; to samo robi zakładka Skraper → perno.cli.scrape
 firmy.py             nowe firmy z CSV do bazy oraz przypisanie im kraju, miasta i adresu      → perno.cli.firms
 wypelnij.py          uzupełnianie maili treścią z zakończonych skanów                          → perno.cli.enrich
+ai.py                krótkie polecenia dla Claude Code: dodaj firmy, skrót po skanie, zapis maili → perno.cli.ai (instrukcja: AI_INSTRUCTIONS.md)
 build_seed_data.py   buduje data/*.csv (dane firm) ze źródeł                                  → perno.cli.seed
 dashboard.py         statyczny podgląd index.html tylko do odczytu — powstaje na żądanie (bez treści maili; --with-bodies) → perno.cli.dashboard
 index.html           wynik dashboard.py (te same tokeny designu co panel); nie jest odświeżany po każdej zmianie, bo przy tysiącach firm byłoby to kosztowne
@@ -204,9 +205,15 @@ nie zmieniają, a poprzednia wersja programu nadal działa na uaktualnionej tabe
 python3 firmy.py import data/nowe_eventy.csv --segment eventy --dry-run   # plan; nic nie zapisuje
 python3 firmy.py import data/nowe_eventy.csv --segment eventy
 python3 firmy.py import data/nowe_driverzy.csv --segment driverzy
+python3 firmy.py import data/nowe_spoldzielnie.csv --segment spoldzielnie   # firmy obsługujące spółdzielnie mieszkaniowe
 python3 firmy.py kraje data/kraje_firm.csv      # przypisanie kraju/miasta/adresu (tylko puste pola; --overwrite nadpisuje)
 python3 firmy.py raport                         # ile firm w którym kraju i które nie mają jeszcze kraju
 ```
+
+Segmenty to `eventy`, `driverzy` i `spoldzielnie` (lista w `SEGMENT_ORDER`, `domain/statuses.py`; ten sam wybór w limitach
+Automatu, gdzie „wszystkie” oznacza brak filtra segmentu). Segment `spoldzielnie` nie ma jeszcze szablonów maili
+(`templates/spoldzielnie*.html`): jego firmy dochodzą do statusu „Czeka na treść”, ale `wypelnij.py zapisz` odmówi im treści
+z komunikatem o braku szablonu, dopóki szablonu nie dodasz.
 
 Plik do importu ma kolumny `company_display_name`, `website`, `what_they_sell` (+ opcjonalnie `country`, `city`, `address`).
 Firma wchodzi do bazy ze statusem „Brak e-maila” (nie da się jej wysłać przez pomyłkę), z identyfikatorem
@@ -516,6 +523,36 @@ Edytuje `config.env` bez otwierania pliku: Poczta (SMTP), Powiadomienia automatu
 - „Sprawdź połączenie SMTP” loguje się na serwer pocztowy (bez wysyłania maila) i pokazuje wynik; przy bazie demo
   (`PERNO_DB_URL`) jest zablokowane tak samo jak wysyłka.
 
+## 5c. Praca z AI (`ai.py` i `AI_INSTRUCTIONS.md`)
+
+Firmy analizuje i maile pisze Claude Code. `ai.py` daje mu kilka krótkich poleceń o małym, stałym wyniku zamiast ręcznego
+czytania bazy; `AI_INSTRUCTIONS.md` opisuje, jak ich używać (dołącz go do rozmowy i zawołaj komendę po nazwie, np.
+`WYSZUKAJ 20 firm typu kancelarie i ZAPISZ ich do skrapera`, `PRZEANALIZUJ zeskanowane firmy i DODAJ ich do tablicy pod wysyłkę`).
+
+```bash
+python3 ai.py szablony [--opis icebreaker]        # szablony z templates/, pola do napisania i zasady
+python3 ai.py znane [--segment kancelarie]        # domeny, które już mamy
+python3 ai.py dodaj nowe.csv --segment kancelarie --dry-run   # import firm (company_display_name,website,what_they_sell,country,city)
+python3 ai.py dodaj nowe.csv --segment kancelarie --skan      # import + kolejka skrapera + start skanu nowych firm (profil kontekst)
+python3 ai.py status                              # skan i maile wg typu firm, ile firm czeka na analizę
+python3 ai.py brief --segment kancelarie --limit 10 [--po ID] # skrót firm po skanie: wybrany adres, sygnały, fragmenty o zapisach i cenach
+python3 ai.py zapisz maile.json --dry-run         # reguły treści + złożenie maila z szablonu; bez --dry-run zapis (status „Do wysłania”)
+python3 ai.py pomin ID... --powod "..."           # status „Nie pasuje” (firma nie wraca do kolejki treści)
+python3 ai.py skan stop|wznow
+```
+
+- **Typ firm (segment) jest dowolną etykietą** (małe litery, cyfry, myślniki; „Szkoły jazdy” zapisze się jako `szkoly-jazdy`).
+  Wiersze dostają identyfikatory `typ-n001`; panel, eksport i Automat pokazują każdy segment z bazy.
+- **`brief` jest tani:** ok. 1,3 tys. znaków na firmę (dotychczasowy `wypelnij.py kontekst` ok. 20 tys.). Sygnały policzone regułami:
+  znane platformy sprzedaży (Datasport, KupBilecik…), bramki płatności i `STOP=PayEvento` (firma już korzysta z Payevento). Tekst stron
+  jest niezaufany: znaki sterujące są usuwane, a instrukcja każe traktować go jako dane.
+- **`zapisz` składa mail z szablonu** (`templates/<nazwa>.html` w języku kraju firmy); autor podaje tylko pola szablonu. Adres
+  domyślnie wybiera `domain/contact_pick.py` spośród kontaktów ze skanu. Reguły treści (`domain/icebreaker_rules.py`): m.in. „Szukałem…”,
+  „Zauważyłem, że…”, pytanie na końcu, `pitch` od „przy”, brak długich myślników, jedna forma Pan/Pani/Państwo. Szablony, których pól
+  `zapisz` nie umie złożyć (np. follow-up), są odrzucane z komunikatem. Zapis robi kopię w `backup/`; niczego nie wysyła.
+- **Skan z `dodaj --skan`:** tylko nowo dodane firmy, najwyżej 100 naraz, zawsze profil `kontekst`; zasady uprzejmości skrapera
+  (sekcja 5) obowiązują bez zmian.
+
 ## 6. Terminal (`send_emails.py`)
 
 ```bash
@@ -535,13 +572,19 @@ maili jedzie do firm spoza Polski (szablony są po polsku). Świeża instalacja 
 
 ## 7. Treść maili
 
-- Szablony: `templates/eventy.html`, `templates/driverzy.html` (tokeny `{{obs}}`, `{{pitch}}`, `{{f_chcial}}` …).
+- Szablon pierwszego maila (icebreaker) jest jeden dla wszystkich segmentów: `templates/icebreaker.html` (tokeny `{{obs}}`,
+  `{{pitch}}`, `{{channel_summary}}`, opcjonalne `{{season}}`, `{{f_chcial}}` …). Zasady pisania pól: `templates/icebreaker.md`.
   Po zmianie uruchom `--dry-run --regenerate-pending` (wysłane maile nigdy nie są nadpisywane). Wersje językowe
-  (`eventy.en.html`, `eventy.de.html`, `eventy.es.html`, to samo dla `driverzy`) są używane tylko przez `wypelnij.py`.
+  (`icebreaker.en.html`, `icebreaker.de.html`, `icebreaker.es.html`) są używane tylko przez `wypelnij.py`. `{{season}}` to
+  opcjonalne zdanie o sezonowości: bez niego (puste pole) akapit znika z maila.
 - **Uzupełnianie ze skanu — `wypelnij.py`.** Dla firm z zakończonym skanem (zakładka Skraper albo `scrape.py`) przygotowuje
   treść maila z kontaktów znalezionych na stronach firmy:
   `python3 wypelnij.py lista` (które firmy się kwalifikują), `kontekst --out DIR` (po jednym pliku .md na firmę: opis,
   kontakty, tekst kluczowych stron — materiał do napisania `obs`/`pitch`/`channel_summary`),
+  `adresy [--dry-run]` (wpisuje w wiersze „Brak e-maila” z zakończonym skanem jeden adres ze skanu i ustawia status „Czeka na treść”;
+  nic nie trafia do wysyłki, bo bez treści wiersz nie jest „Do wysłania”; wybór: skrzynka firmy przed osobistą, własna domena przed cudzą,
+  nigdy IOD/rekrutacja/pomoc, a przy remisie albo braku pewnego adresu wiersz zostaje bez adresu i jest wypisany; logika w
+  `domain/contact_pick.py`; adresu wpisanego ręcznie nie zmienia; przed zapisem kopia w `backup/`),
   `zapisz tresci.json --dry-run` (walidacja bez zapisu), potem `zapisz tresci.json` (przed zapisem powstaje kopia w
   `backup/`; firma dostaje status „Do wysłania”, wysyłka nadal wymaga Twojej decyzji). Adres e-mail musi pochodzić ze
   skanu, a w mailu obcojęzycznym nie wolno zostawić polskich liter. `--ponownie` przelicza też wiersze „Do wysłania”,

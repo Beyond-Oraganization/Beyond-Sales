@@ -7,14 +7,17 @@ skraper (nie wymyślamy adresów), a język maila wynika z kraju firmy zapisaneg
 
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass, field
 from typing import Mapping, Optional
 
 from perno.db import Database
-from perno.domain import localize, templating
+from perno.domain import contact_pick, localize, templating
 from perno.domain import statuses as st
 from perno.scraper import statuses as sst
 from perno.scraper.store import Store
+from perno.services.firms_import import domain_key
 from perno.services.generation import render_row
 
 FILLABLE = (st.STATUS_SKIPPED_NO_EMAIL, st.STATUS_AWAITING_COPY)
@@ -89,8 +92,11 @@ def _missing_fields(entry: Mapping) -> list:
     return [name for name in REQUIRED if not str(entry.get(name) or "").strip()]
 
 
-def _read_template(segment: str, language: str) -> str:
-    with open(localize.template_path(segment, language), encoding="utf-8") as handle:
+TEMPLATE_NAME = re.compile(r"[a-z0-9_]{1,40}")
+
+
+def _read_template(name: str, language: str) -> str:
+    with open(localize.template_path(name, language), encoding="utf-8") as handle:
         return handle.read()
 
 
@@ -102,14 +108,21 @@ def _plan_entry(entry: Mapping, row: Mapping, scraped: set, sender_name: str) ->
     email = entry["email"].strip()
     if email.lower() not in scraped:
         return f"adres {email} nie występuje wśród kontaktów ze skanu"
-    texts = [entry["subject"], entry["obs"], entry["pitch"], entry["channel_summary"]]
+    template = str(entry.get("szablon") or localize.ICEBREAKER)
+    if not TEMPLATE_NAME.fullmatch(template):
+        return f"szablon „{template}” - nazwa to małe litery, cyfry i podkreślenia (plik w templates/)"
+    texts = [entry["subject"], entry["obs"], entry["pitch"], entry["channel_summary"], entry.get("season") or ""]
     if language != "pl" and localize.looks_polish(*texts):
         return f"treść ma polskie litery, a mail ma być po {localize.LANGUAGE_NAMES[language]}"
     seed = {"mode": entry.get("mode") or "Panstwo", "obs": entry["obs"].strip(), "pitch": entry["pitch"].strip(),
-            "channel_summary": entry["channel_summary"].strip(), "subject": entry["subject"].strip()}
+            "channel_summary": entry["channel_summary"].strip(), "subject": entry["subject"].strip(),
+            "season": (entry.get("season") or "").strip()}
     try:
         subject, body_html, body_text, inline_images = render_row(
-            row["segment"], seed, _read_template(row["segment"], language), sender_name)
+            row["segment"], seed, _read_template(template, language), sender_name)
+    except FileNotFoundError:
+        return (f"brak szablonu {os.path.basename(localize.template_path(template, language))} "
+                f"— dodaj go w templates/ (wiersz zostaje bez treści)")
     except templating.MissingTokenError as exc:
         return str(exc)
     values = {"email": email, "subject": subject, "body_html": body_html, "body_text": body_text,
@@ -151,6 +164,35 @@ def plan_updates(store: Store, entries: list, sender_name: str, include_pending:
         else:
             plan.items.append(outcome)
     return plan
+
+
+@dataclass
+class AddressPlan:
+    """Adresy ze skanu do wpisania w wiersze bez e-maila oraz firmy, dla których nie ma pewnego adresu."""
+    picks: list = field(default_factory=list)  # [(id wiersza, firma, e-mail)]
+    unresolved: list = field(default_factory=list)  # [(id wiersza, firma, powód)]
+
+
+def plan_address_adoption(store: Store) -> AddressPlan:
+    """Dla wierszy „Brak e-maila” z zakończonym skanem wybiera adres spośród znalezionych (`contact_pick.pick_email`).
+    Nic nie zapisuje; wiersze, które mają już adres, są pomijane."""
+    plan = AddressPlan()
+    for row in list_candidates(store):
+        if row["status"] != st.STATUS_SKIPPED_NO_EMAIL or (row["email"] or "").strip():
+            continue
+        found = store.scraped_emails(row["firma_id"])
+        email = contact_pick.pick_email(found, domain_key(row["website"]) or "")
+        if email:
+            plan.picks.append((row["id"], row["company"], email))
+        else:
+            reason = "skan nie znalazł adresów" if not found else f"brak pewnego adresu wśród {len(found)} znalezionych"
+            plan.unresolved.append((row["id"], row["company"], reason))
+    return plan
+
+
+def write_addresses(db: Database, plan: AddressPlan) -> int:
+    """Wpisuje wybrane adresy (status „Czeka na treść”). Zwraca liczbę zapisanych wierszy; kopię tabeli robi wywołujący."""
+    return db.adopt_emails([(row_id, email) for row_id, _company, email in plan.picks])
 
 
 def write_updates(db: Database, plan: EnrichmentPlan, include_pending: bool = False) -> int:

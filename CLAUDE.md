@@ -8,6 +8,7 @@ Plan przebudowy (fazy 0-5): `~/.claude/plans/przeanalizuj-dany-projekt-przeczyta
 - `uv sync` — środowisko (Python 3.13 w `.venv`)
 - `scripts/check.sh` — ruff + mypy + testy; uruchom przed każdym commitem (`--fast` pomija testy `slow`)
 - `.venv/bin/python -m pytest tests/test_x.py -k nazwa` — pojedyncze testy
+- Praca AI nad firmami i treścią maili: `AI_INSTRUCTIONS.md` (komendy użytkownika) i `.venv/bin/python ai.py` (szablony, znane, dodaj, status, brief, zapisz, pomin, skan); szablon pierwszego maila jest jeden: `templates/icebreaker*.html` z zasadami w `templates/icebreaker.md`
 - Automat wysyłki: `.venv/bin/python automat.py doctor|limits|start|status` (demon `run` uruchamia launchd; w testach nigdy prawdziwy `launchctl`, SMTP ani `osascript` — transporty są wstrzykiwane)
 - Panel: `.venv/bin/python server.py` (albo `perno-server`); baza demo: `PERNO_DB_URL=sqlite:////tmp/demo.db` (blokuje prawdziwy SMTP)
 - Prawdziwy MySQL do testów i pomiarów bez Twojej bazy: `scripts/check.sh --mysql` (tymczasowy serwer, testy dymne i wektory listy) albo ręcznie `scripts/scratch_mysql.sh start` + `PERNO_TEST_DB_URL="$(scripts/scratch_mysql.sh url)" .venv/bin/python -m pytest -p no:xdist tests/test_mysql_smoke.py tests/test_listing.py`; dane na skalę 50 tys. firm: `scripts/seed_synthetic.py` (tylko bazy `*_test`)

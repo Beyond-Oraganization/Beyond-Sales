@@ -29,13 +29,27 @@ def read(path):
 
 
 class RenderRowTests(unittest.TestCase):
-    def test_both_templates_render_for_both_segments(self):
-        for segment, path in (("eventy", config.EVENTY_TEMPLATE_PATH), ("driverzy", config.DRIVERZY_TEMPLATE_PATH)):
-            subject, html, text, inline = generation.render_row(segment, seed(), read(path), "Roman Patlai")
+    def test_one_template_renders_for_every_segment(self):
+        template = read(config.ICEBREAKER_TEMPLATE_PATH)
+        for segment in ("eventy", "driverzy", "spoldzielnie"):
+            subject, html, text, inline = generation.render_row(segment, seed(), template, "Roman Patlai")
             self.assertEqual(subject, "Temat 1")
             self.assertIn("Szukałem kursów.", html)
             self.assertIn("Roman Patlai", text)
             self.assertNotIn("{{", html)
+
+    def test_segments_share_the_icebreaker_template(self):
+        self.assertEqual({path for _seed, path in generation.SEGMENTS.values()}, {config.ICEBREAKER_TEMPLATE_PATH})
+
+    def test_season_sentence_is_optional(self):
+        template = read(config.ICEBREAKER_TEMPLATE_PATH)
+        without = generation.render_row("eventy", seed(), template, "Roman")[1]
+        self.assertNotIn("<p></p>", without)
+        self.assertNotIn("<p>\n</p>", without)
+        with_season = generation.render_row("eventy", seed(season="Kolejny turnus startuje w lipcu."), template, "Roman")[1]
+        self.assertIn("<p>Kolejny turnus startuje w lipcu.</p>", with_season)
+        self.assertLess(with_season.index("Podłączenie płatności"), with_season.index("Kolejny turnus"))
+        self.assertLess(with_season.index("Kolejny turnus"), with_season.index("porozmawiać?"))
 
     def test_inline_image_detected_from_rendered_html(self):
         with_image = "<p>{{obs}}</p><img src=\"cid:{{inline_image_cid}}\">"

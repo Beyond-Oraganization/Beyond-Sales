@@ -21,12 +21,20 @@ from collections import Counter
 
 from perno import settings as cfg
 from perno.db import Database, DbError
-from perno.domain import countries
+from perno.domain import countries, segments
 from perno.domain import statuses as st
 from perno.services import firms_import as firms
 from perno.settings import ConfigError, load_config
 
 SAMPLE = 8
+
+
+def segment_arg(text: str) -> str:
+    """Typ firm z wiersza poleceń: „Szkoły jazdy” → „szkoly-jazdy”; błąd nazwy kończy się komunikatem argparse."""
+    try:
+        return segments.normalize(text)
+    except segments.SegmentError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,7 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     imp = sub.add_parser("import", help="Dodaj firmy z CSV (company_display_name, website, what_they_sell) do segmentu.")
     imp.add_argument("csv")
-    imp.add_argument("--segment", required=True, choices=st.SEGMENT_ORDER)
+    imp.add_argument("--segment", required=True, type=segment_arg,
+                     help="Typ firm: dowolna nazwa (np. kancelarie, \"szkoły jazdy\"); znane: " + ", ".join(st.SEGMENT_ORDER) + ".")
     imp.add_argument("--dry-run", action="store_true", help="Pokaż plan, niczego nie zapisuj (ani schematu, ani wierszy).")
     imp.add_argument("--no-backup", action="store_true", help="Pomiń kopię zapasową bazy przed zmianą.")
 

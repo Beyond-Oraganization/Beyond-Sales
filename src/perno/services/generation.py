@@ -29,12 +29,13 @@ def render_row(segment: str, seed: dict, template: str, sender_name: str) -> tup
         "obs": seed["obs"],
         "pitch": seed["pitch"],
         "channel_summary": seed["channel_summary"],
+        "season": seed.get("season") or "",
         "sender_name": sender_name or forms.SIGNATURE_TOKEN,
         "f_chcial": f["chcial"], "f_dop": f["dop"],
         "f_musi": f["musi"], "f_pyta": f["pyta"],
         "inline_image_cid": mime_builder.INLINE_IMAGE_CID,
     }
-    body_html = templating.render(template, values)
+    body_html = templating.drop_empty_paragraphs(templating.render(template, values))
     body_text = templating.html_to_text(body_html)
     cid = mime_builder.INLINE_IMAGE_CID
     inline_images = cid if f"cid:{cid}" in body_html else ""
@@ -86,8 +87,8 @@ def generate_missing(
 
 
 SEGMENTS = {
-    "eventy": (cfg.EVENTY_SEED, cfg.EVENTY_TEMPLATE_PATH),
-    "driverzy": (cfg.DRIVERZY_SEED, cfg.DRIVERZY_TEMPLATE_PATH),
+    "eventy": (cfg.EVENTY_SEED, cfg.ICEBREAKER_TEMPLATE_PATH),
+    "driverzy": (cfg.DRIVERZY_SEED, cfg.ICEBREAKER_TEMPLATE_PATH),
 }
 
 

@@ -120,6 +120,21 @@ class MailRepository(ListingQueries, CompanyMails):
         with self.engine.connect() as conn:
             return {status: n for status, n in conn.execute(stmt)}
 
+    def segment_status_counts(self) -> dict:
+        """`{(segment, status): liczba adresów}`: przegląd kolejki wg typu firm."""
+        stmt = (select_mails(companies.c.segment, maile.c.status, sa.func.count())
+                .group_by(companies.c.segment, maile.c.status))
+        with self.engine.connect() as conn:
+            return {(segment, status): n for segment, status, n in conn.execute(stmt)}
+
+    def company_websites(self, segment: Optional[str] = None) -> list:
+        """Adresy www wszystkich firm (opcjonalnie jednego segmentu): do rozpoznawania firm, które już mamy."""
+        stmt = sa.select(companies.c.website)
+        if segment:
+            stmt = stmt.where(companies.c.segment == segment)
+        with self.engine.connect() as conn:
+            return [row[0] for row in conn.execute(stmt) if row[0]]
+
     def distinct_segments(self) -> list:
         with self.engine.connect() as conn:
             found = [r[0] for r in conn.execute(sa.select(companies.c.segment).distinct())]
@@ -335,6 +350,21 @@ class MailRepository(ListingQueries, CompanyMails):
                     maile.c.id == row_id, maile.c.status.in_(allowed_statuses)).values(**mail))
                 if result.rowcount:
                     cw.write_company_values(conn, [owner], company, now)
+                written += result.rowcount
+        return written
+
+    def adopt_emails(self, updates: Iterable[tuple]) -> int:
+        """Wpisuje adresy ze skanu: `[(id, e-mail)]`. Wiersz dostaje status „Czeka na treść” (adres jest, treści jeszcze
+        nie ma, więc wysyłka go nie weźmie), ale tylko gdy nadal jest „Brak e-maila” i ma pusty adres — to, co ktoś
+        w międzyczasie wpisał albo zmienił, zostaje. Zwraca liczbę zapisanych wierszy."""
+        now = self.now()
+        written = 0
+        with self.engine.begin() as conn:
+            for row_id, email in updates:
+                result = conn.execute(sa.update(maile).where(
+                    maile.c.id == row_id, maile.c.status == st.STATUS_SKIPPED_NO_EMAIL,
+                    sa.or_(maile.c.email.is_(None), maile.c.email == ""),
+                ).values(email=email, status=st.STATUS_AWAITING_COPY, updated_at=now))
                 written += result.rowcount
         return written
 

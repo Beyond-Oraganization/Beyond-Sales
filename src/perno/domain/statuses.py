@@ -15,6 +15,7 @@ STATUS_SKIPPED_NO_EMAIL = "pominieto_brak_email"
 STATUS_SKIPPED_CUSTOMER = "pominieto_klient"
 STATUS_AWAITING_COPY = "oczekuje_na_tresc"
 STATUS_DO_NOT_CONTACT = "nie_kontaktowac"
+STATUS_SKIPPED_FIT = "pominieto_dopasowanie"  # odrzucona przy analizie: oferta nie pasuje, nie wraca do kolejki treści
 
 # kod -> (etykieta, kolor); kolejność = kolejność na liście rozwijanej
 STATUS_META = {
@@ -28,6 +29,7 @@ STATUS_META = {
     STATUS_SKIPPED_CUSTOMER: ("Już klient", "#8a5a00"),
     STATUS_AWAITING_COPY: ("Czeka na treść", "#b8860b"),
     STATUS_DO_NOT_CONTACT: ("Nie kontaktować", "#7f1d1d"),
+    STATUS_SKIPPED_FIT: ("Nie pasuje", "#475569"),
 }
 
 VALID_STATUSES = frozenset(STATUS_META)
@@ -52,7 +54,7 @@ PROTECTED_FROM_REGENERATION = (STATUS_SENT, STATUS_SENDING, STATUS_REPLIED, STAT
 # już jest klientem. Pozostałe adresy tej firmy są wtedy wstrzymane (`company_rules.hold_reason`).
 COMPANY_STOPS = (STATUS_REPLIED, STATUS_INTERESTED, STATUS_DO_NOT_CONTACT, STATUS_SKIPPED_CUSTOMER)
 
-SEGMENT_ORDER = ("eventy", "driverzy")
+SEGMENT_ORDER = ("eventy", "driverzy", "spoldzielnie")
 
 
 def resolve_sent_at(new_status: str, current_sent_at: Optional[datetime], now: datetime) -> Optional[datetime]:
