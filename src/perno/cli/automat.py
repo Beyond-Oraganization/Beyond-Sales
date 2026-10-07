@@ -91,7 +91,7 @@ def settings_from_flags(args: argparse.Namespace) -> dict:
 def describe_settings(s: ar.AutomatSettings) -> list:
     """Limity do pokazania człowiekowi (przed potwierdzeniem Startu i w `status`)."""
     days = ", ".join(ar.WEEKDAY_LABELS[d] for d in s.weekdays)
-    return [f"  dzienny limit:     {s.daily_cap}", f"  dni wysyłki:       {days}",
+    return [f"  dzienny limit:     {s.daily_cap} (na każdą skrzynkę)", f"  dni wysyłki:       {days}",
             f"  okno godzin:       {s.window_start:%H:%M}–{s.window_end:%H:%M}",
             f"  odstęp między mailami: {s.delay_min:g}–{s.delay_max:g} s",
             f"  segment:           {s.segment}", f"  kraje:             {', '.join(s.countries) or 'wszystkie'}",
@@ -115,14 +115,17 @@ def cmd_limits(args: argparse.Namespace, ctx: Context) -> int:
 
 def cmd_status(args: argparse.Namespace, ctx: Context) -> int:
     now = ctx.db.now()
-    report = automat_control.status_report(ctx.db, ctx.store, now, automat_control.Probes(), channels=[])
+    report = automat_control.status_report(ctx.db, ctx.store, now, automat_control.Probes(), channels=[],
+                                           mailboxes=automat_control.mailbox_addresses(ctx.config.load()))
     daemon = report["daemon"]
     print(f"Demon: {'działa' if daemon['running'] else 'NIE działa'}"
           + (f" (pulsy sprzed {daemon['heartbeat_age']:.0f} s)" if daemon["heartbeat_age"] is not None else ""))
     print(f"LaunchAgent: {'załadowany' if report['launchd']['loaded'] else 'niezaładowany'}")
     plan = "uzbrojony do " + report["armed_until"] if report["armed"] else "nieuzbrojony"
     print(f"Plan: {plan}" + (f" — WSTRZYMANY: {report['pause_reason']}" if report["paused"] else ""))
-    print(f"Dziś wysłano: {report['sent_today']} z {report['settings']['daily_cap']}")
+    print(f"Dziś wysłano: {report['sent_today']} z {report['capacity']}")
+    if len(report["mailboxes"]) > 1:
+        print("Skrzynki: " + ", ".join(f"{box['address']} {box['sent_today']}" for box in report["mailboxes"]))
     for event in reversed(report["events"][:8]):
         print(f"  {event['ts'][5:16].replace('T', ' ')} [{event['poziom']}] {event['tresc'][:110]}")
     return 0
@@ -130,9 +133,12 @@ def cmd_status(args: argparse.Namespace, ctx: Context) -> int:
 
 def cmd_start(args: argparse.Namespace, ctx: Context, ask: Callable = input) -> int:
     state = ctx.store.get_state()
-    data = automat_control.preview(ctx.db, ctx.store, ctx.db.now())
+    boxes = automat_control.mailbox_addresses(ctx.config.load())
+    data = automat_control.preview(ctx.db, ctx.store, ctx.db.now(), len(boxes))
     print("Plan automatu — sprawdź limity:")
     print("\n".join(describe_settings(state.settings)))
+    if len(boxes) > 1:
+        print(f"  skrzynki nadawcze: {len(boxes)} ({', '.join(boxes)}), razem do {state.settings.daily_cap * len(boxes)} maili dziennie")
     print(f"  ostatnia zmiana limitów: {state.changed_at:%d.%m.%Y %H:%M}" if state.changed_at else "  limity: DOMYŚLNE (nigdy nie zapisane)")
     print(f"W kolejce: {data['queue']} maili, w tym {data['foreign']} do firm spoza Polski"
           f" (maile są dziś generowane po polsku) i {data['no_country']} bez kraju.")
@@ -147,8 +153,8 @@ def cmd_start(args: argparse.Namespace, ctx: Context, ask: Callable = input) -> 
         print("Anulowano — nic nie uzbrojono.")
         return 1
     log = automat_control.build_event_log(ctx.store, ctx.db, ctx.config.load())
-    mailer = lambda: sending.build_mailer(ctx.config.load(), ctx.config.path)
-    automat_control.arm(ctx.db, ctx.store, log, mailer, acknowledged=True, stamp=automat_control.stamp_of(state.changed_at))
+    mailers = lambda: sending.build_mailers(ctx.config.load(), ctx.config.path)
+    automat_control.arm(ctx.db, ctx.store, log, mailers, acknowledged=True, stamp=automat_control.stamp_of(state.changed_at))
     print("Plan uzbrojony. Demon wyśle maile w oknie godzin; powiadomienia pójdą skonfigurowanymi kanałami.")
     if not ctx.store.active_run():
         print("UWAGA: demon nie działa — uruchom `python3 automat.py install` (albo `run` w osobnym terminalu).")
@@ -177,7 +183,7 @@ def cmd_run(args: argparse.Namespace, ctx: Context) -> int:
     config = ctx.config.load()
     settings = automat_control.notify_settings(config)
     runner = automat.AutomatRunner(automat.RunnerDeps(
-        db=ctx.db, store=ctx.store, mailer=lambda: sending.build_mailer(ctx.config.load(), ctx.config.path),
+        db=ctx.db, store=ctx.store, mailers=lambda: sending.build_mailers(ctx.config.load(), ctx.config.path),
         notifier=automat_control.notifier_from_config(config), pinger=build_pinger(settings), guard=power.SleepGuard()))
     stop = threading.Event()
 

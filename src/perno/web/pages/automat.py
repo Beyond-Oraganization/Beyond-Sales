@@ -23,11 +23,13 @@ def render(ctx: AppContext) -> str:
 
 def api_status(req: Request, ctx: AppContext) -> Response:
     return json_response(automat_control.status_report(
-        ctx.db, ctx.automat_store.get(), ctx.db.now(), ctx.automat_probes, channels=ctx.notify_channels()))
+        ctx.db, ctx.automat_store.get(), ctx.db.now(), ctx.automat_probes, channels=ctx.notify_channels(),
+        mailboxes=automat_control.mailbox_addresses(ctx.config.load())))
 
 
 def api_preview(req: Request, ctx: AppContext) -> Response:
-    return json_response(automat_control.preview(ctx.db, ctx.automat_store.get(), ctx.db.now()))
+    boxes = len(automat_control.mailbox_addresses(ctx.config.load()))
+    return json_response(automat_control.preview(ctx.db, ctx.automat_store.get(), ctx.db.now(), boxes))
 
 
 def api_limits(req: Request, ctx: AppContext) -> Response:
@@ -38,7 +40,7 @@ def api_start(req: Request, ctx: AppContext) -> Response:
     stamp = req.json.get("stamp", "")
     if not isinstance(stamp, str):
         raise HttpError(400, "Pole stamp musi być tekstem.")
-    state = automat_control.arm(ctx.db, ctx.automat_store.get(), ctx.automat_log(), ctx.mailer,
+    state = automat_control.arm(ctx.db, ctx.automat_store.get(), ctx.automat_log(), ctx.mailers,
                                 acknowledged=req.json.get("potwierdzam") is True, stamp=stamp)
     return json_response({"ok": True, "armed_until": automat_control.stamp_of(state.armed_until)})
 

@@ -62,6 +62,12 @@ class AutomatSettings:
 DEFAULT_SETTINGS = AutomatSettings()
 
 
+def scaled(settings: AutomatSettings, mailboxes: int) -> AutomatSettings:
+    """Ustawienia z łącznym dziennym limitem wszystkich skrzynek: `daily_cap` w bazie obowiązuje każdą skrzynkę osobno,
+    a plan, prognoza i podsumowania liczą wspólną dobę (limit × liczba skrzynek)."""
+    return replace(settings, daily_cap=settings.daily_cap * max(1, mailboxes))
+
+
 def _integer(raw: object, name: str, low: int, high: int) -> int:
     if isinstance(raw, bool) or not isinstance(raw, (int, float, str)) or (isinstance(raw, float) and not raw.is_integer()):
         raise SettingsInvalid(f"Pole {name} musi być liczbą całkowitą.")

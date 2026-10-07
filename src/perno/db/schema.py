@@ -72,6 +72,9 @@ maile = sa.Table(
     # Łącze z firmą — też na końcu, z tego samego powodu. Bez klucza obcego: konto bazy nie ma uprawnienia REFERENCES.
     sa.Column("company_id", sa.String(32)),
     sa.Column("position", sa.Integer),
+    # Skrzynka, z której wyszedł mail (adres SMTP_USER); NULL = mail sprzed wielu skrzynek albo jeszcze niewysłany.
+    # Nie jest w `COLUMNS`, więc nie pojawia się w API ani w eksporcie; czyta ją tylko rotacja skrzynek.
+    sa.Column("sent_from", sa.String(320)),
     sa.Index("ix_maile_status_sent_at", "status", "sent_at"),
     sa.Index("ix_maile_segment_row", legacy_key("segment"), legacy_key("row_number")),
     sa.Index("ix_maile_email", "email"),

@@ -8,7 +8,16 @@ const ctx = F.createContext({
   statusMeta: APP.statusMeta, sendable: APP.sendable, countries: APP.countries, segmentOrder: APP.segmentOrder,
 });
 const selection = S.create();
-let STATUS = {smtp_configured: false, smtp_user: '', sent_today: 0};
+let STATUS = {smtp_configured: false, smtp_user: '', sent_today: 0, mailboxes: []};
+
+// Skrzynki z konfiguracji (dziennik limitu liczy każdą osobno); bez listy z serwera zostaje pojedyncza skrzynka główna.
+function mailboxes(){
+  return STATUS.mailboxes && STATUS.mailboxes.length ? STATUS.mailboxes : [{address: STATUS.smtp_user || '?', sent_today: STATUS.sent_today || 0}];
+}
+function mailboxLabel(){
+  const boxes = mailboxes();
+  return boxes.length > 1 ? `${boxes.length} skrzynek (${boxes.map(b => b.address).join(', ')})` : `konta ${boxes[0].address}`;
+}
 let expandedId = null;       // wiersz z rozwiniętymi szczegółami
 const detailCache = {};      // id → pełny wiersz (z treścią maila) dla rozwiniętych wierszy
 const mailsCache = {};       // id → adresy firmy tego wiersza (lista z serwera, adres główny pierwszy)
@@ -39,7 +48,10 @@ async function loadStatus(){
   if (!data.smtp_configured){
     banner.innerHTML = `<div class="banner warn">Brak hasła SMTP w config.env — uzupełnij je, zanim spróbujesz wysłać. Panel działa (podgląd/edycja), ale wysyłka zwróci błąd.</div>`;
   } else {
-    banner.innerHTML = `<div class="banner ok">Wysyłka skonfigurowana z konta: ${escapeHtml(data.smtp_user)}</div>`;
+    const boxes = mailboxes();
+    banner.innerHTML = boxes.length > 1
+      ? `<div class="banner ok">Wysyłka po kolei z ${boxes.length} skrzynek: ${escapeHtml(boxes.map(b => b.address).join(', '))}</div>`
+      : `<div class="banner ok">Wysyłka skonfigurowana z konta: ${escapeHtml(data.smtp_user)}</div>`;
   }
 }
 
@@ -338,7 +350,7 @@ sendBtn.addEventListener('click', async () => {
 
   await loadStatus();
   const sentToday = STATUS.sent_today || 0;
-  const remainingCap = Math.max(0, dailyCap - sentToday);
+  const remainingCap = mailboxes().reduce((sum, box) => sum + Math.max(0, dailyCap - box.sent_today), 0);
 
   const selectedCount = selection.size;
   let ids = await readyIds();
@@ -347,13 +359,13 @@ sendBtn.addEventListener('click', async () => {
   const stop = (title, message) => showSheet({title, message, confirmLabel: 'OK', cancelLabel: null});
   if (!ids.length){ await stop('Nie ma co wysłać', 'Żadna z zaznaczonych firm nie jest gotowa do wysyłki (potrzebny status „Do wysłania” lub „Błąd”, e-mail i treść).'); return; }
   if (ids.length > remainingCap){
-    const message = `Gotowych jest ${ids.length}, ale dzienny limit pozwala jeszcze na ${remainingCap} (dziś wysłano już ${sentToday}).`;
+    const message = `Gotowych jest ${ids.length}, ale dzienny limit${mailboxes().length > 1 ? ' (osobny dla każdej skrzynki)' : ''} pozwala jeszcze na ${remainingCap} (dziś wysłano już ${sentToday}).`;
     if (!await showSheet({title: 'Dzienny limit', message, confirmLabel: `Wyślij pierwsze ${remainingCap}`, focusCancel: true})) return;
     ids = ids.slice(0, remainingCap);
   }
   if (!ids.length){ await stop('Limit wyczerpany', 'Nic do wysłania: dzienny limit jest wyczerpany.'); return; }
   if (!STATUS.smtp_configured){ await stop('Brak hasła SMTP', 'Brak hasła SMTP w config.env — uzupełnij je, zanim spróbujesz wysłać.'); return; }
-  const lines = [`Wysyłam ${ids.length} maili z konta ${STATUS.smtp_user || '?'}.`];
+  const lines = [`Wysyłam ${ids.length} maili z ${mailboxLabel()}.`];
   if (notReady > 0) lines.push(`Pominę ${notReady} zaznaczonych firm, które nie są gotowe do wysyłki (status, e-mail albo treść).`);
   const foreign = await foreignWarning(ids);
   if (foreign) lines.push(foreign);

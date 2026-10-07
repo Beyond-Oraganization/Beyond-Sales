@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from perno.services import bulk, company_mails, generation, listing, sending
-from perno.settings import smtp_configured
+from perno.settings import configured_mailboxes, smtp_configured
 from perno.web import layout
 from perno.web.context import AppContext
 from perno.web.http import HttpError, Request, Response, json_response
@@ -76,6 +76,7 @@ def api_status(req: Request, ctx: AppContext) -> Response:
     return json_response({
         "smtp_configured": smtp_configured(config),
         "smtp_user": config.get("SMTP_USER", ""),
+        "mailboxes": sending.mailbox_usage(ctx.db, [box.user for box in configured_mailboxes(config)]),
         "sent_today": ctx.db.sent_today_count(),
         "row_count": ctx.db.count_rows(),
         "db": ctx.db.describe(),
@@ -105,7 +106,7 @@ def _daily_cap(payload: dict) -> Optional[int]:
 
 
 def api_send_one(req: Request, ctx: AppContext) -> Response:
-    result = sending.send_one(ctx.db, _row_id(req), ctx.mailer, daily_cap=_daily_cap(req.json))
+    result = sending.send_one(ctx.db, _row_id(req), ctx.mailers, daily_cap=_daily_cap(req.json))
     if result.outcome == "skipped":
         raise HttpError(409, result.message, row=result.row)
     return json_response({"row": result.row, "outcome": result.outcome, "message": result.message})

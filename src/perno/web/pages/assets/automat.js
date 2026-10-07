@@ -79,6 +79,13 @@ function card(label, value) {
   return '<div class="status-card">' + escapeHtml(label) + '<b>' + escapeHtml(value) + '</b></div>';
 }
 
+// Przy kilku skrzynkach pod licznikiem pokazujemy, ile wysłała każda (limit dzienny obowiązuje je osobno).
+function mailboxBreakdown(s) {
+  const boxes = s.mailboxes || [];
+  if (boxes.length < 2) return '';
+  return ' (' + boxes.map((b) => b.address + ': ' + b.sent_today).join(', ') + ')';  // card() ucieka tekst, więc bez znaczników
+}
+
 function renderStatus() {
   const s = STATE;
   const daemon = s.daemon;
@@ -87,7 +94,7 @@ function renderStatus() {
   el('statusBox').innerHTML = '<div class="status-grid">'
     + '<div class="status-card">Demon<b>' + dot + (daemon.running ? 'działa' : 'nie działa') + escapeHtml(age) + '</b></div>'
     + card('Plan', s.armed ? 'uzbrojony do ' + fmtTime(s.armed_until) : 'nieuzbrojony')
-    + card('Dziś wysłano', s.sent_today + ' z ' + s.settings.daily_cap)
+    + card('Dziś wysłano', s.sent_today + ' z ' + (s.capacity || s.settings.daily_cap) + mailboxBreakdown(s))
     + card('Teraz', statusText(s)) + '</div>';
   el('startBtn').disabled = s.armed && !s.paused;
   el('pauseBtn').disabled = !s.armed || s.paused;
@@ -171,7 +178,8 @@ function confirmSummary() {
   const s = STATE.settings;
   const days = (s.weekdays || []).map((d) => DAY_LABELS[d]).join(', ');
   const lines = [
-    'dzienny limit: ' + s.daily_cap, 'dni: ' + days, 'okno: ' + s.window_start + '–' + s.window_end,
+    'dzienny limit: ' + s.daily_cap + ((STATE.mailboxes || []).length > 1
+      ? ' na każdą z ' + STATE.mailboxes.length + ' skrzynek (razem ' + STATE.capacity + ')' : ''), 'dni: ' + days, 'okno: ' + s.window_start + '–' + s.window_end,
     'odstęp między mailami: ' + s.delay_min + '–' + s.delay_max + ' s', 'segment: ' + s.segment,
     'kraje: ' + ((s.countries || []).join(', ') || 'wszystkie'), 'horyzont planu: ' + s.horizon_days + ' dni',
     'odstęp dla firmy: ' + (Number(s.company_gap_days) > 0 ? s.company_gap_days + ' dn. między mailami do jednej firmy' : 'brak'),

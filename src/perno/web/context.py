@@ -76,6 +76,10 @@ class AppContext:
         """Dziennik zdarzeń automatu z kanałami powiadomień z aktualnego config.env."""
         return automat_control.build_event_log(self.automat_store.get(), self.db, self.config.load(), self.smtp_factory)
 
+    def mailers(self) -> list:
+        """Wszystkie skrzynki do rotacji z aktualnego config.env (rzuca `ConfigError`, gdy któraś jest niekompletna)."""
+        return sending.build_mailers(self.config.load(), self.config.path, smtp_factory=self.smtp_factory)
+
     def mailer(self) -> sending.Mailer:
-        """Dane wysyłki z aktualnego config.env (rzuca `ConfigError`, gdy brakuje danych SMTP)."""
+        """Skrzynka główna z aktualnego config.env: powiadomienia i próba połączenia (rzuca `ConfigError`, gdy brakuje danych SMTP)."""
         return sending.build_mailer(self.config.load(), self.config.path, smtp_factory=self.smtp_factory)

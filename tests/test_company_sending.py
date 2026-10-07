@@ -103,12 +103,12 @@ class SendRowTests(unittest.TestCase):
     def test_send_one_refuses_a_held_address_before_touching_smtp(self):
         self.database.apply_edit("eventy-001", {"status": st.STATUS_DO_NOT_CONTACT})
         with self.assertRaisesRegex(sending.NotSendable, "Nie kontaktować"):
-            sending.send_one(self.database, self.sibling, lambda: self.mailer)
+            sending.send_one(self.database, self.sibling, lambda: [self.mailer])
         self.assertEqual(self.smtp.sent, [])
 
     def test_send_one_still_sends_an_unheld_sibling(self):
-        sending.send_one(self.database, "eventy-001", lambda: self.mailer)
-        result = sending.send_one(self.database, self.sibling, lambda: self.mailer)
+        sending.send_one(self.database, "eventy-001", lambda: [self.mailer])
+        result = sending.send_one(self.database, self.sibling, lambda: [self.mailer])
         self.assertEqual(result.outcome, "sent")
         self.assertEqual([m["To"] for m in self.smtp.sent], ["firma@example.com", "adres2@firma.pl"])
 

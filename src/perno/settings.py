@@ -15,6 +15,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import Mapping, Optional
 
+from perno.domain.mailboxes import MAX_MAILBOXES, smtp_prefix
+
 # Korzeń projektu (katalog z config.env, data/, templates/): src/perno/settings.py leży trzy poziomy niżej.
 # Zakłada instalację edytowalną (`uv sync`); przy zwykłej instalacji z wheela ścieżki danych trzeba by podać jawnie.
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -44,6 +46,7 @@ ENV_SCRAPER_HOSTS = "PERNO_SKRAPER_HOSTS"  # a.test=127.0.0.1,b.test=127.0.0.1 �
 ENV_SSL_CERT_FILE = "SSL_CERT_FILE"  # własny pakiet certyfikatów CA
 
 SMTP_KEYS = ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD")
+SMTP_REQUIRED = ("HOST", "PORT", "USER", "PASSWORD")  # końcówki kluczy skrzynki (przedrostek: SMTP, SMTP2 …)
 
 
 class ConfigError(Exception):
@@ -207,25 +210,80 @@ class ConfigFile:
 
 @dataclass(frozen=True)
 class SmtpSettings:
-    """Dane połączenia SMTP z config.env (hasło nie trafia do `repr`)."""
+    """Dane połączenia SMTP jednej skrzynki z config.env (hasło nie trafia do `repr`)."""
 
     host: str
     port: int
     user: str
     password: str = field(repr=False)  # nigdy w logach ani w komunikatach
     use_ssl: bool = True
+    slot: int = 1  # 1 = SMTP_*, 2 = SMTP2_* …
 
     @classmethod
-    def from_config(cls, config: Mapping[str, str]) -> "SmtpSettings":
-        missing = [key for key in SMTP_KEYS if not config.get(key)]
+    def from_config(cls, config: Mapping[str, str], slot: int = 1) -> "SmtpSettings":
+        prefix = smtp_prefix(slot)
+        keys = [f"{prefix}_{name}" for name in SMTP_REQUIRED]
+        missing = [key for key in keys if not config.get(key)]
         if missing:
             raise ConfigError(f"W config.env brakuje: {', '.join(missing)}.")
         try:
-            port = int(config["SMTP_PORT"])
+            port = int(config[f"{prefix}_PORT"])
         except ValueError:
-            raise ConfigError("SMTP_PORT w config.env nie jest liczbą.") from None
-        return cls(config["SMTP_HOST"], port, config["SMTP_USER"], config["SMTP_PASSWORD"],
-                   config.get("SMTP_USE_SSL", "true").lower() == "true")
+            raise ConfigError(f"{prefix}_PORT w config.env nie jest liczbą.") from None
+        return cls(config[f"{prefix}_HOST"], port, config[f"{prefix}_USER"], config[f"{prefix}_PASSWORD"],
+                   config.get(f"{prefix}_USE_SSL", "true").lower() == "true", slot)
+
+
+def extra_smtp_slots(config: Mapping[str, str]) -> list:
+    """Dodatkowe skrzynki (SMTP2_* … SMTP10_*) w kolejności numerów. Slot z jakimkolwiek wpisem musi być kompletny
+    (inaczej `ConfigError`), więc połowicznie wpisana skrzynka nie wypadnie po cichu z rotacji."""
+    found = []
+    for slot in range(2, MAX_MAILBOXES + 1):
+        prefix = smtp_prefix(slot)
+        if any(config.get(f"{prefix}_{name}") for name in SMTP_REQUIRED):
+            found.append(SmtpSettings.from_config(config, slot))
+    return found
+
+
+def configured_mailboxes(config: Mapping[str, str]) -> list:
+    """Skrzynki z kompletnymi danymi, do pokazania w panelu (niekompletne i powtórzone są pomijane bez błędu — rotację
+    zabezpiecza `smtp_slots`, która takie przypadki zgłasza)."""
+    found: list[SmtpSettings] = []
+    for slot in range(1, MAX_MAILBOXES + 1):
+        try:
+            candidate = SmtpSettings.from_config(config, slot)
+        except ConfigError:
+            continue
+        if all(candidate.user.casefold() != other.user.casefold() for other in found):
+            found.append(candidate)
+    return found
+
+
+def reject_duplicate_users(users: Mapping[int, str]) -> None:
+    """Dwie skrzynki z tym samym adresem rozjechałyby rotację i limity (liczone po adresie) — odmawiamy."""
+    seen: dict[str, int] = {}
+    for slot, user in sorted(users.items()):
+        key = user.strip().casefold()
+        if key and key in seen:
+            raise ConfigError(f"Skrzynki {seen[key]} i {slot} mają ten sam adres ({smtp_prefix(slot)}_USER) — każda musi być inna.")
+        seen.setdefault(key, slot)
+
+
+def smtp_slots(config: Mapping[str, str]) -> list:
+    """Wszystkie skrzynki do rotacji: główna (SMTP_*) i dodatkowe. Rzuca `ConfigError` przy niekompletnej albo powtórzonej."""
+    slots = [SmtpSettings.from_config(config), *extra_smtp_slots(config)]
+    reject_duplicate_users({slot.slot: slot.user for slot in slots})
+    return slots
+
+
+def check_mailboxes(config: Mapping[str, str]) -> None:
+    """Sprawdza skrzynki przed zapisem z panelu: dodatkowe kompletne i żadnych powtórzeń adresu (skrzynki głównej
+    nie wymagamy, bo świeży plik może jej jeszcze nie mieć)."""
+    extras = extra_smtp_slots(config)
+    users = {slot.slot: slot.user for slot in extras}
+    if config.get("SMTP_USER"):
+        users[1] = config["SMTP_USER"]
+    reject_duplicate_users(users)
 
 
 _TOPIC_RE = re.compile(r"[A-Za-z0-9_-]{8,64}")

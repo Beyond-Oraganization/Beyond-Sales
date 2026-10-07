@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import unittest
 from datetime import datetime, timedelta
+from email.utils import parseaddr
 from unittest import mock
 
 from sqlalchemy import exc as sa_exc
@@ -68,14 +69,14 @@ class RunnerCase(unittest.TestCase):
         self.battery = PowerState(False, 100)
         self.mailer_error = None
         self.runner = AutomatRunner(RunnerDeps(
-            db=self.db, store=self.store, mailer=self._mailer, notifier=Notifier(self.channels), pinger=self.pinger,
+            db=self.db, store=self.store, mailers=self._mailers, notifier=Notifier(self.channels), pinger=self.pinger,
             guard=self.guard, power=lambda: self.battery, sleep=lambda s: self.clock.advance(seconds=s),
             jitter=lambda low, high: low), pid=4242)
 
-    def _mailer(self):
+    def _mailers(self):
         if self.mailer_error:
             raise self.mailer_error
-        return sending.Mailer(lambda: self.smtp, sending.Sender("me@example.com", "Me"))
+        return [sending.Mailer(lambda: self.smtp, sending.Sender("me@example.com", "Me"))]
 
     def rows(self, count, **over):
         put(self.db, *[sample_row(n, **over) for n in range(1, count + 1)])
@@ -411,3 +412,149 @@ class LoopTests(RunnerCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MultiMailboxCase(RunnerCase):
+    """Dwie skrzynki z osobnymi atrapami SMTP; `daily_cap` obowiązuje każdą z nich."""
+
+    def setUp(self):
+        super().setUp()
+        self.smtp_a, self.smtp_b = self.smtp, FakeSmtp()
+        self.boxes = [sending.Mailer(lambda: self.smtp_a, sending.Sender("a@example.com", "Me")),
+                      sending.Mailer(lambda: self.smtp_b, sending.Sender("b@example.com", "Me"))]
+        self.runner.d.mailers = self._boxes
+
+    def _boxes(self):
+        if self.mailer_error:
+            raise self.mailer_error
+        return self.boxes
+
+    def run_ticks(self, count):
+        for _ in range(count):
+            self.runner.tick()
+            self.clock.advance(seconds=45)
+
+    def sent_by(self):
+        return len(self.smtp_a.sent), len(self.smtp_b.sent)
+
+
+class RotationTests(MultiMailboxCase):
+    def test_mails_alternate_between_the_mailboxes_and_are_attributed(self):
+        self.rows(4)
+        self.arm(daily_cap=5)
+        self.runner.start()
+        self.run_ticks(4)
+        self.assertEqual(self.sent_by(), (2, 2))
+        self.assertEqual([parseaddr(str(m["From"]))[1] for m in self.smtp_a.sent + self.smtp_b.sent],
+                         ["a@example.com", "a@example.com", "b@example.com", "b@example.com"])
+        self.assertEqual({k: v.sent for k, v in self.db.sent_by_sender_today().items()}, {"a@example.com": 2, "b@example.com": 2})
+
+    def test_the_cap_is_per_mailbox_and_the_day_total_is_their_sum(self):
+        self.rows(6)
+        self.arm(daily_cap=2)
+        self.runner.start()
+        self.run_ticks(6)
+        self.assertEqual(self.sent_by(), (2, 2))  # 2 skrzynki × limit 2; reszta czeka do jutra
+        beat = self.store.active_run()["statystyki"]
+        self.assertEqual((beat["dzis"], beat["limit"], beat["skrzynki"]), (4, 4, 2))
+        self.assertEqual(self.runner.tick(), ar.TICK_SECONDS)
+
+    def test_the_daily_summary_shows_the_total_cap_and_each_mailbox(self):
+        self.rows(6)
+        self.arm(daily_cap=2)
+        self.runner.start()
+        self.run_ticks(6)
+        text = self.events(ev.EVENT_DAILY_SUMMARY)[0]["tresc"]
+        self.assertIn("Wysłano dziś: 4 z 4.", text)
+        self.assertIn("Skrzynki: nr 1: 2, nr 2: 2.", text)
+        for channel in self.channels.values():  # na zewnętrzne kanały nie wychodzą adresy skrzynek
+            self.assertTrue(all("@" not in note.message for note in channel.got))
+
+    def test_a_single_mailbox_still_works_exactly_as_before(self):
+        self.boxes = self.boxes[:1]
+        self.rows(3)
+        self.arm(daily_cap=2)
+        self.runner.start()
+        self.run_ticks(3)
+        self.assertEqual(self.sent_by(), (2, 0))
+        self.assertEqual(self.store.active_run()["statystyki"]["limit"], 2)
+
+
+class MailboxFailureTests(MultiMailboxCase):
+    AUTH = "(535, b'5.7.8 Authentication failed')"
+
+    def test_a_broken_mailbox_is_switched_off_and_the_other_carries_on_without_a_pause(self):
+        self.rows(5)
+        self.arm(daily_cap=10)
+        self.runner.start()
+        self.smtp_a.fail_with = RuntimeError(self.AUTH)
+        self.run_ticks(5)
+        state = self.store.get_state()
+        self.assertFalse(state.paused)
+        self.assertEqual(self.sent_by(), (0, 4))  # pierwszy mail zawiódł na a, kolejne cztery poszły z b
+        self.assertEqual(self.status_of(1), "blad")
+        self.assertEqual(len(self.events(ev.EVENT_MAILBOX_OFF)), 1)
+        self.assertIn("Skrzynka nr 1 wyłączona", self.events(ev.EVENT_MAILBOX_OFF)[0]["tresc"])
+        self.assertNotIn("@", self.events(ev.EVENT_MAILBOX_OFF)[0]["tresc"])
+        self.assertEqual(self.notified("macos").count("Automat: skrzynka wyłączona"), 1)
+        self.assertEqual(self.store.active_run()["statystyki"]["skrzynki"], 1)
+
+    def test_the_switched_off_mailbox_comes_back_the_next_day(self):
+        self.rows(6)
+        self.arm(daily_cap=10, horizon_days=5)
+        self.runner.start()
+        self.smtp_a.fail_with = RuntimeError(self.AUTH)
+        self.run_ticks(2)
+        self.smtp_a.fail_with = None
+        self.clock.advance(days=1)
+        self.clock.now = self.clock.now.replace(hour=10, minute=0)
+        self.run_ticks(2)
+        self.assertEqual(len(self.smtp_a.sent), 1)
+
+    def test_when_the_last_working_mailbox_fails_the_automat_pauses_as_before(self):
+        self.rows(6)
+        self.arm(daily_cap=10)
+        self.runner.start()
+        self.smtp_a.fail_with = RuntimeError(self.AUTH)
+        self.smtp_b.fail_with = RuntimeError(self.AUTH)
+        self.run_ticks(3)
+        state = self.store.get_state()
+        self.assertTrue(state.paused)
+        self.assertIn("Błąd SMTP wymagający uwagi", state.pause_reason)
+
+    def test_repeated_timeouts_on_one_mailbox_switch_only_that_one_off(self):
+        self.rows(12)
+        self.arm(daily_cap=20)
+        self.runner.start()
+        self.smtp_a.fail_with = TimeoutError("timed out")
+        self.run_ticks(8)  # a, b, a, b, a (trzecia porażka a z rzędu: wyłączona), potem trzy razy b; b zeruje serię globalną
+        self.assertFalse(self.store.get_state().paused)
+        self.assertEqual(len(self.events(ev.EVENT_MAILBOX_OFF)), 1)
+        self.assertEqual(len(self.smtp_b.sent), 5)
+
+    def test_recipient_errors_never_switch_a_mailbox_off(self):
+        self.rows(8)
+        self.arm(daily_cap=20)
+        self.runner.start()
+        self.smtp_a.fail_with = RuntimeError("{'x@y.pl': (550, b'user unknown')}")
+        self.run_ticks(8)
+        self.assertEqual(self.events(ev.EVENT_MAILBOX_OFF), [])
+        self.assertFalse(self.store.get_state().paused)
+
+    def test_a_successful_send_resets_the_failure_count_of_that_mailbox(self):
+        self.rows(10)
+        self.arm(daily_cap=20)
+        self.runner.start()
+        for fail in (True, False, True, False, True, False):  # a: porażka, b, a: porażka … (b zawsze działa)
+            self.smtp_a.fail_with = TimeoutError("t") if fail else None
+            self.run_ticks(2)
+        self.assertEqual(self.events(ev.EVENT_MAILBOX_OFF), [])
+
+    def test_all_mailboxes_off_pauses_with_a_clear_reason(self):
+        self.rows(4)
+        self.arm(daily_cap=10)
+        self.runner.start()
+        self.runner._suspended = {"a@example.com": self.clock.now.date(), "b@example.com": self.clock.now.date()}
+        self.runner.tick()
+        self.assertTrue(self.store.get_state().paused)
+        self.assertIn("Wszystkie skrzynki", self.store.get_state().pause_reason)

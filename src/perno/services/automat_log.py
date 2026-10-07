@@ -31,6 +31,7 @@ TITLES = {
     ev.EVENT_SETTINGS_CHANGED: "Automat: zmieniono limity",
     ev.EVENT_INTERNAL_ERROR: "Automat: nieoczekiwany błąd",
     ev.EVENT_ON_BATTERY: "Automat: Mac na baterii",
+    ev.EVENT_MAILBOX_OFF: "Automat: skrzynka wyłączona",
 }
 
 

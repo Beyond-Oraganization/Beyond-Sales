@@ -12,7 +12,7 @@ import sys
 import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 from perno import settings as env_cfg
 from perno.db import Database
@@ -24,7 +24,7 @@ from perno.notify import Notification, Notifier
 from perno.notify.factory import build_notifier
 from perno.services import automat_queue, sending
 from perno.services.automat_log import EventLog
-from perno.settings import ConfigError, NotifySettings, smtp_configured
+from perno.settings import ConfigError, NotifySettings, configured_mailboxes, smtp_configured
 from perno.system import launchd, power
 
 _STAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"
@@ -82,6 +82,11 @@ def notify_settings(config: Mapping) -> NotifySettings:
         return NotifySettings()
 
 
+def mailbox_addresses(config: Mapping) -> list:
+    """Adresy skrzynek z kompletnymi danymi w config.env (do liczenia limitów i pokazania w panelu)."""
+    return [box.user for box in configured_mailboxes(config)]
+
+
 def notifier_from_config(config: Mapping, smtp_factory: Optional[Callable] = None) -> Notifier:
     """Notifier z kanałami z config.env (kanał e-mail tylko przy kompletnym SMTP)."""
     from_addr, factory = "", None
@@ -111,15 +116,16 @@ def save_settings(store: AutomatStore, log: EventLog, raw: Mapping) -> dict:
     return {"settings": settings.to_json(), "disarmed": disarmed, "stamp": stamp_of(store.get_state().changed_at)}
 
 
-def arm(db: Database, store: AutomatStore, log: EventLog, mailer: Callable, *, acknowledged: bool, stamp: str) -> AutomatState:
+def arm(db: Database, store: AutomatStore, log: EventLog, mailers: Callable[[], list], *, acknowledged: bool,
+        stamp: str) -> AutomatState:
     """Uzbraja plan po potwierdzeniu: wymaga zaznaczenia „sprawdziłem limity”, tych samych limitów co wyświetlone,
-    kompletnego SMTP i niepustej kolejki."""
+    kompletnego SMTP wszystkich skrzynek i niepustej kolejki."""
     if not acknowledged:
         raise ArmRefused("Potwierdź, że sprawdzono limity (zaznacz „Sprawdziłem limity”).")
     state = store.get_state()
     if stamp != stamp_of(state.changed_at):
         raise StaleConfirmation("Limity zmieniły się od wyświetlenia okna potwierdzenia — sprawdź je jeszcze raz.")
-    mailer()  # rzuca ConfigError, gdy brakuje danych SMTP
+    boxes = len(mailers())  # rzuca ConfigError, gdy brakuje danych SMTP którejkolwiek skrzynki
     queue = db.count_matching(ar.queue_filter(state.settings))  # bez odstępu: firmy czekające na jutro też są w planie
     if queue == 0:
         raise ArmRefused("Kolejka jest pusta: brak maili „Do wysłania” pasujących do ustawionego segmentu i krajów "
@@ -127,7 +133,9 @@ def arm(db: Database, store: AutomatStore, log: EventLog, mailer: Callable, *, a
     store.arm(ar.horizon_end(db.now(), state.settings),
               {"settings": state.settings.to_json(), "stamp": stamp, "queue": queue})
     gap = state.settings.company_gap_days
-    log.emit(ev.EVENT_ARMED, f"Plan uzbrojony: do {state.settings.daily_cap} maili dziennie, w kolejce {queue}"
+    per_day = (f"do {state.settings.daily_cap} maili dziennie" if boxes == 1 else
+               f"do {state.settings.daily_cap} maili dziennie z każdej z {boxes} skrzynek (razem do {state.settings.daily_cap * boxes})")
+    log.emit(ev.EVENT_ARMED, f"Plan uzbrojony: {per_day}, w kolejce {queue}"
                              + (f", odstęp dla firmy {gap} dn" if gap else "") + ".")
     return store.get_state()
 
@@ -201,9 +209,14 @@ def doctor_report(db: Database, store: AutomatStore, config: Mapping, probes: Pr
     probes.power.invalidate()
     notify = notify_settings(config)
     agent, battery = probes.launchd.get(), probes.power.get()
+    boxes = mailbox_addresses(config)
     checks = [(True, f"baza: {db.describe()}"),
               (smtp_configured(config), "SMTP skonfigurowany" if smtp_configured(config) else "brak kompletnych danych SMTP (zakładka Konfiguracja)"),
               (True, "kanały powiadomień: " + ", ".join(notify.configured_channels() or ["brak"]))]
+    if len(boxes) > 1:
+        checks.append((True, f"skrzynki nadawcze: {len(boxes)} ({', '.join(boxes)}); dzienny limit obowiązuje każdą osobno"))
+    elif boxes:
+        checks.append((True, "skrzynka nadawcza: jedna (kolejne dodasz w zakładce Konfiguracja)"))
     if not notify.ntfy_topic:
         checks.append((False, "brak NTFY_TOPIC — nie dostaniesz powiadomień na telefon (zakładka Konfiguracja)"))
     if not notify.healthcheck_url:
@@ -232,10 +245,11 @@ def test_notifications(log: EventLog) -> dict:
 # ---- odczyty dla panelu ---------------------------------------------------------------------------------------------
 
 
-def preview(db: Database, store: AutomatStore, now: datetime) -> dict:
-    """Kolejka i prognoza przy zapisanych limitach: liczby, ile maili idzie za granicę, plan na najbliższe dni."""
+def preview(db: Database, store: AutomatStore, now: datetime, mailboxes: int = 1) -> dict:
+    """Kolejka i prognoza przy zapisanych limitach i `mailboxes` skrzynkach (limit dzienny dotyczy każdej z nich): liczby,
+    ile maili idzie za granicę, plan na najbliższe dni."""
     state = store.get_state()
-    settings = state.settings
+    settings = ar.scaled(state.settings, mailboxes)
     flt = replace(ar.queue_filter(settings), countries=())
     countries = {key: n for key, n in db.facet_counts(flt, "countries").items()
                  if key != FOREIGN_COUNTRY and country_selected(settings.countries, key)}
@@ -256,8 +270,10 @@ def preview(db: Database, store: AutomatStore, now: datetime) -> dict:
     }
 
 
-def status_report(db: Database, store: AutomatStore, now: datetime, probes: Probes, *, channels: list) -> dict:
-    """Szybki stan do odpytywania co kilka sekund: ustawienia, plan, demon, dziś wysłano, zdarzenia i stan systemu."""
+def status_report(db: Database, store: AutomatStore, now: datetime, probes: Probes, *, channels: list,
+                  mailboxes: Sequence[str] = ()) -> dict:
+    """Szybki stan do odpytywania co kilka sekund: ustawienia, plan, demon, dziś wysłano (łącznie i na skrzynkę),
+    zdarzenia i stan systemu. `capacity` to dzienny limit wszystkich skrzynek razem."""
     state = store.get_state()
     run = store.active_run() or {}
     age = None
@@ -270,6 +286,8 @@ def status_report(db: Database, store: AutomatStore, now: datetime, probes: Prob
         "paused": state.paused, "pause_reason": state.pause_reason, "streak": state.streak,
         "daemon": {"running": bool(run), "heartbeat_age": age, "stats": run.get("statystyki", {}), "pid": run.get("pid")},
         "sent_today": db.sent_today_count(now), "now": stamp_of(now),
+        "capacity": state.settings.daily_cap * max(1, len(mailboxes)),
+        "mailboxes": sending.mailbox_usage(db, mailboxes, now),
         "launchd": probes.launchd.get(), "power": {"on_battery": battery.on_battery, "percent": battery.percent},
         "channels": channels, "events": store.recent_events(30),
     }

@@ -12,6 +12,31 @@ def check(key, raw):
     return cf.validate(cf.BY_KEY[key], raw)
 
 
+class MailboxFieldTests(unittest.TestCase):
+    def test_every_mailbox_slot_has_the_same_five_fields(self):
+        for slot in range(1, 11):
+            prefix = "SMTP" if slot == 1 else f"SMTP{slot}"
+            group = "mail" if slot == 1 else f"mail{slot}"
+            keys = [f.key for f in cf.FIELDS if f.group == group and f.key.startswith(prefix + "_")]
+            self.assertEqual(keys, [f"{prefix}_{name}" for name in ("HOST", "PORT", "USE_SSL", "USER", "PASSWORD")], slot)
+            self.assertEqual(cf.mailbox_slot(group), slot)
+
+    def test_only_mailbox_groups_have_a_slot(self):
+        self.assertEqual([cf.mailbox_slot(key) for key in ("notify", "scraper", "mailx")], [None, None, None])
+
+    def test_extra_mailboxes_are_validated_like_the_first(self):
+        self.assertEqual(check("SMTP3_PORT", " 587 "), "587")
+        for key, bad in (("SMTP3_PORT", "99999"), ("SMTP3_HOST", "złe host"), ("SMTP3_USER", "a b"), ("SMTP3_PASSWORD", "x" * 501)):
+            with self.subTest(key=key), self.assertRaises(cf.ConfigValueError):
+                check(key, bad)
+
+    def test_passwords_of_every_slot_are_secrets(self):
+        self.assertTrue(all(cf.BY_KEY[f"SMTP{n}_PASSWORD"].kind == cf.KIND_SECRET for n in range(2, 11)))
+
+    def test_the_sender_name_stays_single_and_shared(self):
+        self.assertEqual([f.key for f in cf.FIELDS if f.key.endswith("SENDER_NAME")], ["SENDER_NAME"])
+
+
 class ValidationTests(unittest.TestCase):
     def test_numbers_are_checked_for_type_and_range(self):
         self.assertEqual(check("SMTP_PORT", " 587 "), "587")

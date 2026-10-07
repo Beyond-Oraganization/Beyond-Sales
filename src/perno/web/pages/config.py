@@ -5,11 +5,15 @@ Handlery tylko czytają żądanie i wołają `services.config_editor`. Wartości
 
 from __future__ import annotations
 
+import re
+
 from perno.services import config_editor
 from perno.web import layout
 from perno.web.context import AppContext
 from perno.web.http import HttpError, Request, Response, json_response
 from perno.web.page import Page
+
+_PASSWORD_KEY = re.compile(r"SMTP\d*_PASSWORD")
 
 
 def render(ctx: AppContext) -> str:
@@ -37,7 +41,8 @@ def api_save(req: Request, ctx: AppContext) -> Response:
 
 
 def api_test_smtp(req: Request, ctx: AppContext) -> Response:
-    return json_response(config_editor.test_smtp(ctx.mailer, ctx.config.load().get("SMTP_PASSWORD", "")))
+    passwords = [value for key, value in ctx.config.load().items() if _PASSWORD_KEY.fullmatch(key) and value]
+    return json_response(config_editor.test_smtp(ctx.mailers, passwords))
 
 
 PAGE = Page(

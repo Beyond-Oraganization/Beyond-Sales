@@ -35,7 +35,7 @@ class ControlCase(unittest.TestCase):
         self.store.ensure_schema()
         self.macos = Channel("macos")
         self.log = EventLog(self.store, Notifier({"macos": self.macos}), self.db.now)
-        self.mailer = lambda: sending.Mailer(lambda: FakeSmtp(), sending.Sender("me@example.com"))
+        self.mailer = lambda: [sending.Mailer(lambda: FakeSmtp(), sending.Sender("me@example.com"))]
 
     def save(self, **raw):
         return ctl.save_settings(self.store, self.log, raw)
@@ -96,6 +96,38 @@ class ArmTests(ControlCase):
         state = self.arm()
         self.assertEqual((state.armed, state.armed_until), (True, datetime(2026, 10, 8, 0, 0)))
         self.assertEqual(self.macos.got[0].message, "Plan uzbrojony: do 7 maili dziennie, w kolejce 2, odstęp dla firmy 1 dn.")
+
+    def test_arming_with_several_mailboxes_states_the_per_mailbox_and_total_limit(self):
+        put(self.db, sample_row(1), sample_row(2))
+        self.save(daily_cap=7)
+        self.mailer = lambda: [sending.Mailer(lambda: FakeSmtp(), sending.Sender(f"{n}@example.com")) for n in "ab"]
+        self.arm()
+        self.assertEqual(self.macos.got[0].message, "Plan uzbrojony: do 7 maili dziennie z każdej z 2 skrzynek (razem do 14), "
+                                                    "w kolejce 2, odstęp dla firmy 1 dn.")
+
+    def test_status_capacity_is_the_cap_times_the_mailboxes(self):
+        self.save(daily_cap=7)
+        probes = ctl.Probes(launchd=ctl.Cached(lambda: {"installed": False, "loaded": False, "pid": None}),
+                            power=ctl.Cached(lambda: PowerState(False, 100)))
+        one = ctl.status_report(self.db, self.store, self.clock.now, probes, channels=[], mailboxes=["a@x.pl"])
+        two = ctl.status_report(self.db, self.store, self.clock.now, probes, channels=[], mailboxes=["a@x.pl", "b@x.pl"])
+        none = ctl.status_report(self.db, self.store, self.clock.now, probes, channels=[])
+        self.assertEqual((one["capacity"], two["capacity"], none["capacity"]), (7, 14, 7))
+        self.assertEqual([box["address"] for box in two["mailboxes"]], ["a@x.pl", "b@x.pl"])
+        self.assertEqual(none["mailboxes"], [])
+
+    def test_mailbox_addresses_come_from_the_complete_slots_only(self):
+        config = {"SMTP_HOST": "h", "SMTP_PORT": "1", "SMTP_USER": "a@x.pl", "SMTP_PASSWORD": "p",
+                  "SMTP2_USER": "polowa@x.pl", "SMTP3_HOST": "h", "SMTP3_PORT": "1", "SMTP3_USER": "c@x.pl", "SMTP3_PASSWORD": "p"}
+        self.assertEqual(ctl.mailbox_addresses(config), ["a@x.pl", "c@x.pl"])
+
+    def test_the_doctor_lists_the_mailboxes(self):
+        config = {"SMTP_HOST": "h", "SMTP_PORT": "1", "SMTP_USER": "a@x.pl", "SMTP_PASSWORD": "p",
+                  "SMTP2_HOST": "h", "SMTP2_PORT": "1", "SMTP2_USER": "b@x.pl", "SMTP2_PASSWORD": "p"}
+        probes = ctl.Probes(launchd=ctl.Cached(lambda: {"installed": False, "loaded": False, "pid": None}),
+                            power=ctl.Cached(lambda: PowerState(False, 100)))
+        texts = [check["text"] for check in ctl.doctor_report(self.db, self.store, config, probes)]
+        self.assertTrue(any(text.startswith("skrzynki nadawcze: 2 (a@x.pl, b@x.pl)") for text in texts))
 
     def test_refuses_empty_queue_and_missing_smtp(self):
         with self.assertRaisesRegex(ctl.ArmRefused, "Kolejka jest pusta"):

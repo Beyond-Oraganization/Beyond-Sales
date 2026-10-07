@@ -157,7 +157,8 @@ def confirm_batch(to_send: list, sent_today: int, args: argparse.Namespace, mail
 
 
 def send_pending(db: Database, mailer: sending.Mailer, args: argparse.Namespace) -> int:
-    sent_today = db.sent_today_count()
+    # Terminal wysyła ze skrzynki głównej (rotacja skrzynek to panel i Automat), więc limit liczy tylko jej wysyłki.
+    sent_today = sending.mailbox_usage(db, [mailer.sender.address])[0]["sent_today"]
     limit = min(args.limit, mail_rules.daily_quota_left(sent_today, args.daily_cap))
     to_send = db.select_candidates(
         segment=args.segment, row_id=args.id or "", company=args.company or "", countries=args.country,

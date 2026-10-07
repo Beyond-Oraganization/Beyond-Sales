@@ -12,12 +12,13 @@ import random
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
+from datetime import datetime
 from email.message import EmailMessage
-from typing import Callable, Mapping, Optional
+from typing import Callable, Collection, Mapping, Optional, Sequence
 
 from perno import settings as cfg
 from perno.db import DB_ERRORS, Database, RowNotFound
-from perno.domain import company_rules, mail_rules
+from perno.domain import company_rules, mail_rules, mailboxes
 from perno.domain import statuses as st
 from perno.mailer import image_prep, mime_builder, smtp_client
 from perno.settings import ConfigError, Environment, SmtpSettings, require_smtp
@@ -55,27 +56,65 @@ class SendResult:
     message: str = ""
 
 
-def smtp_factory_from_config(config: Mapping, env: Optional[Environment] = None) -> Callable:
-    """Fabryka klienta SMTP z konfiguracji; odmawia, gdy baza jest testowa (PERNO_DB_URL) bez jawnego odblokowania."""
+def _require_real_smtp(env: Optional[Environment]) -> None:
     if not (env if env is not None else Environment.from_environ()).real_smtp_allowed:
         raise ConfigError(
             "Ustawiono PERNO_DB_URL (baza testowa/demo), więc prawdziwa wysyłka SMTP jest zablokowana. "
             "Jeśli naprawdę chcesz wysyłać, ustaw też PERNO_ALLOW_REAL_SMTP=1."
         )
-    smtp = SmtpSettings.from_config(config)
 
+
+def _factory_for(smtp: SmtpSettings) -> Callable:
     def factory() -> smtp_client.SmtpClient:
         return smtp_client.SmtpClient(smtp.host, smtp.port, smtp.user, smtp.password, smtp.use_ssl)
 
     return factory
 
 
+def smtp_factory_from_config(config: Mapping, env: Optional[Environment] = None) -> Callable:
+    """Fabryka klienta SMTP skrzynki głównej; odmawia, gdy baza jest testowa (PERNO_DB_URL) bez jawnego odblokowania."""
+    _require_real_smtp(env)
+    return _factory_for(SmtpSettings.from_config(config))
+
+
 def build_mailer(config: Mapping, config_path: str = cfg.DEFAULT_CONFIG, *,
                  smtp_factory: Optional[Callable] = None, env: Optional[Environment] = None) -> Mailer:
-    """Dane wysyłki z konfiguracji (rzuca `ConfigError`, gdy są niekompletne). `smtp_factory` podmienia klienta SMTP."""
+    """Skrzynka główna z konfiguracji (rzuca `ConfigError`, gdy dane są niekompletne). `smtp_factory` podmienia klienta SMTP.
+    Do wysyłki w rotacji służy `build_mailers`; tu zostają powiadomienia, test połączenia i terminal."""
     require_smtp(dict(config), config_path)
     sender = Sender(config["SMTP_USER"], config.get("SENDER_NAME", ""))
     return Mailer(smtp_factory or smtp_factory_from_config(config, env), sender)
+
+
+def build_mailers(config: Mapping, config_path: str = cfg.DEFAULT_CONFIG, *,
+                  smtp_factory: Optional[Callable] = None, env: Optional[Environment] = None) -> list:
+    """Wszystkie skrzynki do rotacji w kolejności z konfiguracji (pierwsza to główna). Rzuca `ConfigError`, gdy któraś jest
+    niekompletna albo dwie mają ten sam adres. `smtp_factory` (testy) obsługuje wtedy każdą skrzynkę."""
+    require_smtp(dict(config), config_path)
+    slots = cfg.smtp_slots(config)
+    if smtp_factory is None:
+        _require_real_smtp(env)
+    name = config.get("SENDER_NAME", "")
+    return [Mailer(smtp_factory or _factory_for(slot), Sender(slot.user, name)) for slot in slots]
+
+
+def mailbox_usage(db: Database, addresses: Sequence[str], now: Optional[datetime] = None) -> list:
+    """Ile maili każda skrzynka wysłała dziś: `[{"address", "sent_today"}]` w kolejności konfiguracji (do paneli)."""
+    if not addresses:
+        return []
+    use = mailboxes.attribute_legacy(db.sent_by_sender_today(now), addresses[0])
+    return [{"address": address, "sent_today": use.get(address.casefold(), mailboxes.DayUse()).sent} for address in addresses]
+
+
+def pick_mailer(db: Database, mailers: Sequence[Mailer], daily_cap: Optional[int], *, now: Optional[datetime] = None,
+                unavailable: Collection[str] = ()) -> Optional[Mailer]:
+    """Skrzynka, z której pójdzie następny mail: po kolei, z dziennym limitem osobnym dla każdej (None = bez limitu).
+    Zwraca None, gdy każda skrzynka wyczerpała limit albo jest wyłączona (`unavailable`: adresy)."""
+    if not mailers:
+        return None
+    use = mailboxes.attribute_legacy(db.sent_by_sender_today(now), mailers[0].sender.address)
+    address = mailboxes.choose_mailbox([m.sender.address for m in mailers], use, daily_cap, unavailable)
+    return next((m for m in mailers if m.sender.address == address), None)
 
 
 def get_inline_image() -> tuple:
@@ -120,7 +159,7 @@ def send_row(
 
     for attempt in range(3):
         try:
-            return SendResult("sent", db.mark_sent(row_id))
+            return SendResult("sent", db.mark_sent(row_id, mailer.sender.address))
         except DB_ERRORS:
             time.sleep(0.5 * (attempt + 1))
     warning = (f"UWAGA: mail do {claimed['email']} ({row_id}) WYSŁANO, ale nie udało się zapisać statusu "
@@ -129,20 +168,22 @@ def send_row(
     return SendResult("sent_unrecorded", claimed, warning)
 
 
-def send_one(db: Database, row_id: str, mailer: Callable[[], Mailer], *, daily_cap: Optional[int] = None) -> SendResult:
+def send_one(db: Database, row_id: str, mailers: Callable[[], list], *, daily_cap: Optional[int] = None) -> SendResult:
     """Wysyłka jednego wiersza z panelu. Kolejność kontroli: wiersz istnieje i wolno go wysłać → konfiguracja SMTP
-    (`mailer()` rzuca `ConfigError`) → dzienny limit → zajęcie wiersza i wysyłka. `mailer` to fabryka, żeby
-    błędy konfiguracji nie przesłaniały problemów z samym wierszem."""
+    (`mailers()` rzuca `ConfigError`) → dzienny limit skrzynki → zajęcie wiersza i wysyłka z kolejnej skrzynki w rotacji.
+    `mailers` to fabryka, żeby błędy konfiguracji nie przesłaniały problemów z samym wierszem."""
     row = db.get(row_id)
     if row is None:
         raise RowNotFound(f"Nie znaleziono wiersza {row_id}.")
     problem = mail_rules.sendability_problem(row)
     if problem:
         raise NotSendable(problem)
-    resolved = mailer()
-    if daily_cap is not None and mail_rules.daily_quota_left(db.sent_today_count(), daily_cap) == 0:
-        raise DailyCapReached(f"Dzienny limit wysyłki ({daily_cap}) jest wyczerpany.")
-    return send_row(db, row_id, resolved, allowed_from=(st.STATUS_PENDING, st.STATUS_ERROR))
+    resolved = mailers()
+    chosen = pick_mailer(db, resolved, daily_cap)
+    if chosen is None:
+        where = " na każdej skrzynce" if len(resolved) > 1 else ""
+        raise DailyCapReached(f"Dzienny limit wysyłki ({daily_cap}) jest wyczerpany{where}.")
+    return send_row(db, row_id, chosen, allowed_from=(st.STATUS_PENDING, st.STATUS_ERROR))
 
 
 def send_batch(

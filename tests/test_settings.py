@@ -77,6 +77,9 @@ class ConfigFileTests(unittest.TestCase):
         self.assertEqual(source.load(), {"A": "1"})
 
 
+BOX2 = {"SMTP2_HOST": "smtp2.example.com", "SMTP2_PORT": "587", "SMTP2_USER": "two@example.com", "SMTP2_PASSWORD": "sekret2"}
+
+
 class SmtpSettingsTests(unittest.TestCase):
     def test_builds_typed_settings(self):
         smtp = SmtpSettings.from_config({**SMTP, "SMTP_USE_SSL": "False"})
@@ -91,6 +94,40 @@ class SmtpSettingsTests(unittest.TestCase):
             SmtpSettings.from_config({"SMTP_PORT": "465", "SMTP_USER": "u"})
         with self.assertRaisesRegex(ConfigError, "SMTP_PORT"):
             SmtpSettings.from_config({**SMTP, "SMTP_PORT": "x"})
+
+    def test_the_first_mailbox_is_slot_one_and_the_rest_use_numbered_keys(self):
+        second = SmtpSettings.from_config({**BOX2}, 2)
+        self.assertEqual((second.host, second.port, second.user, second.slot), ("smtp2.example.com", 587, "two@example.com", 2))
+        self.assertEqual(SmtpSettings.from_config(SMTP).slot, 1)
+        with self.assertRaisesRegex(ConfigError, "SMTP2_PASSWORD"):
+            SmtpSettings.from_config({**BOX2, "SMTP2_PASSWORD": ""}, 2)
+        with self.assertRaisesRegex(ConfigError, "SMTP2_PORT"):
+            SmtpSettings.from_config({**BOX2, "SMTP2_PORT": "x"}, 2)
+
+    def test_extra_mailboxes_are_listed_in_slot_order_and_empty_slots_are_ignored(self):
+        config = {**SMTP, **BOX2, "SMTP4_HOST": "h", "SMTP4_PORT": "465", "SMTP4_USER": "four@example.com", "SMTP4_PASSWORD": "p"}
+        self.assertEqual([slot.slot for slot in cfg.extra_smtp_slots(config)], [2, 4])
+        self.assertEqual([slot.user for slot in cfg.smtp_slots(config)], ["me@example.com", "two@example.com", "four@example.com"])
+        self.assertEqual(cfg.extra_smtp_slots(SMTP), [])
+
+    def test_a_half_filled_extra_mailbox_is_an_error_not_a_silent_skip(self):
+        with self.assertRaisesRegex(ConfigError, "SMTP3_HOST, SMTP3_PORT, SMTP3_PASSWORD"):
+            cfg.smtp_slots({**SMTP, "SMTP3_USER": "three@example.com"})
+
+    def test_two_mailboxes_with_the_same_address_are_refused(self):
+        with self.assertRaisesRegex(ConfigError, "Skrzynki 1 i 2"):
+            cfg.smtp_slots({**SMTP, **BOX2, "SMTP2_USER": "ME@example.com"})
+
+    def test_configured_mailboxes_skips_broken_ones_without_raising(self):
+        config = {**SMTP, **BOX2, "SMTP3_USER": "three@example.com", "SMTP4_HOST": "h", "SMTP4_PORT": "465",
+                  "SMTP4_USER": "TWO@example.com", "SMTP4_PASSWORD": "p"}
+        self.assertEqual([box.user for box in cfg.configured_mailboxes(config)], ["me@example.com", "two@example.com"])
+
+    def test_check_mailboxes_accepts_a_file_without_the_primary_mailbox_yet(self):
+        cfg.check_mailboxes({})
+        cfg.check_mailboxes(BOX2)
+        with self.assertRaises(ConfigError):
+            cfg.check_mailboxes({**SMTP, **BOX2, "SMTP2_USER": "me@example.com"})
 
     def test_require_smtp_and_smtp_configured_agree(self):
         self.assertTrue(cfg.smtp_configured(SMTP))

@@ -100,7 +100,7 @@ class SaveTests(ConfigWebCase):
 class SmtpTests(ConfigWebCase):
     def test_smtp_check_uses_the_injected_client(self):
         data = self.data(self.call("POST", "/api/config/test-smtp", {}))
-        self.assertEqual(data, {"ok": True, "message": "Połączono i zalogowano jako demo@example.com."})
+        self.assertEqual((data["ok"], data["message"]), (True, "Połączono i zalogowano jako demo@example.com."))
 
     def test_smtp_check_reports_missing_configuration(self):
         os.unlink(self.path)

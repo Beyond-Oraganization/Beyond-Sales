@@ -34,7 +34,7 @@ class CliCase(unittest.TestCase):
         store = AutomatStore(db)
         store.ensure_schema()
         self.ctx = cli.Context(ConfigFile(NO_CONFIG), db, store)
-        self.smtp = mock.patch("perno.services.sending.build_mailer", return_value=mock.Mock()).start()
+        self.smtp = mock.patch("perno.services.sending.build_mailers", return_value=[mock.Mock()]).start()
         self.addCleanup(mock.patch.stopall)
 
 

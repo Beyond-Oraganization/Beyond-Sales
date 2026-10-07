@@ -19,3 +19,8 @@
   .cfg-field .name,.cfg-field .help,.cfg-field label.inline,
   .cfg-field input[type="text"],.cfg-field input[type="password"],.cfg-field select{grid-column:1;grid-row:auto;}
 }
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3);}
+.card-head h2{margin:0;}
+.cfg-remove{font-size:var(--fs-foot);}
+#smtpResult{white-space:pre-line;}
+#groups .card[hidden],.controls [hidden]{display:none;}

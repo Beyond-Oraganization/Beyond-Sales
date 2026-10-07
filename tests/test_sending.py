@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from datetime import datetime
 from unittest import mock
 
 import sqlalchemy.exc as sa_exc
@@ -12,7 +13,7 @@ from perno.domain import statuses as st
 from perno.mailer import mime_builder
 from perno.services import sending
 from perno.settings import ConfigError, Environment
-from tests.fixtures import FakeSmtp, make_db, put, sample_row
+from tests.fixtures import FakeClock, FakeSmtp, make_db, put, sample_row
 
 SENDER = sending.Sender("roman@z3x.pl", "Roman")
 CID_BODY = f'<p>Cześć</p><img src="cid:{mime_builder.INLINE_IMAGE_CID}">'
@@ -128,11 +129,11 @@ class SendRowTests(NoRealSmtpMixin, unittest.TestCase):
         broken = sa_exc.OperationalError("UPDATE", {}, Exception("chwilowa awaria"))
         real_mark_sent, calls = database.mark_sent, []
 
-        def flaky(row_id):
+        def flaky(row_id, sent_from=None):
             calls.append(row_id)
             if len(calls) == 1:
                 raise broken
-            return real_mark_sent(row_id)
+            return real_mark_sent(row_id, sent_from)
 
         with mock.patch.object(database, "mark_sent", side_effect=flaky), mock.patch("time.sleep") as sleep:
             result = self.send(database, "eventy-001", FakeSmtp())
@@ -173,7 +174,7 @@ class SendOneTests(NoRealSmtpMixin, unittest.TestCase):
 
     def mailer(self):
         self.mailer_calls += 1
-        return sending.Mailer(lambda: self.smtp, SENDER)
+        return [sending.Mailer(lambda: self.smtp, SENDER)]
 
     def send(self, row_id, **kw):
         return sending.send_one(self.database, row_id, self.mailer, **kw)
@@ -288,3 +289,126 @@ class RealSmtpGateTests(NoRealSmtpMixin, unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+TWO_BOXES_CONFIG = {**FULL_CONFIG, "SMTP2_HOST": "smtp2.invalid", "SMTP2_PORT": "587", "SMTP2_USER": "second@example.com",
+                    "SMTP2_PASSWORD": "fake2", "SMTP2_USE_SSL": "false"}
+
+
+class BuildMailersTests(NoRealSmtpMixin, unittest.TestCase):
+    def test_every_mailbox_gets_its_own_sender_and_the_shared_name(self):
+        mailers = sending.build_mailers(TWO_BOXES_CONFIG, __file__, smtp_factory=lambda: None)
+        self.assertEqual([m.sender for m in mailers],
+                         [sending.Sender("demo@example.com", "Demo"), sending.Sender("second@example.com", "Demo")])
+
+    def test_each_mailbox_connects_with_its_own_settings(self):
+        created = []
+
+        class Client:
+            def __init__(self, *args):
+                created.append(args)
+
+        with mock.patch("perno.mailer.smtp_client.SmtpClient", Client):
+            first, second = sending.build_mailers(TWO_BOXES_CONFIG, __file__, env=Environment())
+            first.smtp_factory()
+            second.smtp_factory()
+        self.assertEqual(created, [("smtp.invalid", 465, "demo@example.com", "fake", True),
+                                   ("smtp2.invalid", 587, "second@example.com", "fake2", False)])
+
+    def test_one_mailbox_config_gives_one_mailer_like_before(self):
+        self.assertEqual(len(sending.build_mailers(FULL_CONFIG, __file__, smtp_factory=lambda: None)), 1)
+
+    def test_incomplete_or_duplicate_mailboxes_are_a_config_error(self):
+        with self.assertRaises(ConfigError):
+            sending.build_mailers({**FULL_CONFIG, "SMTP2_USER": "x@example.com"}, __file__, smtp_factory=lambda: None)
+        with self.assertRaises(ConfigError):
+            sending.build_mailers({**TWO_BOXES_CONFIG, "SMTP2_USER": "demo@example.com"}, __file__, smtp_factory=lambda: None)
+
+    def test_a_test_database_still_blocks_real_smtp_for_every_mailbox(self):
+        with self.assertRaisesRegex(ConfigError, "PERNO_DB_URL"):
+            sending.build_mailers(TWO_BOXES_CONFIG, __file__, env=Environment(db_url="sqlite://"))
+
+
+class RotationTests(NoRealSmtpMixin, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.clock = FakeClock(datetime(2026, 10, 7, 10, 0, 0))
+        self.database = make_db(self.clock)
+        self.smtps = {"a@example.com": FakeSmtp(), "b@example.com": FakeSmtp(), "c@example.com": FakeSmtp()}
+        self.mailers = [sending.Mailer(lambda smtp=smtp: smtp, sending.Sender(address)) for address, smtp in self.smtps.items()]
+        put(self.database, *[sample_row(n) for n in range(1, 8)])
+
+    def send(self, n, cap=None):
+        self.clock.advance(seconds=60)
+        return sending.send_one(self.database, f"eventy-{n:03d}", lambda: self.mailers, daily_cap=cap)
+
+    def sent_by(self):
+        return {address: len(smtp.sent) for address, smtp in self.smtps.items()}
+
+    def test_mails_leave_mailbox_after_mailbox_and_the_sender_is_recorded(self):
+        for n in range(1, 7):
+            self.send(n)
+        self.assertEqual(self.sent_by(), {"a@example.com": 2, "b@example.com": 2, "c@example.com": 2})
+        order = [str(smtp.sent[0]["From"]) for smtp in self.smtps.values()]
+        self.assertEqual(order, ["a@example.com", "b@example.com", "c@example.com"])
+        use = self.database.sent_by_sender_today()
+        self.assertEqual({key: value.sent for key, value in use.items()}, {"a@example.com": 2, "b@example.com": 2, "c@example.com": 2})
+
+    def test_the_daily_cap_applies_to_each_mailbox_separately(self):
+        for n in range(1, 7):
+            self.send(n, cap=2)
+        with self.assertRaisesRegex(sending.DailyCapReached, "każdej skrzynce"):
+            self.send(7, cap=2)
+        self.assertEqual(self.database.get("eventy-007")["status"], st.STATUS_PENDING)
+
+    def test_a_single_mailbox_keeps_the_old_cap_message_and_semantics(self):
+        self.mailers = self.mailers[:1]
+        self.send(1, cap=1)
+        with self.assertRaises(sending.DailyCapReached) as caught:
+            self.send(2, cap=1)
+        self.assertNotIn("skrzynce", str(caught.exception))
+
+    def test_mails_sent_before_mailboxes_existed_count_for_the_primary_one(self):
+        put(self.database, sample_row(20, status="wyslano", sent_at="2026-10-07T09:00:00"))
+        self.send(1, cap=1)  # stara wysyłka bez skrzynki należy do głównej (a), która wyczerpała limit 1, więc mail idzie z b
+        self.assertEqual(self.sent_by(), {"a@example.com": 0, "b@example.com": 1, "c@example.com": 0})
+
+    def test_the_rotation_survives_a_restart_because_it_lives_in_the_database(self):
+        self.send(1)
+        self.send(2)
+        self.mailers = [sending.Mailer(lambda smtp=smtp: smtp, m.sender) for smtp, m in zip(self.smtps.values(), self.mailers)]  # „nowy proces”
+        self.send(3)
+        self.assertEqual(self.sent_by(), {"a@example.com": 1, "b@example.com": 1, "c@example.com": 1})
+
+    def test_usage_report_lists_mailboxes_in_configuration_order(self):
+        self.send(1)
+        self.assertEqual(sending.mailbox_usage(self.database, list(self.smtps)),
+                         [{"address": "a@example.com", "sent_today": 1}, {"address": "b@example.com", "sent_today": 0},
+                          {"address": "c@example.com", "sent_today": 0}])
+        self.assertEqual(sending.mailbox_usage(self.database, []), [])
+
+    def test_yesterdays_mails_do_not_count(self):
+        self.send(1)
+        self.clock.advance(days=1)
+        self.assertEqual(sending.pick_mailer(self.database, self.mailers, 1).sender.address, "a@example.com")
+
+    def test_pick_mailer_skips_unavailable_ones_and_knows_when_nothing_is_left(self):
+        self.assertEqual(sending.pick_mailer(self.database, self.mailers, 5, unavailable={"a@example.com"}).sender.address, "b@example.com")
+        self.assertIsNone(sending.pick_mailer(self.database, self.mailers, 5, unavailable=set(self.smtps)))
+        self.assertIsNone(sending.pick_mailer(self.database, [], 5))
+
+
+class SentFromTests(unittest.TestCase):
+    def test_mark_sent_records_the_mailbox_and_the_api_row_does_not_expose_it(self):
+        database = make_db()
+        put(database, sample_row(1))
+        row = database.mark_sent("eventy-001", "a@example.com")
+        self.assertNotIn("sent_from", row)
+        self.assertEqual(database.sent_by_sender_today()["a@example.com"].sent, 1)
+
+    def test_addresses_differing_only_in_case_are_one_mailbox(self):
+        database = make_db()
+        put(database, sample_row(1), sample_row(2))
+        database.mark_sent("eventy-001", "Roman@Z3X.pl")
+        database.mark_sent("eventy-002", "roman@z3x.pl")
+        self.assertEqual({k: v.sent for k, v in database.sent_by_sender_today().items()}, {"roman@z3x.pl": 2})

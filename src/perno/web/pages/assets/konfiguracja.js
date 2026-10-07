@@ -4,6 +4,7 @@
 const el = (id) => document.getElementById(id);
 let CONFIG = null;
 let INITIAL = {};  // klucz -> wartość pokazana w polu (do wykrycia zmian)
+let REMOVED = new Set();  // numery zapisanych skrzynek, które człowiek usunął i jeszcze nie zapisał
 
 const toast = (text, tone) => showToast(text, tone);
 
@@ -38,13 +39,69 @@ function fieldHtml(field) {
     + inputHtml(field) + '<span class="help">' + escapeHtml(field.help) + escapeHtml(restart) + '</span></div>';
 }
 
+// Skrzynka dodatkowa (numer 2 i dalej) jest „zajęta”, gdy w pliku ma jakąkolwiek wartość; puste zostają ukryte do kliknięcia „Dodaj skrzynkę”.
+function mailboxFilled(group) {
+  return group.fields.some((field) => field.set || (field.kind !== 'secret' && field.value));
+}
+
+function groupHtml(group) {
+  const extra = group.mailbox && group.mailbox > 1;
+  const hidden = extra && !mailboxFilled(group) ? ' hidden' : '';
+  const remove = extra ? '<button type="button" class="cfg-remove" data-slot="' + group.mailbox + '">Usuń skrzynkę</button>' : '';
+  return '<section class="card" id="card_' + escapeHtml(group.key) + '"' + hidden + '><div class="card-head"><h2>'
+    + escapeHtml(group.title) + '</h2>' + remove + '</div><p class="muted group-note">'
+    + escapeHtml(group.description) + '</p><div class="cfg-grid">' + group.fields.map(fieldHtml).join('') + '</div></section>';
+}
+
+function mailboxGroups() {
+  return CONFIG.groups.filter((group) => group.mailbox && group.mailbox > 1);
+}
+
+function updateAddButton() {
+  el('addMailboxBtn').hidden = !mailboxGroups().some((group) => el('card_' + group.key).hidden);
+}
+
+function addMailbox() {
+  const group = mailboxGroups().find((g) => el('card_' + g.key).hidden);
+  if (!group) return;
+  const slot = group.mailbox;
+  el('card_' + group.key).hidden = false;
+  // Najczęściej kolejne skrzynki są u tego samego dostawcy: podpowiadamy serwer, port i SSL z głównej.
+  for (const suffix of ['HOST', 'PORT', 'USE_SSL']) {
+    const source = el('c_SMTP_' + suffix);
+    const target = el('c_SMTP' + slot + '_' + suffix);
+    if (source && target) target.value = source.value;
+  }
+  const user = el('c_SMTP' + slot + '_USER');
+  if (user) user.focus();
+  updateAddButton();
+}
+
+function removeMailbox(slot) {
+  const group = CONFIG.groups.find((g) => g.mailbox === Number(slot));
+  if (!group) return;
+  if (mailboxFilled(group)) REMOVED.add(group.mailbox);
+  for (const field of group.fields) {
+    el('c_' + field.key).value = field.kind === 'bool' || field.kind === 'choice' ? INITIAL[field.key] : '';
+  }
+  el('card_' + group.key).hidden = true;
+  updateAddButton();
+}
+
+// Jeden nasłuch na kontenerze: karty są przerysowywane (innerHTML), więc przyciski „Usuń skrzynkę” nie mają własnych.
+el('groups').addEventListener('click', (event) => {
+  const target = event.target;
+  if (target && target.className === 'cfg-remove') removeMailbox(target.dataset.slot);
+});
+
 function render() {
   INITIAL = {};
+  REMOVED = new Set();
   el('groups').innerHTML = CONFIG.groups.map((group) => {
     for (const field of group.fields) INITIAL[field.key] = field.kind === 'secret' ? '' : fieldValue(field);
-    return '<section class="card"><h2>' + escapeHtml(group.title) + '</h2><p class="muted group-note">'
-      + escapeHtml(group.description) + '</p><div class="cfg-grid">' + group.fields.map(fieldHtml).join('') + '</div></section>';
+    return groupHtml(group);
   }).join('');
+  updateAddButton();
   el('banners').innerHTML = CONFIG.file_exists ? '' : '<div class="banner warn">Plik config.env nie istnieje — zapis go utworzy.</div>';
 }
 
@@ -52,12 +109,15 @@ function collect() {
   const values = {};
   const clear = [];
   for (const group of CONFIG.groups) {
+    const removed = REMOVED.has(group.mailbox);
     for (const field of group.fields) {
       const current = el('c_' + field.key).value;
       if (field.kind === 'secret') {
         if (current) values[field.key] = current;
         const box = el('x_' + field.key);
-        if (box && box.checked) clear.push(field.key);
+        if ((box && box.checked) || (removed && field.set)) clear.push(field.key);
+      } else if (removed) {
+        if (field.value) values[field.key] = '';  // pusta wartość usuwa klucz z pliku
       } else if (current !== INITIAL[field.key]) {
         values[field.key] = current;
       }
@@ -102,10 +162,15 @@ async function testSmtp() {
   if (Object.keys(values).length || clear.length) { toast('Najpierw zapisz zmiany — sprawdzam zapisane ustawienia.'); return; }
   el('smtpResult').textContent = 'Łączę…';
   const {ok, data} = await api('/api/config/test-smtp', {});
-  el('smtpResult').textContent = ok ? (data.ok ? 'OK: ' : 'BŁĄD: ') + data.message : (data.error || 'Nie udało się sprawdzić.');
+  if (!ok) { el('smtpResult').textContent = data.error || 'Nie udało się sprawdzić.'; return; }
+  const results = data.results || [];
+  el('smtpResult').textContent = results.length > 1
+    ? results.map((r) => (r.ok ? 'OK: ' : 'BŁĄD: ') + r.message).join('\n')
+    : (data.ok ? 'OK: ' : 'BŁĄD: ') + data.message;
 }
 
 el('saveBtn').addEventListener('click', save);
 el('reloadBtn').addEventListener('click', render);
 el('smtpBtn').addEventListener('click', testSmtp);
+el('addMailboxBtn').addEventListener('click', addMailbox);
 load();

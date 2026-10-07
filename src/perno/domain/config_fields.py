@@ -11,6 +11,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from perno.domain.mailboxes import MAX_MAILBOXES, smtp_prefix
+
 KIND_TEXT = "text"
 KIND_SECRET = "secret"  # noqa: S105 — nazwa rodzaju pola, nie hasło
 KIND_BOOL = "bool"
@@ -22,6 +24,7 @@ RESTART_DEMON = "demon"  # klucz czytany przez demona automatu przy starcie (kan
 
 _HOST_RE = re.compile(r"[A-Za-z0-9]([A-Za-z0-9.\-]{0,251}[A-Za-z0-9])?")
 _TOPIC_RE = re.compile(r"[A-Za-z0-9_\-]{8,64}")
+_SLOT_RE = re.compile(r"^SMTP\d+_")  # SMTP2_HOST → SMTP_HOST: te same reguły dla każdej skrzynki
 _CONTACT_RE = re.compile(r"[A-Za-z0-9@._:/+\-]{3,200}")  # to samo co scraper.settings.CONTACT_RE (pilnuje tego test)
 
 
@@ -44,19 +47,37 @@ class ConfigField:
     restart: str = ""  # RESTART_DEMON albo pusty
 
 
+def _mailbox_fields(slot: int) -> tuple:
+    prefix, group = smtp_prefix(slot), "mail" if slot == 1 else f"mail{slot}"
+    return (
+        ConfigField(f"{prefix}_HOST", "Serwer SMTP", group, help="np. smtp.zenbox.pl"),
+        ConfigField(f"{prefix}_PORT", "Port SMTP", group, KIND_INT, "465 dla SSL, 587 dla STARTTLS.", low=1, high=65535),
+        ConfigField(f"{prefix}_USE_SSL", "Połączenie SSL", group, KIND_BOOL, "Tak = SSL (port 465), nie = STARTTLS.", default="true"),
+        ConfigField(f"{prefix}_USER", "Użytkownik (adres nadawcy)", group, help="Zwykle pełny adres skrzynki. Każda skrzynka musi mieć inny."),
+        ConfigField(f"{prefix}_PASSWORD", "Hasło", group, KIND_SECRET, "Zostaw puste, żeby nie zmieniać."),
+    )
+
+
+def mailbox_slot(group: str) -> Optional[int]:
+    """Numer skrzynki grupy pól („mail” = 1, „mail2” = 2 …); None dla grup, które nie są skrzynką."""
+    if group == "mail":
+        return 1
+    digits = group[len("mail"):] if group.startswith("mail") else ""
+    return int(digits) if digits.isdigit() else None
+
+
 GROUPS = (
-    ("mail", "Poczta (SMTP)", "Skrzynka, z której wychodzą maile. Hasło jest tylko do zapisu: panel go nie pokazuje."),
+    ("mail", "Poczta (SMTP): skrzynka 1", "Skrzynka główna. Maile wychodzą po kolei ze wszystkich skrzynek, a dzienny limit z zakładki Automat obowiązuje każdą z nich osobno. Hasło jest tylko do zapisu: panel go nie pokazuje."),
+    *((f"mail{slot}", f"Poczta (SMTP): skrzynka {slot}", "Dodatkowa skrzynka nadawcza. Wymaga serwera, portu, adresu i hasła.")
+      for slot in range(2, MAX_MAILBOXES + 1)),
     ("notify", "Powiadomienia automatu", "Dokąd automat wysyła alerty i podsumowania. Zmiany widzi demon po ponownym uruchomieniu."),
     ("scraper", "Skraper", "Domyślne ustawienia skanowania stron firm. Zasady uprzejmości (robots.txt, minimum 1 s) nie są do ustawienia."),
 )
 
 FIELDS = (
-    ConfigField("SMTP_HOST", "Serwer SMTP", "mail", help="np. smtp.zenbox.pl"),
-    ConfigField("SMTP_PORT", "Port SMTP", "mail", KIND_INT, "465 dla SSL, 587 dla STARTTLS.", low=1, high=65535),
-    ConfigField("SMTP_USE_SSL", "Połączenie SSL", "mail", KIND_BOOL, "Tak = SSL (port 465), nie = STARTTLS.", default="true"),
-    ConfigField("SMTP_USER", "Użytkownik (adres nadawcy)", "mail", help="Zwykle pełny adres skrzynki."),
-    ConfigField("SMTP_PASSWORD", "Hasło", "mail", KIND_SECRET, "Zostaw puste, żeby nie zmieniać."),
-    ConfigField("SENDER_NAME", "Nazwa nadawcy", "mail", help="Widoczna w nagłówku „Od” i jako podpis maila."),
+    *_mailbox_fields(1),
+    ConfigField("SENDER_NAME", "Nazwa nadawcy", "mail", help="Wspólna dla wszystkich skrzynek: widoczna w nagłówku „Od” i jako podpis maila."),
+    *(field for slot in range(2, MAX_MAILBOXES + 1) for field in _mailbox_fields(slot)),
     ConfigField("NOTIFY_MACOS", "Powiadomienia macOS", "notify", KIND_BOOL, "Okienka w Centrum powiadomień.", "true", restart=RESTART_DEMON),
     ConfigField("NTFY_TOPIC", "Temat ntfy (telefon)", "notify", KIND_SECRET,
                 "Długi, losowy (8–64 znaków: litery, cyfry, - i _). To sekret: kto go zna, czyta i pisze. W aplikacji ntfy zasubskrybuj ten temat.",
@@ -98,7 +119,7 @@ def _number(field: ConfigField, raw: str) -> str:
 
 
 def _text(field: ConfigField, raw: str) -> str:
-    key = field.key
+    key = _SLOT_RE.sub("SMTP_", field.key)
     if key == "SMTP_HOST" and not _HOST_RE.fullmatch(raw):
         raise ConfigValueError(f"{field.label}: to nie wygląda na nazwę serwera.")
     if key == "NOTIFY_EMAIL" and ("@" not in raw or " " in raw):
@@ -119,7 +140,7 @@ def _secret(field: ConfigField, raw: str) -> str:
         raise ConfigValueError(f"{field.label}: 8–64 znaków, tylko litery, cyfry, „-” i „_”.")
     if field.key == "HEALTHCHECK_URL" and not raw.startswith("https://"):
         raise ConfigValueError(f"{field.label}: adres musi zaczynać się od https://.")
-    if field.key == "SMTP_PASSWORD" and len(raw) > 500:
+    if _SLOT_RE.sub("SMTP_", field.key) == "SMTP_PASSWORD" and len(raw) > 500:
         raise ConfigValueError(f"{field.label}: za długie.")
     return raw
 

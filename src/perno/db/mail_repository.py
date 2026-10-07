@@ -32,6 +32,7 @@ from perno.db.schema import COLUMNS, MAIL_COLUMNS, companies, maile
 from perno.domain import company_rules, mail_rules
 from perno.domain import statuses as st
 from perno.domain.listing import DEFAULT_SORT
+from perno.domain.mailboxes import DayUse
 from perno.domain.rowfilter import ALL_ROWS, RowFilter
 
 STALE_CLAIM_MESSAGE = "Przerwano w trakcie wysyłki — sprawdź folder Wysłane, zanim ponowisz."
@@ -151,6 +152,25 @@ class MailRepository(ListingQueries, CompanyMails):
         )
         with self.engine.connect() as conn:
             return conn.execute(stmt).scalar() or 0
+
+    def sent_by_sender_today(self, now: Optional[datetime] = None) -> dict:
+        """Dzisiejsze wysyłki według skrzynki: `{adres (małymi literami, "" = nieznana): DayUse}`. Maile sprzed wielu skrzynek
+        nie mają `sent_from`, dlatego wołający przypisuje klucz "" skrzynce głównej."""
+        now = now or self.now()
+        start = datetime(now.year, now.month, now.day)
+        stmt = (
+            sa.select(maile.c.sent_from, sa.func.count(), sa.func.max(maile.c.sent_at)).select_from(maile)
+            .where(maile.c.status.in_(st.KEEPS_SENT_AT), maile.c.sent_at >= start,
+                   maile.c.sent_at < start + timedelta(days=1))
+            .group_by(maile.c.sent_from)
+        )
+        use: dict = {}
+        with self.engine.connect() as conn:
+            for sender, count, last in conn.execute(stmt):
+                key = (sender or "").casefold()
+                previous = use.get(key, DayUse())
+                use[key] = DayUse(previous.sent + count, max(filter(None, (previous.last_sent, last)), default=None))
+        return use
 
     def sent_counts_by_day(self, first: date, last: date) -> dict:
         """Ile maili wysłano w każdym dniu od `first` do `last` włącznie (dni bez wysyłki nie mają wpisu). Liczy tak jak
@@ -431,12 +451,13 @@ class MailRepository(ListingQueries, CompanyMails):
                                            maile.c.status.in_(busy)).limit(1)
         return conn.execute(stmt).first() is not None
 
-    def mark_sent(self, row_id: str) -> Optional[dict]:
+    def mark_sent(self, row_id: str, sent_from: Optional[str] = None) -> Optional[dict]:
+        """Zapisuje wysłanie; `sent_from` to adres skrzynki, z której wyszedł mail (rotacja liczy po nim wysyłki)."""
         now = self.now()
         with self.engine.begin() as conn:
             conn.execute(
                 sa.update(maile).where(maile.c.id == row_id)
-                .values(status=st.STATUS_SENT, sent_at=now, error=None, updated_at=now)
+                .values(status=st.STATUS_SENT, sent_at=now, error=None, updated_at=now, sent_from=sent_from)
             )
             return self.get(row_id, conn)
 
