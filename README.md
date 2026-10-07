@@ -112,7 +112,7 @@ Otwiera `http://localhost:8765/` (serwer słucha wyłącznie na `127.0.0.1`). Me
   polami technicznymi: identyfikator, tag, liczba prób…) albo ręczny wybór. Komórki zaczynające się od `= + - @` są
   zabezpieczone przed wykonaniem jako formuły.
 
-- **Konfiguracja** — ustawienia z `config.env` w formularzu: poczta (SMTP, z przyciskiem „Sprawdź połączenie”),
+- **Konfiguracja** — ustawienia z `config.env` w formularzu: poczta (jedna lub kilka skrzynek SMTP, z przyciskiem „Sprawdź połączenie”),
   powiadomienia automatu i domyślne ustawienia skrapera. Szczegóły w sekcji 5b.
 
 - **Automat** — wysyłka w tle przez kilka dni: limity, plan, stan demona, prognoza i dziennik. Szczegóły w sekcji 5a.
@@ -463,6 +463,16 @@ resztę. Jedyna rzecz wymagająca terminala to ewentualne wybudzanie Maca przed 
   wysyłki zamiast się kończyć.
 - Każdy mail idzie tą samą drogą co z panelu (zajęcie wiersza w bazie), więc ręczna wysyłka obok automatu nie zrobi
   duplikatu, a dzienny limit liczy się z bazy — razem z ręcznymi wysyłkami.
+- **Kilka skrzynek nadawczych.** Skrzynki dodajesz w zakładce „Konfiguracja” (do 10; pierwsza to `SMTP_*`, kolejne
+  `SMTP2_*` … `SMTP10_*`). Maile wychodzą **po kolei** ze wszystkich: za każdym razem wybierana jest skrzynka, która dziś
+  wysłała najmniej, a przy remisie ta, która wysyłała najdawniej. Kolejność wynika z bazy (kolumna `maile.sent_from`, adres
+  skrzynki), więc przeżywa restart demona i jest wspólna dla wysyłki ręcznej z panelu i automatu. **Dzienny limit obowiązuje
+  każdą skrzynkę osobno** (limit 50 przy 3 skrzynkach = do 150 maili dziennie); plan, prognoza i podsumowania liczą sumę.
+  Nazwa nadawcy i podpis w treści są wspólne (`SENDER_NAME`). Zmiana skrzynek działa od razu, bez restartu demona.
+  Maile wysłane przed dodaniem skrzynek (bez zapisanego nadawcy) liczą się skrzynce głównej. Terminal (`send_emails.py`)
+  wysyła tylko ze skrzynki głównej i liczy jej limit.
+  Pierwszy start tej wersji dodaje do tabeli `maile` kolumnę `sent_from` (opcjonalna, NULL; robi to samo `db.prepare()` co
+  przy innych kolumnach), więc przed pierwszym uruchomieniem zrób kopię bazy, a panel i demon zrestartuj razem.
 - **Zaległości nie są nadrabiane.** Jeśli Mac spał albo był wyłączony, automat nie wyśle „podwójnej porcji”: wznawia w oknie
   i do dziennego limitu, a pominięte dni zgłasza w powiadomieniu.
 
@@ -484,7 +494,11 @@ python3 automat.py status | pause | resume | stop | uninstall | print-pmset
 ```
 
 **Błędy.** Błąd logowania, limit nadawcy albo odrzucenie jako spam wstrzymują automat od razu; inne błędy (sieć) po
-zadanej serii z rzędu; błąd adresata (nie istnieje) nie wstrzymuje. Gdy mail wyszedł, a baza nie zapisała statusu,
+zadanej serii z rzędu; błąd adresata (nie istnieje) nie wstrzymuje. Przy kilku skrzynkach zawiodła skrzynka jest
+**wyłączana do końca dnia** (powiadomienie „skrzynka wyłączona”, w tekście numer skrzynki jak w Konfiguracji, bez adresu), a
+pozostałe wysyłają dalej; automat wstrzymuje się dopiero wtedy, gdy zawiedzie ostatnia sprawna skrzynka, i tak samo przy
+globalnej serii błędów. Następnego dnia skrzynka wraca do rotacji; zatrzymanie demona też czyści wyłączenia. Gdy
+wszystkie skrzynki wyczerpały dzienny limit, plan czeka do jutra. Gdy mail wyszedł, a baza nie zapisała statusu,
 automat wstrzymuje się i prosi o sprawdzenie folderu „Wysłane” — nie wysyłaj wtedy ponownie.
 
 **Powiadomienia** (zdarzenie → kanały: macOS / telefon przez [ntfy](https://docs.ntfy.sh/) / e-mail do siebie):
@@ -518,6 +532,11 @@ Edytuje `config.env` bez otwierania pliku: Poczta (SMTP), Powiadomienia automatu
 - Zapis jest atomowy (plik tymczasowy i zamiana), komentarze i kolejność w pliku zostają, poprzednia wersja ląduje w
   `config.env.bak` (poza repozytorium), a plik ma prawa `0600`. Nowe wartości działają od razu (SMTP, skraper); ustawienia
   powiadomień wymagają ponownego uruchomienia demona (panel to podpowiada przyciskiem).
+- **Skrzynki nadawcze.** „Dodaj skrzynkę nadawczą” odsłania kolejny zestaw pól (host, port i SSL są podpowiedziane z
+  pierwszej skrzynki); „Usuń skrzynkę” czyści wszystkie jej klucze. Skrzynka musi mieć host, port, użytkownika i hasło,
+  a adresy użytkowników muszą się różnić — inaczej zapis kończy się komunikatem i plik zostaje bez zmian. „Sprawdź
+  połączenie SMTP” loguje się na każdą skrzynkę osobno. Skrzynkę główną (`SMTP_*`) edytujesz w miejscu, więc bez niej nie ma
+  wysyłki.
 - **Bazy (`DB_*`) tu nie ma**: błędna wartość uniemożliwiłaby następny start, a działający panel nie miałby jak ostrzec.
   Ustawiasz ją raz, ręcznie (sekcja 2).
 - „Sprawdź połączenie SMTP” loguje się na serwer pocztowy (bez wysyłania maila) i pokazuje wynik; przy bazie demo
