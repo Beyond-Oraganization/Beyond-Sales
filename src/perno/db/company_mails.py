@@ -12,7 +12,7 @@ from sqlalchemy import exc as sa_exc
 from sqlalchemy.engine import Connection, Engine
 
 from perno.db import company_writes as cw
-from perno.db.company_sql import company_key, select_mails
+from perno.db.company_sql import company_key, in_companies, select_mails
 from perno.db.errors import InvalidValue, RowNotFound
 from perno.db.listing_queries import light_columns, to_light_row
 from perno.db.schema import COMPANY_COLUMNS, MAIL_COLUMNS, companies, maile
@@ -20,7 +20,6 @@ from perno.domain import company_rules
 from perno.domain import statuses as st
 
 TEXT_FIELDS = ("mode", "subject", "body_html", "body_text", "attachments", "inline_images")  # treść kopiowana między adresami
-DUPLICATE_MESSAGE = "Ten adres jest już przypisany do tej firmy."
 
 
 class CompanyMails:
@@ -38,7 +37,7 @@ class CompanyMails:
         """Adresy firmy jako wiersze listy (bez treści), adres główny pierwszy; `deletable` mówi, czy panel może go usunąć
         (reguła `company_rules.deletable_problem`, ta sama co przy usuwaniu)."""
         no_position_last = sa.case((maile.c.position.is_(None), 1), else_=0)
-        stmt = (select_mails(*light_columns()).where(company_key() == company_id)
+        stmt = (select_mails(*light_columns()).where(in_companies([company_id]))
                 .order_by(no_position_last, maile.c.position, maile.c.id))
         with self.engine.connect() as conn:
             mails = [to_light_row(row) for row in conn.execute(stmt).mappings()]
@@ -75,12 +74,12 @@ class CompanyMails:
             with self.engine.begin() as conn:
                 mail_id = self._put_address(conn, company_id, address, copy_text, self.now())
         except sa_exc.IntegrityError as exc:  # druga linia obrony: indeks unikalny (company_id, email)
-            raise InvalidValue(DUPLICATE_MESSAGE) from exc
+            raise InvalidValue(company_rules.DUPLICATE_ADDRESS_MESSAGE) from exc
         return self.get(mail_id) or {}
 
     def _company_rows(self, conn: Connection, company_id: str) -> list:
         columns = [maile.c[name] for name in MAIL_COLUMNS] + [maile.c.position]
-        stmt = sa.select(*columns).where(company_key() == company_id).order_by(maile.c.position, maile.c.id)
+        stmt = sa.select(*columns).where(in_companies([company_id])).order_by(maile.c.position, maile.c.id)
         return [dict(row) for row in conn.execute(stmt).mappings()]
 
     def _put_address(self, conn: Connection, company_id: str, address: str, copy_text: bool, now: datetime) -> str:
@@ -92,7 +91,7 @@ class CompanyMails:
         rows = self._company_rows(conn, company_id)
         key = company_rules.email_key(address)
         if any(company_rules.email_key(row["email"]) == key for row in rows):
-            raise InvalidValue(DUPLICATE_MESSAGE)
+            raise InvalidValue(company_rules.DUPLICATE_ADDRESS_MESSAGE)
         placeholder = next((row for row in rows if not company_rules.email_key(row["email"])
                             and row["status"] == st.STATUS_SKIPPED_NO_EMAIL), None)
         donor = next((row for row in rows if row["body_html"] and row is not placeholder), None) if copy_text else None

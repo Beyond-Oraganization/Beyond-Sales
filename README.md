@@ -68,7 +68,7 @@ Konta tylko dla adresu lokalnego (nigdy `'%'`). Następnie skopiuj dane logowani
 
 ```bash
 chmod 600 config.env
-python3 -m perno.db --check      # połączenie, wersja serwera, tryb SQL, stan tabeli (bez haseł)
+python3 -m perno.db --check      # połączenie, wersja serwera, tryb SQL, stan tabel i spójność maili z firmami (bez haseł)
 ```
 
 Gdyby połączenie TCP nie działało, ustaw w `config.env` `DB_SOCKET=/tmp/mysql.sock`.
@@ -141,6 +141,8 @@ sprawdź folder „Wysłane”. Ręcznie można zmienić status w dowolnym momen
 Statusy „Wysłano”, „Odpowiedział”, „Zainteresowany” i „Nie kontaktować” **zachowują datę wysłania** przy przechodzeniu
 między sobą (oznaczenie firmy jako „Odpowiedział” nie kasuje informacji, kiedy do niej napisano); każdy inny status ją
 czyści. Ponowne generowanie treści (`--regenerate-pending`, „Odśwież dane”) nie nadpisuje tych czterech statusów.
+Cztery statusy — „Odpowiedział”, „Zainteresowany”, „Nie kontaktować” i „Już klient” — dotyczą **całej firmy**: gdy któryś
+adres ma jeden z nich, pozostałe adresy tej firmy są wstrzymane (patrz „Firma z wieloma adresami”).
 
 ### Filtry, zaznaczanie i zbiorcze zmiany (Wysyłka i Eksport)
 
@@ -187,7 +189,7 @@ gdyby tabela miała inną, `python3 -m perno.db --check` i start panelu ostrzega
 
 ### Kraj i dane o firmie
 
-Każda firma w tabeli `maile` ma cztery opcjonalne pola: **kraj** (`country`, kod ISO, np. `PL`, `GB`, `DE`; w panelu i w
+Każda firma (tabela `podmioty`) ma cztery opcjonalne pola: **kraj** (`country`, kod ISO, np. `PL`, `GB`, `DE`; w panelu i w
 eksporcie widać go z polską nazwą i flagą), **miasto** (`city`, nazwa lokalna, np. `London`, `München`, `Wien`),
 **adres** (`address`: ulica, kod pocztowy) i **opis działalności** (`description`). W panelu edytujesz je po kliknięciu
 w nazwę firmy. Kraj wpisany ręcznie (po polsku lub angielsku, kodem albo „UK”) zapisuje się jako kod ISO, a nieznany
@@ -224,6 +226,89 @@ Poprawki robisz w panelu albo w tym pliku; zmianę z pliku wprowadzisz polecenie
 „Odśwież dane” w panelu; patrz „7. Treść maili”) są zawsze po polsku, także dla firm spoza Polski — filtr
 „Wielka Brytania”/„Niemcy” w panelu pokazuje, do kogo polski mail już poszedł. Maile uzupełniane ze skanu
 (`wypelnij.py`) dostają język kraju firmy (PL → polski, GB/IE → angielski, DE/AT → niemiecki, ES → hiszpański).
+
+### Firma z wieloma adresami
+
+Jedna firma może mieć **kilka adresów e-mail**, każdy ze swoim tematem, treścią, statusem i datą wysłania. Dane leżą w
+dwóch tabelach powiązanych jeden do wielu: **`podmioty`** (firma: nazwa, strona, segment, numer, kraj, miasto, adres,
+opis, tag) i **`maile`** (jeden wiersz = jeden adres z jego tekstem i stanem wysyłki; kolumna `company_id` wskazuje firmę,
+`position` to numer adresu w firmie, 1 = adres główny). Adres główny ma **to samo id co firma** (`eventy-001`), kolejne mają
+`eventy-001~2`, `eventy-001~3`… Każda firma ma co najmniej jeden wiersz (bez adresu to „Brak e-maila”). Bez kluczy obcych:
+konto bazy nie ma uprawnienia `REFERENCES`, spójność pilnuje kod (`python3 -m perno.db --check` ją sprawdza).
+
+W panelu **wiersz listy to jeden adres**: firma się powtarza, ale adresy jednej firmy stoją zawsze obok siebie, z
+znacznikiem „2/3” przy nazwie i przygaszoną nazwą na kolejnych adresach. Zaznaczanie, wysyłka, zmiana statusu, eksport i
+cofanie działają na adresach tak jak dotąd.
+
+- **Dodawanie i usuwanie**: kliknij nazwę firmy — w rozwiniętym wierszu jest lista jej adresów, pole „nowy adres” (z opcją
+  skopiowania tematu i treści z pierwszego adresu; bez niej adres czeka na treść) i „Usuń” przy adresie, którego można się
+  pozbyć. Usunąć można tylko dodatkowy adres, do którego **nigdy nie wysłano** maila (adres główny i historia zostają).
+  Ten sam adres dwa razy w jednej firmie jest odrzucany (bez względu na wielkość liter i spacje); ten sam adres w innej
+  firmie to tylko ostrzeżenie. Pierwszy adres dodany do firmy bez adresu wpisuje się do jej wiersza „Brak e-maila”.
+  Dodawanie jest odmawiane, dopóki działa demon Automatu w starej wersji (nie zna reguł poniżej): zrestartuj go
+  (`automat.py install`).
+- **Blokada całej firmy.** Gdy któryś adres ma status „Odpowiedział”, „Zainteresowany”, „Nie kontaktować” albo „Już klient”,
+  **pozostałe adresy tej firmy są wstrzymane**: nie wyjdą z Automatu, z terminala ani przyciskiem „Wyślij” (przy takim adresie
+  widać odznakę „wstrzymany: Odpowiedział”). Odblokowanie to zmiana statusu tamtego adresu. Blokadę pilnuje też samo zajęcie
+  wiersza przed wysyłką, więc nie da się jej obejść. Dwa adresy jednej firmy nigdy nie są wysyłane równocześnie.
+- **Zaznaczanie**: menu „Zaznacz” → „Dodaj pozostałe adresy zaznaczonych firm” dokłada wszystkie adresy firm zaznaczonych
+  wierszy, także spoza bieżącego widoku (np. żeby zmienić status całej firmy naraz).
+- **Sortowanie i filtry**: nagłówek „Adr.” sortuje po liczbie adresów firmy; sortowanie po firmie, kraju, mieście i
+  segmencie samo trzyma adresy firmy razem. Przy sortowaniu po e-mailu, statusie albo dacie włącz **„Grupuj wg firmy”**:
+  firmy układają się wg swojego najlepszego adresu (najmniejszego przy rosnącym, największego przy malejącym), a ich adresy
+  stoją razem. „Więcej filtrów”: **Adresy firmy** (więcej niż jeden / jeden) i **Wstrzymane przez inny adres firmy**.
+  Eksport ma kolumny `company_id`, `position`, `mail_count` (i można go wyeksportować w kolejności zgrupowanej).
+- **Dane firmy** (kraj, miasto, adres, opis) dotyczą całej firmy: zmiana przy jednym adresie (albo zbiorcza) jest widoczna
+  przy wszystkich.
+- **Terminal**: `send_emails.py` pomija wstrzymane adresy i domyślnie wysyła **najwyżej jeden adres na firmę na przebieg**
+  (`--all-addresses` wysyła wszystkie niewstrzymane).
+- **Automat**: ustawienie **„Odstęp dla firmy (dni)”** (domyślnie 1 = najwyżej jeden mail na firmę dziennie, 0 = bez odstępu)
+  mówi, ile dni kalendarzowych musi minąć między mailami do tej samej firmy. Gdy w kolejce zostały tylko maile firm, które
+  dostały już mail w tym okresie, automat **czeka** (w planie widać „czeka na odstęp dla firmy”), zamiast kończyć plan.
+  Podgląd przed Startem pokazuje maile, firmy, maile odroczone dziś i wstrzymane oraz wpływ odstępu na prognozę.
+
+**Wydajność** (MySQL 9.6, 50 000 firm i 74 000 adresów z `scripts/seed_synthetic.py --rows 50000 --siblings 0.25`): otwarcie
+panelu 145 ms, strona listy i sortowanie po firmie, kraju, mieście, e-mailu, statusie lub dacie 130–180 ms, „Grupuj wg
+firmy” 540–660 ms, sortowanie po liczbie adresów ok. 460 ms, wyszukiwanie ok. 320 ms, wybór następnego maila przez Automat
+315 ms (anti-join po indeksie `(company_id, status)`), prognoza z odstępem 0,8–1,6 s. Podzapytania o adresy firmy wymuszają ten
+indeks podpowiedzią `FORCE INDEX`: zaraz po masowym wczytaniu MySQL ma nieaktualne statystyki i bez podpowiedzi czytał całą
+tabelę dla każdego wiersza.
+
+**Aktualizacja z wersji z jednym adresem na firmę (wdrożenie).** Zmiana schematu jest addytywna (nowa tabela, dwie kolumny
+NULL i indeksy), a dotychczasowe kolumny firmowe w `maile` zostają jako **lustro** zapisywane razem z `podmioty`, więc
+poprzednia wersja programu działa na uaktualnionej bazie. Mimo to rób to jednym ciągiem, bo stary demon nie zna blokady firmy:
+
+```bash
+mysqldump -u perno_app -p --single-transaction --no-tablespaces perno_maile > backup/perno_maile_$(date +%Y%m%d_%H%M).sql
+# 1. zatrzymaj panel (Ctrl+C w jego terminalu) i demona (plan zostaje uzbrojony w bazie):
+python3 automat.py uninstall
+# 2. wprowadź nowy kod (git merge / checkout) i środowisko:
+uv sync
+# 3. schemat, potem przypisanie maili do firm (--adopt robi kopię CSV w backup/ i odmawia przy działającym demonie lub panelu):
+python3 -m perno.db --upgrade
+python3 -m perno.db --adopt
+python3 -m perno.db --check          # oczekiwane: „Maile i firmy są spójne.”
+# 4. uruchom ponownie demona i panel, sprawdź gotowość:
+python3 automat.py install
+python3 server.py
+python3 automat.py doctor
+```
+
+Panel, demon i `send_emails.py` przy starcie same uaktualniają schemat i przyjmują wiersze, które w międzyczasie dopisał
+starszy kod (`company_id` puste); na bazie, która ma maile, a nie ma ani jednej firmy, odmawiają pracy i każą uruchomić `--adopt`.
+
+**Wycofanie.** Najpierw zaparkuj dodatkowe adresy, żeby stary kod ich nie wysłał (nie zna blokad firmy ani odstępu):
+`UPDATE maile SET status = 'oczekuje_na_tresc' WHERE position > 1 AND status IN ('do_wyslania', 'blad');`, potem przywróć
+poprzedni kod (`automat.py uninstall`, checkout, `automat.py install`). Lustro jest aktualne, więc stary kod widzi
+poprawne dane firm; tabela `podmioty` i kolumny `company_id`, `position` mogą zostać (stary kod ich nie używa). Gdy trzeba
+wrócić do pliku: kopia CSV sprzed przejęcia leży w `backup/Maile_*_przed-przejecie-firm.csv` (i `Podmioty_*`); `--export-legacy`
+zapisuje jeden wiersz na adres (id dodatkowych adresów mają `~n`).
+
+**Ograniczenia tej wersji.** Stare kolumny firmowe w `maile` (`company`, `website`, `tag`, `country`, `city`, `address`,
+`description`, `segment`, `row_number`) są tylko lustrem — program czyta firmę z `podmioty`; usunięcie lustra to osobny krok po
+okresie przejściowym. Dodatkowe adresy dodaje się z panelu; import CSV, plik z treściami ze skanu (`wypelnij.py`) i
+skraper nie tworzą ich jeszcze (adresy znalezione przez skraper są w zakładce „Skraper”). Nie ma zmiany adresu głównego,
+przenoszenia adresu między firmami ani łączenia firm.
 
 ### Dodawanie nowej strony do menu
 
@@ -365,20 +450,25 @@ resztę. Jedyna rzecz wymagająca terminala to ewentualne wybudzanie Maca przed 
   albo `install` zakłada LaunchAgenta `pl.perno.automat`; „Usuń demona” / `uninstall` go zdejmuje). Działa stale, ale wysyła
   tylko wtedy, gdy plan jest **uzbrojony** (Start).
 - Co ~30 s sprawdza plan i wysyła najwyżej jeden mail: pierwszy „Do wysłania” z adresem i treścią, w kolejności panelu,
-  w wybranym segmencie i krajach. Wiersze w statusie „Błąd” nie są ponawiane automatycznie.
+  w wybranym segmencie i krajach, pomijając adresy wstrzymane przez status innego adresu firmy oraz firmy, do których
+  wysłano już mail w okresie **odstępu dla firmy** (domyślnie jeden mail na firmę dziennie). Wiersze w statusie „Błąd” nie
+  są ponawiane automatycznie. Gdy w kolejce zostały tylko maile firm czekających na odstęp, plan **czeka** do następnego dnia
+  wysyłki zamiast się kończyć.
 - Każdy mail idzie tą samą drogą co z panelu (zajęcie wiersza w bazie), więc ręczna wysyłka obok automatu nie zrobi
   duplikatu, a dzienny limit liczy się z bazy — razem z ręcznymi wysyłkami.
 - **Zaległości nie są nadrabiane.** Jeśli Mac spał albo był wyłączony, automat nie wyśle „podwójnej porcji”: wznawia w oknie
   i do dziennego limitu, a pominięte dni zgłasza w powiadomieniu.
 
 **Limity są zapamiętane** (w bazie, tabela `automat_stan`) do czasu zmiany: dzienny limit, dni, okno godzin, odstępy,
-segment, kraje (domyślnie wszystkie), horyzont planu (domyślnie 5 dni) i próg pauzy po błędach (domyślnie 3 z rzędu).
+segment, kraje (domyślnie wszystkie), horyzont planu (domyślnie 5 dni), próg pauzy po błędach (domyślnie 3 z rzędu) i
+odstęp dla firmy w dniach (domyślnie 1; `--company-gap`; zmiana samego odstępu też rozbraja plan i wymaga nowego potwierdzenia;
+starsza wersja programu, która zapisze limity, gubi to pole i wraca domyślne 1).
 Zmiana limitów przy uzbrojonym planie go **rozbraja**. **Start zawsze pyta o potwierdzenie**: pokazuje zapisane wartości,
 datę ich ostatniej zmiany, liczbę maili w kolejce i ile z nich jedzie do firm spoza Polski; trzeba zaznaczyć „Sprawdziłem
 limity” (w terminalu wpisać „tak”). Po horyzoncie plan sam się kończy — potwierdzasz od nowa.
 
 ```
-python3 automat.py limits --daily-cap 40 --window 9:00-15:00 --days pn-pt --horizon 3   # zapis (bez flag: pokazuje)
+python3 automat.py limits --daily-cap 40 --window 9:00-15:00 --days pn-pt --horizon 3 --company-gap 2   # zapis (bez flag: pokazuje)
 python3 automat.py doctor        # gotowość: SMTP, powiadomienia, LaunchAgent, demon, zasilanie
 python3 automat.py test-notify   # próbne powiadomienie każdym kanałem
 python3 automat.py install       # demon po zalogowaniu
@@ -435,6 +525,7 @@ python3 send_emails.py --limit 3                               # realna, mała p
 python3 send_emails.py                                         # kolejne paczki: do 20 maili, limit dzienny 50
 python3 send_emails.py --dry-run --regenerate-pending          # przelicz niewysłane po zmianie szablonu
 python3 send_emails.py --country PL --limit 3                  # tylko firmy z Polski (kody ISO lub nazwy: PL,GB / Polska,Niemcy; none = bez kraju)
+python3 send_emails.py --all-addresses                         # wszystkie adresy firmy w jednym przebiegu (domyślnie najwyżej jeden na firmę)
 ```
 
 Każde uruchomienie: dogenerowuje brakujące wiersze, pyta o potwierdzenie (`--yes` pomija), wysyła z losowym
@@ -465,8 +556,14 @@ maili jedzie do firm spoza Polski (szablony są po polsku). Świeża instalacja 
 Kolumna `row_number` to słowo zastrzeżone w MySQL 8/9 — w ręcznych zapytaniach pisz ją w backtickach:
 
 ```sql
-SELECT id, company, email, status, sent_at FROM maile WHERE status = 'blad' ORDER BY `row_number`;
+SELECT m.id, p.company, m.email, m.status, m.sent_at
+FROM maile m JOIN podmioty p ON p.id = m.company_id
+WHERE m.status = 'blad' ORDER BY p.`row_number`, m.company_id, m.position;
 ```
+
+Firma (`podmioty`) i jej adresy (`maile`) to dwie tabele; pola firmy czytaj z `podmioty` (kolumny firmowe w `maile` to tylko lustro).
+Kopie CSV, które robią polecenia zmieniające dane (`firmy.py`, `--adopt`, wypełnianie ze skanu), zapisują obie tabele
+(`backup/Maile_*` i `backup/Podmioty_*`).
 
 Kopia zapasowa (w razie błędu uprawnień wykonaj jako root):
 
@@ -498,7 +595,9 @@ wyniki wygenerowane z dawnej implementacji w przeglądarce) pilnuje, żeby SQL d
 `tests/js/skaper_xss.test.js` uruchamia skrypt zakładki Skraper z wrogimi danymi
 (`<script>`, `onerror=`, `javascript:`) i pilnuje, żeby żadne nie stało się znacznikiem ani atrybutem; `tests/js/kit_xss.test.js`
 robi to samo dla list (nazwy, segmenty i kraje w licznikach, wierszach i podsumowaniach z serwera). Dane do testów skali
-(50 000 firm) tworzy `scripts/seed_synthetic.py` (tylko w bazie `*_test`). Opcjonalny test
+(50 000 firm; `--siblings 0.25` dokłada 1–3 dodatkowe adresy czwartej części firm) tworzy `scripts/seed_synthetic.py` (tylko w bazie `*_test`).
+Firmy z wieloma adresami pokrywają `tests/test_company_*.py` (reguły, schemat i przejęcie, odczyty, adresy, wysyłka, lista, Automat),
+`tests/js/automat_forecast.test.js`, `kit_siblings.test.js` i `wysylka_addresses.test.js`. Opcjonalny test
 na prawdziwym MySQL (tryb ścisły, utf8mb4, `FOR UPDATE`, strumieniowanie, zbiorcza zmiana z cofaniem i jednoczesne
 operacje bez zakleszczeń, filtry z `TRIM`/`CASE`, oraz tabele i zapytania skrapera: kolumny ASCII, upserty, BLOB,
 wyłączność dzierżawy między wątkami) wymaga bazy testowej. Najprościej uruchomić osobny, tymczasowy serwer MySQL, który

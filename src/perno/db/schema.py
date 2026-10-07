@@ -26,6 +26,12 @@ LINK_COLUMNS = ("company_id", "position")
 EXTRA_COLUMNS = ("company_id", "position", "mail_count", "hold")
 
 
+# Indeks, po którym szukamy innych adresów firmy. Podzapytania o adresy firmy (liczba adresów, blokada, odstęp) wymuszają go
+# podpowiedzią dla MySQL: zaraz po masowym wczytaniu statystyki tabeli bywają nieaktualne i optymalizator wybiera wtedy
+# pełny przegląd tabeli dla każdego wiersza (50 tys. firm: minuty zamiast ułamka sekundy).
+COMPANY_STATUS_INDEX = "ix_maile_company_status"
+
+
 def legacy_key(name: str) -> str:
     """Klucz w kodzie dla starej kolumny firmowej w `maile` (nazwa w SQL się nie zmienia). Dzięki temu `maile.c.country`
     rzuca błąd zamiast po cichu czytać lustro: pola firmy czytamy z `podmioty`, a lustro tylko zapisujemy."""
@@ -69,7 +75,7 @@ maile = sa.Table(
     sa.Index("ix_maile_status_sent_at", "status", "sent_at"),
     sa.Index("ix_maile_segment_row", legacy_key("segment"), legacy_key("row_number")),
     sa.Index("ix_maile_email", "email"),
-    sa.Index("ix_maile_company_status", "company_id", "status"),
+    sa.Index(COMPANY_STATUS_INDEX, "company_id", "status"),
     # Ten sam adres dwa razy w jednej firmie jest błędem; NULL (wiersz bez adresu albo jeszcze bez firmy) nie koliduje.
     sa.Index("uq_maile_company_email", "company_id", "email", unique=True),
     mysql_engine="InnoDB", mysql_default_charset="utf8mb4", mysql_collate="utf8mb4_0900_ai_ci",

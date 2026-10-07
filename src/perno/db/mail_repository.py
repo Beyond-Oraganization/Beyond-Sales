@@ -29,7 +29,7 @@ from perno.db.errors import InvalidValue, RowLocked, RowNotFound
 from perno.db.listing_queries import ListingQueries, has_body_expression, light_columns, to_light_row
 from perno.db.queries import ID_CHUNK, filter_clauses, id_chunks, ordering
 from perno.db.schema import COLUMNS, MAIL_COLUMNS, companies, maile
-from perno.domain import mail_rules
+from perno.domain import company_rules, mail_rules
 from perno.domain import statuses as st
 from perno.domain.listing import DEFAULT_SORT
 from perno.domain.rowfilter import ALL_ROWS, RowFilter
@@ -303,8 +303,8 @@ class MailRepository(ListingQueries, CompanyMails):
                     cw.insert_new_companies(conn, [values], stamp)
                     stats["inserted"] += 1
                     continue
-                if existing[row["id"]] in protected:
-                    stats["skipped"] += 1
+                if existing[row["id"]] in protected or cw.email_taken(conn, row["id"], values.get("email"), row["id"]):
+                    stats["skipped"] += 1  # chroniony status albo adres z pliku ma już inny adres tej firmy
                     continue
                 mail, company = cw.split_values({name: values[name] for name in GENERATED})
                 result = conn.execute(
@@ -326,12 +326,15 @@ class MailRepository(ListingQueries, CompanyMails):
         with self.engine.begin() as conn:
             for row_id, values in updates:
                 mail, company = cw.split_values(values)
+                owner = cw.company_ids_of(conn, [row_id]).get(row_id)
+                if owner is None or ("email" in mail and cw.email_taken(conn, owner, mail["email"], row_id)):
+                    continue  # brak wiersza albo ten adres ma już inny adres tej firmy: nie zapisujemy
                 mail = {**mail, "status": st.STATUS_PENDING, "generated_at": now, "updated_at": now,
                         "error": None, "sent_at": None}
                 result = conn.execute(sa.update(maile).where(
                     maile.c.id == row_id, maile.c.status.in_(allowed_statuses)).values(**mail))
                 if result.rowcount:
-                    cw.write_company_values(conn, [cw.company_ids_of(conn, [row_id])[row_id]], company, now)
+                    cw.write_company_values(conn, [owner], company, now)
                 written += result.rowcount
         return written
 
@@ -352,6 +355,8 @@ class MailRepository(ListingQueries, CompanyMails):
             if owner is None:
                 raise RowNotFound(f"Nie znaleziono wiersza {row_id}.")
             cw.lock_company(conn, owner)
+            if "email" in values and cw.email_taken(conn, owner, values["email"], row_id):
+                raise InvalidValue(company_rules.DUPLICATE_ADDRESS_MESSAGE)
             found = conn.execute(
                 sa.select(*[maile.c[name] for name in MAIL_COLUMNS]).where(maile.c.id == row_id).with_for_update()
             ).mappings().first()

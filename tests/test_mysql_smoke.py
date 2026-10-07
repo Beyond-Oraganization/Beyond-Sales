@@ -500,6 +500,30 @@ class MysqlSiblingTests(unittest.TestCase):
         self.assertEqual((rows["eventy-n001~2"]["mail_count"], rows["eventy-n001~2"]["hold"], rows["eventy-n001~2"]["position"]),
                          (2, st.STATUS_REPLIED, 2))
 
+    def test_sibling_subqueries_use_the_company_index_whatever_the_statistics_say(self):
+        """Zaraz po masowym wczytaniu statystyki MySQL bywają nieaktualne, a bez podpowiedzi optymalizator czyta wtedy całą tabelę
+        dla każdego wiersza (50 tys. firm: minuty). Podpowiedź FORCE INDEX ma trzymać plan na indeksie (company_id, status)."""
+        from sqlalchemy.dialects import mysql
+
+        from perno.db.company_sql import select_mails
+        from perno.db.listing_queries import light_columns
+        from perno.db.queries import ordering
+        from perno.db.schema import COMPANY_STATUS_INDEX
+
+        self.database.add_mail("eventy-n001", "b@beta.pl")
+        queries = {
+            "light list": select_mails(*light_columns()).order_by(*ordering()),
+            "ready": select_mails(dbmod.maile.c.id).where(*self.database._where(RowFilter(ready=True, multi=True, held=False))),
+        }
+        for name, statement in queries.items():
+            sql = str(statement.compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True}))
+            with self.database.engine.connect() as conn:
+                plan = [dict(row) for row in conn.execute(sa.text("EXPLAIN FORMAT=TRADITIONAL " + sql)).mappings()]
+            siblings = [row for row in plan if str(row["table"]).startswith(("sibling", "earlier"))]
+            self.assertTrue(siblings, name)
+            for row in siblings:
+                self.assertEqual(row["key"], COMPANY_STATUS_INDEX, (name, row))
+
     def test_queue_queries_for_the_company_gap(self):
         from perno.domain import automat_rules as ar
 

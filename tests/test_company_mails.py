@@ -97,6 +97,58 @@ class AddMailTests(unittest.TestCase):
         assert_mirror_consistent(self, self.database)
 
 
+class DuplicateGuardTests(unittest.TestCase):
+    """Ten sam adres dwa razy w jednej firmie jest odrzucany także przy edycji, uzupełnianiu ze skanu i regeneracji."""
+
+    def setUp(self):
+        self.database = make_db()
+        put(self.database, sample_row(1, email="glowny@firma.pl"), sample_row(2, email="inna@firma.pl"))
+        self.sibling = self.database.add_mail("eventy-001", "drugi@firma.pl")["id"]
+
+    def test_editing_an_address_into_a_duplicate_is_refused_whatever_the_case(self):
+        for duplicate in ("glowny@firma.pl", " GLOWNY@Firma.PL "):
+            with self.assertRaisesRegex(dbmod.InvalidValue, "już przypisany"):
+                self.database.apply_edit(self.sibling, {"email": duplicate})
+        self.assertEqual(self.database.get(self.sibling)["email"], "drugi@firma.pl")
+
+    def test_editing_an_address_to_its_own_value_or_another_companys_is_fine(self):
+        self.database.apply_edit(self.sibling, {"email": "DRUGI@firma.pl"})  # ten sam adres: nie koliduje sam ze sobą
+        self.database.apply_edit(self.sibling, {"email": "inna@firma.pl"})  # adres innej firmy: dozwolone
+        self.assertEqual(self.database.get(self.sibling)["email"], "inna@firma.pl")
+
+    def test_clearing_an_address_is_not_a_duplicate(self):
+        self.database.apply_edit(self.sibling, {"email": ""})
+        self.assertEqual(self.database.get(self.sibling)["email"], "")
+
+    def test_enrichment_skips_a_row_whose_new_address_a_sibling_already_has(self):
+        self.database.apply_edit("eventy-001", {"status": st.STATUS_AWAITING_COPY})
+        written = self.database.apply_enrichment(
+            [("eventy-001", {"email": "DRUGI@firma.pl", "subject": "S", "body_html": "<p>x</p>"})], (st.STATUS_AWAITING_COPY,))
+        self.assertEqual(written, 0)
+        self.assertEqual(self.database.get("eventy-001")["email"], "glowny@firma.pl")
+
+    def test_regeneration_skips_a_row_whose_seed_address_a_sibling_already_has(self):
+        stats = self.database.upsert_generated([sample_row(1, email="drugi@firma.pl", subject="Nowy")])
+        self.assertEqual(stats, {"inserted": 0, "updated": 0, "skipped": 1})
+        self.assertEqual(self.database.get("eventy-001")["subject"], "Temat 1")
+
+
+class QueryPlanTests(unittest.TestCase):
+    def test_looking_up_a_companys_addresses_uses_an_index_not_a_table_scan(self):
+        """`coalesce(company_id, id) = …` przeglądałoby całą tabelę przy każdym dodaniu adresu (zmierzone na 50 tys. firm)."""
+        from perno.db.company_sql import in_companies, select_mails
+        from perno.db.schema import maile
+
+        database = make_db()
+        put(database, sample_row(1))
+        statement = select_mails(maile.c.id).where(in_companies(["eventy-001"]))
+        with database.engine.connect() as conn:
+            compiled = str(statement.compile(dialect=conn.dialect, compile_kwargs={"literal_binds": True}))
+            plan = " ".join(row[3] for row in conn.execute(sa.text("EXPLAIN QUERY PLAN " + compiled)))
+        self.assertNotIn("coalesce", compiled.lower())
+        self.assertNotRegex(plan, r"SCAN maile(?! USING)")  # po indeksach (company_id, id), nie przegląd tabeli
+
+
 class DeleteMailTests(unittest.TestCase):
     def setUp(self):
         self.database = make_db()
@@ -272,6 +324,13 @@ class MailRoutesTests(WebCase):
         resp = self.call("POST", "/api/mailing/mails", {"company_id": "eventy-001", "email": "b@firma.pl"})
         self.assertEqual(resp.status, 409)
         self.assertIn("starej wersji", self.data(resp)["error"])
+
+    def test_editing_an_address_into_a_duplicate_of_a_sibling_is_400(self):
+        self.call("POST", "/api/mailing/mails", {"company_id": "eventy-001", "email": "b@firma.pl"})
+        resp = self.call("POST", "/api/update-row", {"id": "eventy-001~2", "email": "firma@example.com"})
+        self.assertEqual(resp.status, 400)
+        self.assertIn("już przypisany", self.data(resp)["error"])
+        self.assertEqual(self.database.get("eventy-001~2")["email"], "b@firma.pl")
 
     def test_deleting_an_address(self):
         self.call("POST", "/api/mailing/mails", {"company_id": "eventy-001", "email": "b@firma.pl"})

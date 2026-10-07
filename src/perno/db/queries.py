@@ -8,7 +8,7 @@ from typing import Iterator
 import sqlalchemy as sa
 from sqlalchemy import ColumnElement
 
-from perno.db.company_sql import company_key, has_sibling, no_holding_sibling
+from perno.db.company_sql import company_key, has_sibling, in_companies, no_holding_sibling
 from perno.db.listing_sql import search_clauses
 from perno.db.schema import companies, maile
 from perno.domain import statuses as st
@@ -119,7 +119,7 @@ def _mail_clauses(flt: RowFilter) -> list:
     if flt.unheld or flt.ready:
         clauses.append(no_holding_sibling())
     if flt.companies is not None:
-        clauses.append(company_key().in_(list(flt.companies)) if flt.companies else sa.false())
+        clauses.append(in_companies(flt.companies) if flt.companies else sa.false())
     if flt.exclude_companies:
         clauses.append(~company_key().in_(list(flt.exclude_companies)))
     return clauses

@@ -8,13 +8,14 @@ dzięki temu dwa równoległe zapisy nie zakleszczą się nawzajem.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Optional, Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.engine import Connection
 
 from perno.db.queries import ID_CHUNK, id_chunks
 from perno.db.schema import COMPANY_COLUMNS, companies, legacy_key, maile
+from perno.domain.company_rules import email_key
 
 
 def split_values(values: Mapping) -> tuple:
@@ -42,6 +43,17 @@ def company_ids_of(conn: Connection, mail_ids: Iterable[str]) -> dict:
         stmt = sa.select(maile.c.id, maile.c.company_id).where(maile.c.id.in_(part))
         found.update({row_id: company_id or row_id for row_id, company_id in conn.execute(stmt)})
     return found
+
+
+def email_taken(conn: Connection, company_id: str, email: Optional[str], except_id: str) -> bool:
+    """Czy inny adres tej firmy ma już ten e-mail (bez wielkości liter i spacji). Kontrola w kodzie, bo sqlite porównuje
+    binarnie, a indeks unikalny jest dopiero ostatnią siatką; wołać pod blokadą firmy."""
+    key = email_key(email)
+    if not key:
+        return False
+    stmt = (sa.select(maile.c.id).where(maile.c.company_id == company_id, maile.c.id != except_id,
+                                        sa.func.lower(sa.func.trim(maile.c.email)) == key).limit(1))
+    return conn.execute(stmt).first() is not None
 
 
 def write_company_values(conn: Connection, company_ids: Sequence[str], values: Mapping, now: datetime) -> None:

@@ -11,6 +11,7 @@ from perno.domain import statuses as st
 
 MAIL_ID_SEPARATOR = "~"  # id dodatkowego maila: `<id firmy>~<numer>`; adres główny ma id firmy
 MAX_MAIL_ID_LENGTH = 32  # długość kolumny maile.id
+DUPLICATE_ADDRESS_MESSAGE = "Ten adres jest już przypisany do tej firmy."
 MAX_EMAIL_LENGTH = 320  # długość kolumny maile.email
 _EMAIL_SHAPE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
