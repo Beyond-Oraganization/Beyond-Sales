@@ -78,7 +78,7 @@
 .kit-only{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-ui);color:var(--label-2);cursor:pointer;}
 
 /* ---- tabela listy (wygląd bazowy w base.css) ------------------------------------------------------------------- */
-.kit-table .kit-check{width:44px;padding:0;text-align:center;}
+.kit-table .kit-check{width:44px;min-width:44px;padding:0;text-align:center;}  /* min-width: wąski ekran nie może ścisnąć kolumny do samego pola */
 .kit-table tbody tr.kit-row.is-selected > td{background:var(--accent-tint);}
 .kit-table.row-toggle tbody tr.kit-row{cursor:pointer;}
 .kit-table.is-loading tbody{opacity:.5;cursor:progress;transition:opacity var(--dur-2) var(--ease);}
