@@ -24,3 +24,12 @@
 .cfg-remove{font-size:var(--fs-foot);}
 #smtpResult{white-space:pre-line;}
 #groups .card[hidden],.controls [hidden]{display:none;}
+.mbox{margin:0 0 var(--s-2);}
+.mbox-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-3);}
+.mbox-bar .muted{flex:1 1 220px;}
+.mbox-tag{display:inline-flex;align-items:center;height:20px;padding:0 9px;border-radius:var(--r-pill);font-size:var(--fs-caption);
+  font-weight:600;color:var(--label-2);background:var(--fill);}
+.mbox-tag.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent);}
+.mbox-tag.off,.mbox-tag.error{color:var(--danger);background:color-mix(in srgb,var(--danger) 14%,transparent);}
+.mbox-error{margin-top:var(--s-2);padding:var(--s-2) var(--s-3);border-radius:var(--r-md);font-size:var(--fs-foot);
+  color:var(--danger);background:color-mix(in srgb,var(--danger) 14%,transparent);overflow-wrap:anywhere;}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from datetime import timedelta
 from email.utils import parseaddr
 
 from perno import settings as cfg
@@ -142,6 +143,73 @@ class AutomatPanelTests(TwoMailboxCase):
         resp = self.call("POST", "/api/automat/start", {"potwierdzam": True, "stamp": stamp})
         self.assertEqual(resp.status, 400)
         self.assertIn("SMTP3_HOST", self.data(resp)["error"])
+
+
+class BrokenSmtp:
+    """Atrapa serwera, który odrzuca logowanie (komunikat zawiera hasło, żeby sprawdzić jego wycięcie)."""
+
+    def __enter__(self):
+        raise ConnectionError(f"535 odrzucono hasło {SECOND['SMTP2_PASSWORD']}\nkoniec")
+
+    def __exit__(self, *exc):
+        return False
+
+
+class MailboxStatusTests(TwoMailboxCase):
+    def boxes(self, data=None):
+        data = data or self.data(self.call("GET", "/api/config"))
+        return {box["slot"]: box for box in data["mailboxes"]}
+
+    def beat_off(self, **entry):
+        store = self.app.ctx.automat_store.get()
+        run_id = store.start_run(1)
+        store.heartbeat(run_id, {"wylaczone_info": [{"address": "second@example.com", **entry}]})
+
+    def test_untested_mailboxes_are_unknown(self):
+        boxes = self.boxes()
+        self.assertEqual({slot: box["state"] for slot, box in boxes.items()}, {1: "unknown", 2: "unknown"})
+        self.assertEqual(boxes[2]["address"], "second@example.com")
+
+    def test_testing_one_mailbox_checks_only_that_one_and_remembers_the_result(self):
+        data = self.data(self.call("POST", "/api/config/test-smtp", {"slot": 1}))
+        self.assertEqual([r["address"] for r in data["results"]], ["demo@example.com"])
+        self.assertEqual({slot: box["state"] for slot, box in self.boxes(data).items()}, {1: "ok", 2: "unknown"})
+        self.assertEqual(self.boxes()[1]["state"], "ok")
+
+    def test_a_failed_test_shows_the_error_without_the_password(self):
+        self.app.ctx.smtp_factory = BrokenSmtp
+        resp = self.call("POST", "/api/config/test-smtp", {"slot": 2})
+        data = self.data(resp)
+        box = self.boxes(data)[2]
+        self.assertEqual((data["ok"], box["state"]), (False, "error"))
+        self.assertIn("ConnectionError: 535", box["error"])
+        self.assertNotIn(SECOND["SMTP2_PASSWORD"], resp.body.decode("utf-8"))
+
+    def test_testing_every_mailbox_updates_every_state(self):
+        data = self.data(self.call("POST", "/api/config/test-smtp", {}))
+        self.assertEqual({slot: box["state"] for slot, box in self.boxes(data).items()}, {1: "ok", 2: "ok"})
+
+    def test_a_mailbox_switched_off_by_the_daemon_shows_the_reason_and_stays_off_after_a_good_test(self):
+        until = (self.database.now() + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        self.beat_off(blad="Connection unexpectedly closed", do=until)
+        box = self.boxes()[2]
+        self.assertEqual((box["state"], box["error"], box["until"]), ("off", "Connection unexpectedly closed", until))
+        data = self.data(self.call("POST", "/api/config/test-smtp", {"slot": 2}))
+        self.assertEqual(self.boxes(data)[2]["state"], "off")
+        self.assertTrue(self.boxes(data)[2]["test"]["ok"])
+
+    def test_an_expired_switch_off_is_ignored(self):
+        past = (self.database.now() - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        self.beat_off(blad="x", do=past)
+        self.assertEqual(self.boxes()[2]["state"], "unknown")
+
+    def test_the_mailboxes_endpoint_alone_returns_the_states(self):
+        data = self.data(self.call("GET", "/api/config/mailboxes"))
+        self.assertEqual([box["slot"] for box in data["mailboxes"]], [1, 2])
+
+    def test_a_bad_slot_is_rejected(self):
+        for slot in ("2", True, 7, 0):
+            self.assertEqual(self.call("POST", "/api/config/test-smtp", {"slot": slot}).status, 400, slot)
 
 
 if __name__ == "__main__":

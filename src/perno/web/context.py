@@ -63,6 +63,7 @@ class AppContext:
     scan_store: Lazy[Store] = field(init=False)
     automat_store: Lazy[AutomatStore] = field(init=False)
     automat_probes: automat_control.Probes = field(default_factory=automat_control.Probes)
+    mailbox_tests: dict = field(default_factory=dict)  # adres (małymi literami) → wynik ostatniego testu połączenia z panelu
 
     def __post_init__(self) -> None:
         self.scan_store = Lazy(lambda: open_scan_store(self.db))

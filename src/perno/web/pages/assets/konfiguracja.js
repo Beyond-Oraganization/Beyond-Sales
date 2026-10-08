@@ -44,13 +44,53 @@ function mailboxFilled(group) {
   return group.fields.some((field) => field.set || (field.kind !== 'secret' && field.value));
 }
 
+const MAILBOX_LABELS = {off: 'Wyłączona', error: 'Nie działa', ok: 'Działa', unknown: 'Nie sprawdzona'};
+
+// „2026-10-08T13:00:00” → „13:00” (dziś) albo „09.10 13:00”.
+function shortStamp(stamp) {
+  if (!stamp) return '';
+  const [day, time] = String(stamp).split('T');
+  if (!time) return String(stamp);
+  const now = new Date();
+  const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+  return (day === today ? '' : day.slice(8, 10) + '.' + day.slice(5, 7) + ' ') + time.slice(0, 5);
+}
+
+function mailboxNotes(box) {
+  const notes = [];
+  if (box.state === 'off') notes.push('Automat nie wysyła z niej' + (box.until ? ' do ' + shortStamp(box.until) : '') + ', potem spróbuje ponownie.');
+  if (box.test) notes.push('Test o ' + shortStamp(box.test.at) + (box.test.ok ? ': połączenie i logowanie działają.' : ' nie przeszedł.'));
+  if (box.sent_today) notes.push('Dziś wysłała: ' + box.sent_today + '.');
+  return notes;
+}
+
+// Pasek stanu skrzynki w jej karcie: etykieta (działa / wyłączona …), powód błędu i przycisk testu.
+function mailboxBarHtml(slot) {
+  const box = ((CONFIG && CONFIG.mailboxes) || []).find((b) => b.slot === slot);
+  const button = '<button type="button" class="mbox-test" data-slot="' + slot + '"' + (box ? '' : ' disabled') + '>Sprawdź skrzynkę</button>';
+  if (!box) return '<div class="mbox-bar"><span class="mbox-tag unknown">Niezapisana</span><span class="muted small">Zapisz ustawienia, żeby ją sprawdzić.</span>' + button + '</div>';
+  const error = box.error ? '<div class="mbox-error">' + escapeHtml(box.error) + '</div>' : '';
+  return '<div class="mbox-bar"><span class="mbox-tag ' + escapeHtml(box.state) + '">' + escapeHtml(MAILBOX_LABELS[box.state] || box.state)
+    + '</span><span class="muted small">' + escapeHtml([box.address, ...mailboxNotes(box)].join(' · ')) + '</span>' + button + '</div>' + error;
+}
+
+function refreshMailboxBars() {
+  if (!CONFIG) return;
+  for (const group of CONFIG.groups) {
+    const bar = group.mailbox && document.getElementById('mbox_' + group.mailbox);
+    if (bar) bar.innerHTML = mailboxBarHtml(group.mailbox);
+  }
+}
+
 function groupHtml(group) {
   const extra = group.mailbox && group.mailbox > 1;
   const hidden = extra && !mailboxFilled(group) ? ' hidden' : '';
   const remove = extra ? '<button type="button" class="cfg-remove" data-slot="' + group.mailbox + '">Usuń skrzynkę</button>' : '';
   return '<section class="card" id="card_' + escapeHtml(group.key) + '"' + hidden + '><div class="card-head"><h2>'
     + escapeHtml(group.title) + '</h2>' + remove + '</div><p class="muted group-note">'
-    + escapeHtml(group.description) + '</p><div class="cfg-grid">' + group.fields.map(fieldHtml).join('') + '</div></section>';
+    + escapeHtml(group.description) + '</p>'
+    + (group.mailbox ? '<div class="mbox" id="mbox_' + group.mailbox + '">' + mailboxBarHtml(group.mailbox) + '</div>' : '')
+    + '<div class="cfg-grid">' + group.fields.map(fieldHtml).join('') + '</div></section>';
 }
 
 function mailboxGroups() {
@@ -157,20 +197,37 @@ async function save() {
   if (data.restart_demon.length) restartBanner(data.restart_demon);
 }
 
-async function testSmtp() {
+async function runTest(slot) {
   const {values, clear} = collect();
   if (Object.keys(values).length || clear.length) { toast('Najpierw zapisz zmiany — sprawdzam zapisane ustawienia.'); return; }
-  el('smtpResult').textContent = 'Łączę…';
-  const {ok, data} = await api('/api/config/test-smtp', {});
-  if (!ok) { el('smtpResult').textContent = data.error || 'Nie udało się sprawdzić.'; return; }
+  const target = slot ? el('mbox_' + slot) : null;
+  if (target) target.innerHTML = '<div class="mbox-bar"><span class="mbox-tag unknown">Łączę…</span></div>';
+  el('smtpResult').textContent = slot ? '' : 'Łączę…';
+  const {ok, data} = await api('/api/config/test-smtp', slot ? {slot} : {});
+  if (!ok) { el('smtpResult').textContent = data.error || 'Nie udało się sprawdzić.'; refreshMailboxBars(); return; }
+  CONFIG.mailboxes = data.mailboxes || CONFIG.mailboxes;
+  refreshMailboxBars();
   const results = data.results || [];
-  el('smtpResult').textContent = results.length > 1
+  el('smtpResult').textContent = slot ? '' : results.length > 1
     ? results.map((r) => (r.ok ? 'OK: ' : 'BŁĄD: ') + r.message).join('\n')
     : (data.ok ? 'OK: ' : 'BŁĄD: ') + data.message;
+  if (slot) toast(data.ok ? 'Skrzynka działa.' : 'Skrzynka nie działa: ' + data.message, data.ok ? 'ok' : 'error');
+}
+
+// Stan z demona (wyłączenia po błędach) odświeżamy co jakiś czas, żeby nie trzeba było przeładowywać strony.
+async function pollMailboxes() {
+  if (document.hidden || !CONFIG) return;
+  const {ok, data} = await apiGet('/api/config/mailboxes');
+  if (ok) { CONFIG.mailboxes = data.mailboxes; refreshMailboxBars(); }
 }
 
 el('saveBtn').addEventListener('click', save);
 el('reloadBtn').addEventListener('click', render);
-el('smtpBtn').addEventListener('click', testSmtp);
+el('smtpBtn').addEventListener('click', () => runTest(null));
+el('groups').addEventListener('click', (event) => {
+  const target = event.target.closest('.mbox-test');
+  if (target) runTest(Number(target.dataset.slot));
+});
+setInterval(pollMailboxes, 15000);
 el('addMailboxBtn').addEventListener('click', addMailbox);
 load();

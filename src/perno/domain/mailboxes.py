@@ -52,3 +52,24 @@ def attribute_legacy(use: Mapping[str, DayUse], primary: str) -> dict:
     last = max((moment for moment in (own.last_sent, legacy.last_sent) if moment), default=None)
     merged[key] = DayUse(own.sent + legacy.sent, last)
     return merged
+
+
+STATE_OFF = "off"  # automat wyłączył skrzynkę po błędach
+STATE_ERROR = "error"  # ostatni test połączenia się nie udał
+STATE_OK = "ok"  # test się udał albo skrzynka wysłała dziś maile
+STATE_UNKNOWN = "unknown"  # jeszcze niczego o niej nie wiemy
+
+
+def mailbox_state(off: Optional[Mapping], test: Optional[Mapping], sent_today: int) -> dict:
+    """Stan skrzynki do pokazania w Konfiguracji. `off` to wpis demona o wyłączeniu (`{"blad", "do"}`), `test` ostatni test
+    połączenia z panelu (`{"ok", "message", "at"}`). Wyłączenie przez automat jest ważniejsze od testu, bo to ono
+    decyduje, czy skrzynka dziś wysyła; udany test nie zdejmuje go (robi to sam demon po upływie przerwy)."""
+    state = {"state": STATE_UNKNOWN, "error": None, "until": None, "test": dict(test) if test else None,
+             "sent_today": sent_today}
+    if off:
+        state.update(state=STATE_OFF, error=off.get("blad") or None, until=off.get("do"))
+    elif test and not test.get("ok"):
+        state.update(state=STATE_ERROR, error=test.get("message"))
+    elif test or sent_today:
+        state["state"] = STATE_OK
+    return state
