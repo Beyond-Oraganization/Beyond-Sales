@@ -148,7 +148,7 @@ class ValidationTests(unittest.TestCase):
 
 class ReplyFieldTests(unittest.TestCase):
     def test_the_shared_reply_settings_live_in_their_own_group(self):
-        self.assertEqual([f.key for f in cf.fields_in_group("replies")], ["REPLIES_IGNORE", "REPLIES_FOLDERS", "REPLIES_FETCH_WORKERS", "REPLIES_AUTO_FETCH_MIN"])
+        self.assertEqual([f.key for f in cf.fields_in_group("replies")], ["REPLIES_IGNORE", "REPLIES_FOLDERS", "REPLIES_FETCH_WORKERS", "REPLIES_SAVE_SENT", "REPLIES_AUTO_FETCH_MIN"])
         self.assertNotIn("replies", [key for key in (cf.group_key(n) for n in range(1, 5))])
 
     def test_the_worker_count_is_validated_like_the_settings_parser_expects(self):
@@ -157,6 +157,12 @@ class ReplyFieldTests(unittest.TestCase):
         for bad in ("0", "17", "abc", "2.5"):
             with self.subTest(bad=bad), self.assertRaises(cf.ConfigValueError):
                 check("REPLIES_FETCH_WORKERS", bad)
+
+    def test_the_sent_copy_switch_is_a_yes_no_that_defaults_to_yes(self):
+        self.assertEqual((check("REPLIES_SAVE_SENT", "FALSE"), check("REPLIES_SAVE_SENT", "true")), ("false", "true"))
+        self.assertEqual(cf.field_for("REPLIES_SAVE_SENT").default, "true")
+        with self.assertRaises(cf.ConfigValueError):
+            check("REPLIES_SAVE_SENT", "tak")
 
     def test_the_auto_refresh_interval_accepts_zero_to_a_day(self):
         self.assertEqual((check("REPLIES_AUTO_FETCH_MIN", "0"), check("REPLIES_AUTO_FETCH_MIN", "1440")), ("0", "1440"))

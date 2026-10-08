@@ -102,3 +102,13 @@
   .rp-thread{padding:var(--s-3);}
   .rp-tools .rp-search{max-width:none;}
 }
+
+/* edytor odpowiedzi na dole wątku */
+.rp-composer{display:flex;flex-direction:column;gap:var(--s-2);padding:var(--s-3) var(--s-4);background:var(--surface);border:1px solid var(--separator);
+  border-radius:var(--r-lg);box-shadow:var(--sh-1);}
+.rp-composer.is-closed{padding:var(--s-2);background:transparent;border:none;box-shadow:none;}
+.rp-compose-head{display:flex;flex-wrap:wrap;gap:var(--s-1) var(--s-3);font-size:var(--fs-foot);color:var(--label-2);overflow-wrap:anywhere;}
+.rp-draft{width:100%;min-height:110px;resize:vertical;font:400 var(--fs-body)/1.5 var(--font);}
+.rp-compose-foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-2);}
+.rp-quote-opt{display:inline-flex;align-items:center;gap:6px;margin-left:auto;font-size:var(--fs-foot);color:var(--label-2);cursor:pointer;}
+.rp-composer .banner{margin-bottom:0;}

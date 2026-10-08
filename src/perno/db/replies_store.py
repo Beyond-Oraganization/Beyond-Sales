@@ -8,6 +8,7 @@ statusów maili: dostaje gotowe `NewMessage` i zapisuje je razem z aktualizacją
 from __future__ import annotations
 
 import json
+import uuid
 from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -334,3 +335,73 @@ class ReplyStore(StoreCore):
                 from_name=row["from_name"] or "", snippet=row["snippet"] or "", date_at=row["date_at"], thread_id=thread_id,
                 company_id=company_id, match_method=rp.MATCH_MANUAL, optout_hint=bool(row["optout_hint"]), thread_mailbox=mailbox), now)
             return True
+
+    # ---- szkice i wysyłka naszych odpowiedzi -----------------------------------------------------------------
+
+    _EDITABLE = (rp.STATE_DRAFT, rp.STATE_FAILED)
+
+    def get_draft(self, thread_id: str) -> Optional[dict]:
+        """Szkic odpowiedzi w wątku (jeden na wątek): treść, autor, adresat, temat, błąd ostatniej próby wysłania."""
+        m = odp_wiadomosci.c
+        with self._read() as conn:
+            row = conn.execute(sa.select(m.id, m.state, m.author, m.mailbox, m.to_addr, m.subject, m.body_text, m.error, m.fetched_at)
+                               .where(m.thread_id == thread_id, m.direction == rp.DIRECTION_OUT, m.state.in_(self._EDITABLE + (rp.STATE_SENDING,)))
+                               .order_by(m.id.desc())).mappings().first()
+        return dict(row) if row else None
+
+    def save_draft(self, thread_id: str, *, body: str, subject: str, to_addr: str, mailbox: str, author: str, now: datetime,
+                   keep_human: bool = False) -> Optional[int]:
+        """Zapisuje szkic wątku (nowy albo zastępuje poprzedni). `keep_human`: szkic napisany przez człowieka nie jest nadpisywany
+        (tak zapisuje AI): wtedy None. Szkic w trakcie wysyłania nie jest zmieniany (też None)."""
+        m = odp_wiadomosci.c
+        with self._tx() as conn:
+            existing = conn.execute(sa.select(m.id, m.state, m.author).where(
+                m.thread_id == thread_id, m.direction == rp.DIRECTION_OUT, m.state.in_(self._EDITABLE + (rp.STATE_SENDING,)))
+                .order_by(m.id.desc()).with_for_update()).mappings().first()
+            if existing is not None and (existing["state"] == rp.STATE_SENDING or (keep_human and existing["author"] == rp.BY_HUMAN)):
+                return None
+            values = {"body_text": clean_text(body), "subject": clean_text(subject, 500), "to_addr": clean_text(to_addr, 1000),
+                      "mailbox": mailbox, "author": author, "state": rp.STATE_DRAFT, "error": None, "fetched_at": now,
+                      "snippet": clean_text(" ".join(body.split()), 255)}
+            if existing is not None:
+                conn.execute(sa.update(odp_wiadomosci).where(m.id == existing["id"]).values(**values))
+                return int(existing["id"])
+            identity = f"szkic:{uuid.uuid4().hex}"
+            result = conn.execute(sa.insert(odp_wiadomosci).values(
+                thread_id=thread_id, direction=rp.DIRECTION_OUT, kind=rp.KIND_HUMAN, message_id_hash=message_ids.digest(identity),
+                date_at=now, **values))
+            return int(result.inserted_primary_key[0])
+
+    def discard_draft(self, thread_id: str) -> bool:
+        """Usuwa szkic wątku (nie ten w trakcie wysyłania); zwraca, czy coś usunięto."""
+        m = odp_wiadomosci.c
+        with self._tx() as conn:
+            return conn.execute(sa.delete(odp_wiadomosci).where(
+                m.thread_id == thread_id, m.direction == rp.DIRECTION_OUT, m.state.in_(self._EDITABLE))).rowcount > 0
+
+    def claim_draft(self, draft_id: int) -> bool:
+        """Przejmuje szkic do wysyłki (szkic → wysyłanie); False, gdy ktoś był pierwszy albo szkic już poszedł."""
+        m = odp_wiadomosci.c
+        with self._tx() as conn:
+            return conn.execute(sa.update(odp_wiadomosci).where(m.id == draft_id, m.state.in_(self._EDITABLE))
+                                .values(state=rp.STATE_SENDING, error=None)).rowcount == 1
+
+    def release_draft(self, draft_id: int, error: str) -> None:
+        """Wysyłka się nie udała: szkic wraca do edycji z komunikatem o błędzie (nic nie wyszło)."""
+        m = odp_wiadomosci.c
+        with self._tx() as conn:
+            conn.execute(sa.update(odp_wiadomosci).where(m.id == draft_id, m.state == rp.STATE_SENDING)
+                         .values(state=rp.STATE_FAILED, error=clean_text(error, 1000)))
+
+    def finish_sent(self, draft_id: int, msg: rp.NewMessage, now: datetime) -> bool:
+        """Szkic poszedł: zapisuje wysłaną wiadomość (identyfikator, treść, czas) i przelicza wątek (odpisaliśmy)."""
+        m = odp_wiadomosci.c
+        with self._tx() as conn:
+            changed = conn.execute(sa.update(odp_wiadomosci).where(m.id == draft_id, m.state == rp.STATE_SENDING).values(
+                state=rp.STATE_SENT, message_id=msg.message_id, message_id_hash=message_ids.digest(msg.identity), date_at=msg.date_at,
+                body_text=clean_text(msg.body_text), subject=clean_text(msg.subject, 500), to_addr=clean_text(msg.to_addr, 1000),
+                in_reply_to=clean_text(msg.in_reply_to) or None, references_hdr=clean_text(msg.references) or None,
+                snippet=clean_text(msg.snippet, 255), mailbox=msg.mailbox, error=None, fetched_at=now)).rowcount == 1
+            if changed and msg.thread_id:
+                self._touch_thread(conn, msg, now)
+            return changed

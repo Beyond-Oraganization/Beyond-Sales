@@ -17,6 +17,7 @@ from perno.domain import replies as rp
 from perno.domain import reply_listing as rl
 from perno.domain import reply_rules, reply_text
 from perno.domain import statuses as st
+from perno.services import replies_send
 
 
 class ThreadNotFound(LookupError):
@@ -68,9 +69,9 @@ def _message(row: Mapping) -> dict:
             "bounce_type": row["bounce_type"], "optout_hint": bool(row["optout_hint"]), "error": row["error"]}
 
 
-def thread_view(store: ReplyStore, thread_id: str) -> dict:
+def thread_view(store: ReplyStore, thread_id: str, config: Optional[Mapping] = None) -> dict:
     """Wszystko do widoku wątku: wiersz listy, nasz mail kampanii, wiadomości (z cytatem rozdzielonym od nowego tekstu), historia
-    ocen, podpowiedź statusu i statusy, które można ustawić jednym kliknięciem."""
+    ocen, podpowiedź statusu, statusy do ustawienia jednym kliknięciem i (z `config`) stan edytora odpowiedzi."""
     detail = store.thread_detail(thread_id)
     if detail is None:
         raise ThreadNotFound(f"Nie ma wątku {thread_id}.")
@@ -82,6 +83,7 @@ def thread_view(store: ReplyStore, thread_id: str) -> dict:
         "thread": thread, "origin": origin_view, "messages": [_message(row) for row in detail["messages"]],
         "ratings": [{**{key: iso(value) for key, value in row.items()}} for row in detail["ratings"]],
         "suggestion": reply_rules.status_suggestion(thread["rating"], thread["optout"], mail_status),
+        "compose": replies_send.compose_view(detail, config, store.get_draft(thread_id)) if config is not None else {"can_reply": False, "reason": ""},
         "statuses": [{"code": code, "label": st.STATUS_META[code][0], "color": st.STATUS_META[code][1]} for code in reply_rules.SETTABLE_STATUSES],
     }
 

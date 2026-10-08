@@ -8,8 +8,11 @@ const RATINGS = [['positive', 'Pozytywna', '1'], ['neutral', 'Neutralna', '2'], 
 const RATING_LABEL = Object.fromEntries(RATINGS.map(([code, label]) => [code, label]));
 const KIND_LABEL = {auto: 'Autoodpowiedź', bounce: 'Zwrot poczty'};
 const FETCH_POLL_MS = 2000;
+const SEND_DELAY_MS = 6000;  // „Cofnij” po kliknięciu Wyślij: wysyłka rusza dopiero po tym czasie
+const DRAFT_SAVE_MS = 800;
 const SHORTCUTS = [['j / k', 'następna / poprzednia rozmowa'], ['Enter', 'otwórz zaznaczoną rozmowę'], ['u', 'wróć do listy'],
   ['1  2  3', 'ocena: pozytywna, neutralna, negatywna'], ['0', 'usuń ocenę'], ['e', 'zamknij / otwórz wątek ponownie'],
+  ['r', 'odpowiedz (przejdź do edytora)'], ['Ctrl/⌘ + Enter', 'wyślij odpowiedź'], ['Esc', 'wyjdź z edytora'],
   ['/', 'szukaj'], ['g', 'pobierz pocztę teraz'], ['?', 'ta ściąga']];
 
 const state = {
@@ -19,6 +22,7 @@ const state = {
 let listVersion = 0;
 let detailVersion = 0;
 let lastAutoFetch = 0;
+const composer = {open: {}, timer: null, pending: null, text: null, status: null};  // open: {id wątku: true}
 
 // ---- pomocnicze ---------------------------------------------------------------------------------------------------
 
@@ -223,6 +227,8 @@ function showDetailView(on) {
 }
 
 async function openThread(id, push) {
+  if (state.detail && state.detail.thread && String(state.detail.thread.id) === String(id) && !composer.pending) await flushDraft();
+  else if (state.detail && composer.text) await flushDraft();
   const version = ++detailVersion;
   state.selected = String(id);
   markSelected();
@@ -366,7 +372,142 @@ function renderThread(view) {
   }
   if (thread.weak) banners.push(h('div', {class: 'banner warn', text: 'Przypisano po samej domenie nadawcy: sprawdź, czy to na pewno ta firma.'}));
   const messages = view.messages.map((message, index) => messageCard(message, index === view.messages.length - 1));
-  setChildren(el('detail'), [h('article', {class: 'rp-thread'}, header, banners, h('div', {class: 'rp-msgs'}, view.origin ? originCard(view.origin) : null, messages))]);
+  const typing = Boolean(composer.text) && document.activeElement === composer.text;
+  composer.text = null;
+  composer.quote = null;
+  composer.status = null;
+  setChildren(el('detail'), [h('article', {class: 'rp-thread'}, header, banners, h('div', {class: 'rp-msgs'}, view.origin ? originCard(view.origin) : null, messages), composerNode(view))]);
+  if (typing && composer.text) composer.text.focus();
+}
+
+
+// ---- edytor odpowiedzi -------------------------------------------------------------------------------------------------
+
+function draftText() { return composer.text ? composer.text.value : ''; }
+
+function setDraftStatus(text) { if (composer.status) composer.status.textContent = text; }
+
+// Zapisuje szkic od razu (wołane przed przeładowaniem wątku i przed wysyłką, żeby nic nie przepadło).
+async function flushDraft() {
+  clearTimeout(composer.timer);
+  composer.timer = null;
+  const thread = state.detail && state.detail.thread;
+  if (!thread || !composer.text) return true;
+  const body = draftText();
+  const had = Boolean(state.detail.compose && state.detail.compose.draft);
+  if (!body.trim()) {
+    if (had) { await api('/api/odpowiedzi/szkic-usun', {id: thread.id}); state.detail.compose.draft = null; }
+    setDraftStatus('');
+    return true;
+  }
+  if (had && state.detail.compose.draft.body === body) return true;
+  setDraftStatus('Zapisywanie…');
+  const {ok, data} = await api('/api/odpowiedzi/szkic', {id: thread.id, body});
+  if (!ok) { setDraftStatus('Nie zapisano szkicu'); showToast(data.error || 'Nie udało się zapisać szkicu.', 'error'); return false; }
+  state.detail.compose.draft = Object.assign({}, state.detail.compose.draft || {}, {id: data.id, body, author: 'human', state: 'draft', error: ''});
+  setDraftStatus('Szkic zapisany');
+  return true;
+}
+
+function scheduleDraftSave() {
+  clearTimeout(composer.timer);
+  setDraftStatus('Zmieniono…');
+  composer.timer = setTimeout(flushDraft, DRAFT_SAVE_MS);
+}
+
+function openComposer(focus) {
+  const thread = state.detail && state.detail.thread;
+  if (!thread || !state.detail.compose || !state.detail.compose.can_reply) return;
+  if (!composer.open[thread.id]) { composer.open[thread.id] = true; renderThread(state.detail); }
+  if (focus && composer.text) { composer.text.focus(); if (composer.text.scrollIntoView) composer.text.scrollIntoView({block: 'center'}); }
+}
+
+async function discardDraft() {
+  const thread = state.detail && state.detail.thread;
+  if (!thread) return;
+  clearTimeout(composer.timer);
+  await api('/api/odpowiedzi/szkic-usun', {id: thread.id});
+  state.detail.compose.draft = null;
+  composer.open[thread.id] = false;
+  renderThread(state.detail);
+}
+
+function cancelPendingSend() {
+  if (!composer.pending) return;
+  clearTimeout(composer.pending.timer);
+  composer.pending = null;
+  setDraftStatus('Wysyłanie anulowane. Szkic został.');
+  for (const node of document.querySelectorAll('.rp-composer button, .rp-composer textarea')) node.disabled = false;
+}
+
+async function requestSend(closeAfter) {
+  const thread = state.detail && state.detail.thread;
+  const compose = state.detail && state.detail.compose;
+  if (!thread || !compose || !compose.can_reply || !compose.mailbox_ok || composer.pending) return;
+  if (!draftText().trim()) { showToast('Najpierw napisz odpowiedź.'); return; }
+  if (!(await flushDraft())) return;
+  let acks = [];
+  if (compose.needs_ack && compose.needs_ack.length) {
+    const confirmed = await showSheet({title: 'Ta firma prosiła o brak kontaktu', tone: 'danger', focusCancel: true, confirmLabel: 'Wyślij mimo to',
+      message: 'W tym wątku jest prośba o zaprzestanie kontaktu (albo status „Nie kontaktować”). Wysłać odpowiedź mimo to?'});
+    if (!confirmed) return;
+    acks = compose.needs_ack.slice();
+  }
+  const quote = !composer.quote || composer.quote.checked;
+  for (const node of document.querySelectorAll('.rp-composer button, .rp-composer textarea')) node.disabled = true;
+  setDraftStatus('Wysyłanie za ' + Math.round(SEND_DELAY_MS / 1000) + ' s…');
+  composer.pending = {timer: setTimeout(() => doSend(thread.id, acks, quote, closeAfter), SEND_DELAY_MS)};
+  showToast('Odpowiedź zostanie wysłana za ' + Math.round(SEND_DELAY_MS / 1000) + ' s.', 'ok', {action: {label: 'Cofnij', onClick: cancelPendingSend}, timeout: SEND_DELAY_MS});
+}
+
+async function doSend(id, acks, quote, closeAfter) {
+  composer.pending = null;
+  const {ok, status, data} = await api('/api/odpowiedzi/wyslij', {id, ack: acks, quote, close: closeAfter});
+  if (status === 409 && data.needs_ack) {
+    const again = await showSheet({title: 'Potwierdź wysyłkę', message: 'Serwer prosi o potwierdzenie: ' + data.error, confirmLabel: 'Wyślij mimo to', tone: 'danger', focusCancel: true});
+    if (again) { await doSend(id, data.needs_ack, quote, closeAfter); return; }
+  } else if (!ok) {
+    showToast(data.error || 'Nie udało się wysłać odpowiedzi.', 'error');
+  } else {
+    showToast('Wysłano.', 'ok');
+    if (data.warning) showToast(data.warning, 'error');
+    composer.open[id] = false;
+  }
+  if (state.selected === id) { await reloadAfterChange(id, ok && closeAfter); }
+}
+
+function composerNode(view) {
+  const compose = view.compose;
+  if (!compose) return null;
+  if (!compose.can_reply) return compose.reason ? h('div', {class: 'rp-hint', text: compose.reason}) : null;
+  if (!compose.mailbox_ok) return h('div', {class: 'banner warn', text: compose.mailbox_problem});
+  const thread = view.thread;
+  const draft = compose.draft;
+  if (!composer.open[thread.id] && !draft) {
+    return h('div', {class: 'rp-composer is-closed'}, h('button', {type: 'button', class: 'btn', text: 'Odpowiedz', onclick: () => openComposer(true)}));
+  }
+  const text = h('textarea', {rows: 5, class: 'rp-draft', placeholder: 'Napisz odpowiedź…', 'aria-label': 'Treść odpowiedzi'});
+  text.value = draft ? draft.body : '';
+  text.addEventListener('input', scheduleDraftSave);
+  autosize(text, 360);
+  const quote = h('input', {type: 'checkbox', id: 'quoteChk'});
+  quote.checked = true;
+  const status = h('span', {class: 'rp-hint', role: 'status', text: draft && draft.state === 'draft' ? 'Szkic zapisany' : ''});
+  composer.text = text;
+  composer.quote = quote;
+  composer.status = status;
+  const notes = [];
+  if (draft && draft.author === 'ai') notes.push(h('div', {class: 'banner', text: 'Szkic przygotował Claude Code. Przeczytaj go i popraw przed wysłaniem: nic nie wyjdzie, dopóki sam nie klikniesz „Wyślij”.'}));
+  if (draft && draft.state === 'failed') notes.push(h('div', {class: 'banner error', text: 'Ostatnia próba wysłania nie udała się: ' + (draft.error || 'nieznany błąd') + '. Nic nie wyszło, szkic został.'}));
+  if (compose.needs_ack && compose.needs_ack.length) notes.push(h('div', {class: 'banner warn', text: 'Uwaga: ta firma prosiła o brak kontaktu. Wysyłka wymaga potwierdzenia.'}));
+  return h('section', {class: 'rp-composer', 'aria-label': 'Odpowiedź'},
+    h('div', {class: 'rp-compose-head'}, h('span', {text: 'Od: ' + compose.mailbox}), h('span', {text: 'Do: ' + compose.to}), h('span', {text: compose.subject})),
+    notes, text,
+    h('div', {class: 'rp-compose-foot'},
+      h('button', {type: 'button', class: 'btn primary', text: 'Wyślij', title: 'Ctrl/⌘ + Enter', onclick: () => requestSend(false)}),
+      h('button', {type: 'button', class: 'btn', text: 'Wyślij i zamknij', onclick: () => requestSend(true)}),
+      h('button', {type: 'button', class: 'btn plain', text: 'Odrzuć szkic', onclick: () => discardDraft()}),
+      h('label', {class: 'rp-quote-opt'}, quote, ' Dołącz cytat'), status));
 }
 
 function renderUnassigned(message) {
@@ -657,8 +798,15 @@ bindShortcuts({
   u: () => backToList(),
   1: () => rate('positive'), 2: () => rate('neutral'), 3: () => rate('negative'), 0: () => rate(null),
   e: () => { if (state.detail) stateAction(state.detail.thread.closed ? 'reopen' : 'close'); },
+  r: () => openComposer(true),
+  'ctrl+Enter': () => { if (composer.text && document.activeElement === composer.text) requestSend(false); },
+  'meta+Enter': () => { if (composer.text && document.activeElement === composer.text) requestSend(false); },
+  Escape: () => { if (composer.text && document.activeElement === composer.text && composer.text.blur) composer.text.blur(); closeMenus(); },
   '/': () => el('q').focus(), g: () => startFetch(false), '?': () => showShortcutHelp(SHORTCUTS),
 });
+
+// Wysyłka czeka sześć sekund na „Cofnij”: zamknięcie karty w tym czasie nic nie wysyła (szkic zostaje na serwerze).
+window.addEventListener('beforeunload', (event) => { if (composer.pending) { event.preventDefault(); event.returnValue = ''; } });
 
 pollWhileVisible(refreshOverview, {interval: 60000});
 

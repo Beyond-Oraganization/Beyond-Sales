@@ -15,7 +15,7 @@ from tests.fake_imap import FakeAccounts, FakeImap
 from tests.fixtures import put, sample_row
 from tests.test_web import WebCase
 
-T0 = datetime(2026, 10, 5, 10, 0)
+T0 = datetime(2026, 9, 30, 9, 0)  # przed zegarem bazy testowej (30.09 12:00), żeby nasza odpowiedź była późniejsza
 
 
 def msg(identity, thread, *, text="Proszę o cennik.", when=T0, kind="human", **kw):
@@ -141,6 +141,67 @@ class ActionTests(RepliesWebCase):
     def test_every_post_needs_json_and_a_known_origin_like_the_rest_of_the_panel(self):
         resp = self.call("POST", "/api/odpowiedzi/lista", None, headers={"Origin": "http://evil.example"})
         self.assertIn(resp.status, (400, 403))
+
+
+class ComposeTests(RepliesWebCase):
+    def test_the_thread_view_carries_the_editor_state(self):
+        compose = self.data(self.post("/api/odpowiedzi/watek", {"id": "eventy-001"}))["compose"]
+        self.assertEqual((compose["can_reply"], compose["mailbox"], compose["mailbox_ok"], compose["to"], compose["subject"], compose["draft"]),
+                         (True, "demo@example.com", True, "anna@firma.pl", "Re: Temat", None))
+        self.assertEqual((compose["needs_ack"], compose["signature"]), ([], "Demo"))
+
+    def test_a_draft_is_saved_shown_and_discarded(self):
+        saved = self.data(self.post("/api/odpowiedzi/szkic", {"id": "eventy-001", "body": "Dziękuję, wysyłam cennik."}))
+        self.assertTrue(saved["saved"])
+        draft = self.data(self.post("/api/odpowiedzi/watek", {"id": "eventy-001"}))["compose"]["draft"]
+        self.assertEqual((draft["body"], draft["author"], draft["state"]), ("Dziękuję, wysyłam cennik.", "human", "draft"))
+        self.assertEqual(self.data(self.post("/api/odpowiedzi/szkic-usun", {"id": "eventy-001"})), {"discarded": True})
+        self.assertIsNone(self.data(self.post("/api/odpowiedzi/watek", {"id": "eventy-001"}))["compose"]["draft"])
+
+    def test_bad_drafts_are_400s(self):
+        self.assertEqual(self.post("/api/odpowiedzi/szkic", {"id": "eventy-001", "body": "   "}).status, 400)
+        self.assertEqual(self.post("/api/odpowiedzi/szkic", {"id": "eventy-001"}).status, 400)
+        self.assertEqual(self.post("/api/odpowiedzi/szkic", {"id": "nie-ma", "body": "x"}).status, 400)
+
+    def test_sending_goes_through_the_injected_smtp_and_updates_the_thread(self):
+        self.post("/api/odpowiedzi/szkic", {"id": "eventy-001", "body": "Dziękuję, wysyłam cennik."})
+        resp = self.post("/api/odpowiedzi/wyslij", {"id": "eventy-001"})
+        self.assertEqual(resp.status, 200)
+        self.assertTrue(self.data(resp)["sent"])
+        message = self.smtp.sent[-1]
+        self.assertEqual((message["To"], message["Subject"], message["In-Reply-To"]), ("anna@firma.pl", "Re: Temat", "<a@x>"))
+        row = self.data(self.post("/api/odpowiedzi/lista", {"tab": "all"}))["rows"][-1]
+        self.assertEqual((row["awaiting_reply"], row["last_direction"]), (False, "out"))
+        self.assertEqual(self.post("/api/odpowiedzi/wyslij", {"id": "eventy-001"}).status, 400)  # nie ma już szkicu
+
+    def test_an_opt_out_needs_an_explicit_confirmation(self):
+        self.store.update_thread("eventy-001", optout=True)
+        self.post("/api/odpowiedzi/szkic", {"id": "eventy-001", "body": "Potwierdzamy wypisanie."})
+        refused = self.post("/api/odpowiedzi/wyslij", {"id": "eventy-001"})
+        self.assertEqual((refused.status, self.data(refused)["needs_ack"]), (409, ["optout"]))
+        self.assertEqual(len([m for m in self.smtp.sent if m["Subject"] == "Re: Temat"]), 0)
+        self.assertEqual(self.post("/api/odpowiedzi/wyslij", {"id": "eventy-001", "ack": ["optout"]}).status, 200)
+
+    def test_an_smtp_failure_is_a_502_with_the_reason_and_keeps_the_draft(self):
+        self.smtp.fail_with = RuntimeError("550 odrzucone")
+        self.post("/api/odpowiedzi/szkic", {"id": "eventy-001", "body": "Treść"})
+        resp = self.post("/api/odpowiedzi/wyslij", {"id": "eventy-001"})
+        self.assertEqual(resp.status, 502)
+        self.assertIn("550 odrzucone", self.data(resp)["error"])
+        draft = self.data(self.post("/api/odpowiedzi/watek", {"id": "eventy-001"}))["compose"]["draft"]
+        self.assertEqual((draft["state"], draft["error"]), ("failed", "550 odrzucone"))
+
+    def test_bad_send_requests(self):
+        self.assertEqual(self.post("/api/odpowiedzi/wyslij", {"id": "eventy-001", "ack": "optout"}).status, 400)
+        self.assertEqual(self.post("/api/odpowiedzi/wyslij", {"id": "eventy-001", "ack": [1]}).status, 400)
+        self.assertEqual(self.post("/api/odpowiedzi/wyslij", {}).status, 400)
+        self.assertEqual(self.post("/api/odpowiedzi/wyslij", {"id": "nie-ma"}).status, 400)
+
+    def test_the_quote_and_close_flags_are_honoured(self):
+        self.post("/api/odpowiedzi/szkic", {"id": "eventy-001", "body": "Treść"})
+        self.assertEqual(self.post("/api/odpowiedzi/wyslij", {"id": "eventy-001", "quote": False, "close": True}).status, 200)
+        self.assertNotIn("napisał(a):", self.smtp.sent[-1].get_body(("plain",)).get_content())
+        self.assertTrue(self.data(self.post("/api/odpowiedzi/watek", {"id": "eventy-001"}))["thread"]["closed"])
 
 
 class OverviewAndFetchTests(RepliesWebCase):

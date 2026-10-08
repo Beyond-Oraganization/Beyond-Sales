@@ -6,7 +6,7 @@ wiadomości jest niezaufana: trafia do przeglądarki jako tekst i tylko tak jest
 
 from __future__ import annotations
 
-from perno.services import replies, replies_sync
+from perno.services import replies, replies_send, replies_sync
 from perno.settings import ConfigError
 from perno.web import layout
 from perno.web.context import AppContext
@@ -42,7 +42,7 @@ def api_list(req: Request, ctx: AppContext) -> Response:
 
 
 def api_thread(req: Request, ctx: AppContext) -> Response:
-    return json_response(replies.thread_view(_store(ctx), _text(req, "id")))
+    return json_response(replies.thread_view(_store(ctx), _text(req, "id"), ctx.config.load()))
 
 
 def _message_id(req: Request) -> int:
@@ -66,6 +66,36 @@ def api_rate(req: Request, ctx: AppContext) -> Response:
     result = replies.rate(_store(ctx), _text(req, "id"), req.json.get("rating"), note=req.json.get("note", ""), by=by,
                           now=ctx.db.now(), restore=bool(restore))
     return json_response(result)
+
+
+def api_draft(req: Request, ctx: AppContext) -> Response:
+    result = replies_send.save_draft(_store(ctx), ctx.config.load(), _text(req, "id"), req.json.get("body"), author="human", now=ctx.db.now())
+    return json_response(result)
+
+
+def api_draft_discard(req: Request, ctx: AppContext) -> Response:
+    return json_response({"discarded": _store(ctx).discard_draft(_text(req, "id"))})
+
+
+def _optional_imap(ctx: AppContext):
+    """Fabryka sesji IMAP do kopii w Wysłanych albo None, gdy odbiór jest tu zablokowany (baza demo)."""
+    try:
+        return ctx.imap_connector()
+    except ConfigError:
+        return None
+
+
+def api_send(req: Request, ctx: AppContext) -> Response:
+    acks = req.json.get("ack", [])
+    if not isinstance(acks, list) or not all(isinstance(code, str) for code in acks):
+        raise HttpError(400, "Pole ack musi być listą kodów.")
+    options = replies_send.SendOptions(acks=tuple(acks), quote=req.json.get("quote", True) is not False, close=req.json.get("close") is True,
+                                       imap_factory=_optional_imap(ctx))
+    try:
+        mailers = ctx.mailers()
+    except ConfigError as exc:
+        raise HttpError(400, str(exc)) from exc
+    return json_response(replies_send.send_reply(_store(ctx), ctx.config.load(), mailers, _text(req, "id"), options, ctx.db.now()))
 
 
 def api_state(req: Request, ctx: AppContext) -> Response:
@@ -108,6 +138,9 @@ PAGE = Page(
         ("POST", "/api/odpowiedzi/wiadomosc"): api_message,
         ("POST", "/api/odpowiedzi/kandydaci"): api_candidates,
         ("POST", "/api/odpowiedzi/ocena"): api_rate,
+        ("POST", "/api/odpowiedzi/szkic"): api_draft,
+        ("POST", "/api/odpowiedzi/szkic-usun"): api_draft_discard,
+        ("POST", "/api/odpowiedzi/wyslij"): api_send,
         ("POST", "/api/odpowiedzi/akcja"): api_state,
         ("POST", "/api/odpowiedzi/status"): api_status,
         ("POST", "/api/odpowiedzi/przypisz"): api_assign,

@@ -22,7 +22,9 @@ const message = (over) => Object.assign({id: 1, direction: 'in', kind: 'human', 
 function view(id, over) {
   const thread = row(id, over && over.thread);
   return Object.assign({thread, origin: {id, subject: 'Temat kampanii', text: 'Treść naszego maila', sent_at: '2026-09-29T13:00:00', website: 'https://firma.pl', email: 'a@firma.pl'},
-    messages: [message()], ratings: [], suggestion: null, statuses: [{code: 'zainteresowany', label: 'Zainteresowany', color: '#be185d'}]}, over || {});
+    messages: [message()], ratings: [], suggestion: null, statuses: [{code: 'zainteresowany', label: 'Zainteresowany', color: '#be185d'}],
+    compose: {can_reply: true, mailbox: 'roman@z3x.pl', mailbox_ok: true, mailbox_problem: '', to: 'anna@x.pl', subject: 'Re: Temat', needs_ack: [], signature: 'Roman', draft: null}},
+  over || {});
 }
 
 function overview(over) {
@@ -41,6 +43,9 @@ async function boot(options) {
     if (url === '/api/odpowiedzi/watek') return state.views[body.id] || view(body.id);
     if (url === '/api/odpowiedzi/ocena') return {previous: {rating: null, by: null, note: ''}};
     if (url === '/api/odpowiedzi/akcja') return {ok: true, action: body.action};
+    if (url === '/api/odpowiedzi/szkic') return {saved: true, id: 5};
+    if (url === '/api/odpowiedzi/szkic-usun') return {discarded: true};
+    if (url === '/api/odpowiedzi/wyslij') return {sent: true, message_id: 'nowy@z3x.pl', warning: ''};
     return {};
   }});
   app.load(['common.js', 'odpowiedzi.js']);
@@ -381,4 +386,187 @@ test('błąd serwera przy otwarciu wątku jest komunikatem, nie pustym ekranem',
   rowNodes(app)[0].click();
   await app.settle();
   assert.equal(app.first('.rp-empty').textContent, 'Nie ma wątku eventy-001.');
+});
+
+// ---- edytor odpowiedzi ----------------------------------------------------------------------------------------------
+
+async function openFirst(options) {
+  const booted = await boot(options);
+  rowNodes(booted.app)[0].click();
+  await booted.app.settle();
+  return booted;
+}
+
+const type = (app, text) => { const area = app.first('.rp-draft'); area.value = text; area.dispatch('input'); return area; };
+const button = (app, text) => app.all('button').find((b) => b.textContent === text);
+
+test('edytor: zamknięty pokazuje „Odpowiedz”, a po kliknięciu od, do i temat oraz pole tekstowe', async () => {
+  const {app} = await openFirst();
+  assert.ok(!app.first('.rp-draft'));
+  button(app, 'Odpowiedz').click();
+  await app.settle();
+  assert.ok(app.first('.rp-draft'));
+  const head = app.first('.rp-compose-head').textContent;
+  assert.ok(head.includes('Od: roman@z3x.pl') && head.includes('Do: anna@x.pl') && head.includes('Re: Temat'), head);
+  assert.equal(app.first('.rp-draft').getAttribute('placeholder'), 'Napisz odpowiedź…');
+});
+
+test('edytor: pisanie zapisuje szkic po chwili (jeden zapis na serię znaków), a wyczyszczenie go usuwa', async () => {
+  const {app} = await openFirst();
+  button(app, 'Odpowiedz').click();
+  await app.settle();
+  type(app, 'Dzi');
+  type(app, 'Dziękuję za wiadomość.');
+  assert.equal(app.callsTo('/api/odpowiedzi/szkic').length, 0, 'zapis czeka na koniec pisania');
+  await app.flushTimers();
+  assert.deepEqual(app.callsTo('/api/odpowiedzi/szkic').map((c) => c.body), [{id: 'eventy-001', body: 'Dziękuję za wiadomość.'}]);
+  assert.equal(app.first('.rp-compose-foot .rp-hint').textContent, 'Szkic zapisany');
+  type(app, '   ');
+  await app.flushTimers();
+  assert.equal(app.callsTo('/api/odpowiedzi/szkic-usun').length, 1);
+});
+
+test('edytor: istniejący szkic jest wczytany, szkic AI ma ostrzeżenie, a nieudana wysyłka pokazuje powód', async () => {
+  const draft = (over) => view('eventy-001', {compose: Object.assign(view('x').compose, {draft: Object.assign({id: 9, body: 'Treść szkicu', author: 'human', state: 'draft', error: ''}, over)})});
+  const human = await openFirst({views: {'eventy-001': draft()}});
+  assert.equal(human.app.first('.rp-draft').value, 'Treść szkicu');
+  assert.ok(!human.app.texts().includes('Claude Code'));
+  const ai = await openFirst({views: {'eventy-001': draft({author: 'ai'})}});
+  assert.ok(ai.app.texts().includes('Szkic przygotował Claude Code'));
+  const failed = await openFirst({views: {'eventy-001': draft({state: 'failed', error: '550 odrzucone'})}});
+  assert.ok(failed.app.texts().includes('Ostatnia próba wysłania nie udała się: 550 odrzucone'));
+});
+
+test('edytor: skrzynka bez SMTP i wątek bez odpowiedzi człowieka nie dają pola do pisania, tylko powód', async () => {
+  const noBox = await openFirst({views: {'eventy-001': view('eventy-001', {compose: {can_reply: true, mailbox: 'x@z3x.pl', mailbox_ok: false, mailbox_problem: 'Skrzynka x@z3x.pl nie jest skonfigurowana (SMTP).'}})}});
+  assert.ok(noBox.app.texts().includes('nie jest skonfigurowana'));
+  assert.ok(!noBox.app.first('.rp-draft') && !button(noBox.app, 'Odpowiedz'));
+  const none = await openFirst({views: {'eventy-001': view('eventy-001', {compose: {can_reply: false, reason: 'W tym wątku nie ma odpowiedzi człowieka.'}})}});
+  assert.ok(none.app.texts().includes('W tym wątku nie ma odpowiedzi człowieka.'));
+});
+
+test('wysyłka: po kliknięciu nic nie wychodzi od razu, jest „Cofnij”, a po sześciu sekundach rusza z właściwymi danymi', async () => {
+  const {app} = await openFirst();
+  button(app, 'Odpowiedz').click();
+  await app.settle();
+  type(app, 'Dziękuję, wysyłam cennik.');
+  button(app, 'Wyślij').click();
+  await app.settle();
+  assert.equal(app.callsTo('/api/odpowiedzi/wyslij').length, 0);
+  assert.ok(app.callsTo('/api/odpowiedzi/szkic').length >= 1, 'szkic zapisany przed wysyłką');
+  assert.ok(app.first('.toast-action'), 'przycisk Cofnij');
+  assert.ok(app.all('.rp-composer button').every((b) => b.disabled), 'edytor zablokowany na czas odliczania');
+  await app.flushTimers();
+  assert.deepEqual(app.callsTo('/api/odpowiedzi/wyslij')[0].body, {id: 'eventy-001', ack: [], quote: true, close: false});
+  assert.ok(app.texts().includes('Wysłano.'));
+});
+
+test('wysyłka: „Cofnij” anuluje wysyłkę i zwalnia edytor, a szkic zostaje', async () => {
+  const {app} = await openFirst();
+  button(app, 'Odpowiedz').click();
+  await app.settle();
+  type(app, 'Treść');
+  button(app, 'Wyślij').click();
+  await app.settle();
+  app.first('.toast-action').click();
+  await app.settle();
+  await app.flushTimers();
+  assert.equal(app.callsTo('/api/odpowiedzi/wyslij').length, 0);
+  assert.ok(app.all('.rp-composer button').every((b) => !b.disabled));
+  assert.equal(app.first('.rp-draft').value, 'Treść');
+});
+
+test('wysyłka: „Wyślij i zamknij” i odznaczony cytat trafiają do serwera', async () => {
+  const {app} = await openFirst();
+  button(app, 'Odpowiedz').click();
+  await app.settle();
+  type(app, 'Treść');
+  app.first('#quoteChk').checked = false;
+  button(app, 'Wyślij i zamknij').click();
+  await app.settle();
+  await app.flushTimers();
+  assert.deepEqual(app.callsTo('/api/odpowiedzi/wyslij')[0].body, {id: 'eventy-001', ack: [], quote: false, close: true});
+});
+
+test('wysyłka przy prośbie o brak kontaktu: arkusz z potwierdzeniem, bez zgody nic nie wychodzi, ze zgodą idzie z kodem', async () => {
+  const optout = () => view('eventy-001', {compose: Object.assign(view('x').compose, {needs_ack: ['optout']})});
+  const declined = await openFirst({views: {'eventy-001': optout()}});
+  button(declined.app, 'Odpowiedz').click();
+  await declined.app.settle();
+  type(declined.app, 'Potwierdzamy wypisanie.');
+  button(declined.app, 'Wyślij').click();
+  await declined.app.settle();
+  const sheet = declined.app.first('dialog');
+  assert.ok(sheet && sheet.opened && sheet.textContent.includes('zaprzestanie kontaktu'), 'arkusz ostrzeżenia');
+  sheet.close('cancel');
+  await declined.app.settle();
+  await declined.app.flushTimers();
+  assert.equal(declined.app.callsTo('/api/odpowiedzi/wyslij').length, 0);
+  const accepted = await openFirst({views: {'eventy-001': optout()}});
+  button(accepted.app, 'Odpowiedz').click();
+  await accepted.app.settle();
+  type(accepted.app, 'Potwierdzamy wypisanie.');
+  button(accepted.app, 'Wyślij').click();
+  await accepted.app.settle();
+  accepted.app.first('dialog').close('ok');
+  await accepted.app.settle();
+  await accepted.app.flushTimers();
+  assert.deepEqual(accepted.app.callsTo('/api/odpowiedzi/wyslij')[0].body.ack, ['optout']);
+});
+
+test('wysyłka: błąd serwera jest komunikatem z powodem, a edytor wraca do pracy', async () => {
+  const {app} = await openFirst({respond: async (url) => (url === '/api/odpowiedzi/wyslij' ? {__status: 502, body: {error: 'Nie udało się wysłać: 550 odrzucone'}} : undefined)});
+  button(app, 'Odpowiedz').click();
+  await app.settle();
+  type(app, 'Treść');
+  button(app, 'Wyślij').click();
+  await app.settle();
+  await app.flushTimers();
+  assert.ok(app.texts().includes('Nie udało się wysłać: 550 odrzucone'));
+  assert.ok(app.all('.rp-composer button').every((b) => !b.disabled));
+});
+
+test('wysyłka bez treści nie rusza, a pole nie wysyła pustej odpowiedzi', async () => {
+  const {app} = await openFirst();
+  button(app, 'Odpowiedz').click();
+  await app.settle();
+  button(app, 'Wyślij').click();
+  await app.settle();
+  assert.ok(app.texts().includes('Najpierw napisz odpowiedź.'));
+  assert.equal(app.callsTo('/api/odpowiedzi/wyslij').length, 0);
+});
+
+test('skróty edytora: r otwiera i ustawia fokus, Ctrl+Enter w polu wysyła, a poza polem nie', async () => {
+  const {app} = await openFirst();
+  app.key('r');
+  await app.settle();
+  const area = app.first('.rp-draft');
+  assert.ok(area, 'edytor otwarty');
+  assert.equal(app.document.activeElement, area);
+  type(app, 'Treść');
+  app.key('Enter', {ctrlKey: true, target: area});
+  await app.settle();
+  assert.ok(app.first('.toast-action'), 'rozpoczęto wysyłkę');
+  const {app: other} = await openFirst();
+  other.key('Enter', {ctrlKey: true});
+  await other.settle();
+  assert.ok(!other.first('.toast-action'));
+});
+
+test('niezapisany szkic jest zapisywany przed przeładowaniem wątku po zmianie oceny', async () => {
+  const {app} = await openFirst();
+  button(app, 'Odpowiedz').click();
+  await app.settle();
+  type(app, 'Napisane, ale jeszcze nie zapisane');
+  app.all('.rp-rate button')[0].click();
+  await app.settle();
+  assert.deepEqual(app.callsTo('/api/odpowiedzi/szkic').map((c) => c.body.body), ['Napisane, ale jeszcze nie zapisane']);
+});
+
+test('wrogi adres i temat w nagłówku edytora są tekstem, a treść szkicu jest wartością pola, nie znacznikami', async () => {
+  const hostile = view('eventy-001', {compose: Object.assign(view('x').compose, {to: EVIL, subject: EVIL, mailbox: EVIL, draft: {id: 1, body: EVIL, author: 'human', state: 'draft', error: ''}})});
+  const {app} = await openFirst({views: {'eventy-001': hostile}});
+  assert.ok(app.first('.rp-compose-head').textContent.includes(EVIL));
+  assert.equal(app.first('.rp-draft').value, EVIL);
+  assert.equal(app.all('img').length + app.all('script').length, 0);
 });
