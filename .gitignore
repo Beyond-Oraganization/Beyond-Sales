@@ -22,3 +22,6 @@ assets/inline/
 
 # Uwaga: data/ zawiera listy firm i adresy e-mail (dane osobowe kontaktów służbowych).
 # Repozytorium jest lokalne — nie wypychaj go do zdalnego serwera bez przeglądu data/.
+
+# Zbiory ze skanu bez bazy (ai.py zeskrapuj): zawierają adresy e-mail i telefony z cudzych stron
+data/skrap/

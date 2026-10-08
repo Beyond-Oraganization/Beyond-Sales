@@ -13,7 +13,7 @@ migrate_csv_to_sql.py  jednorazowa migracja dawnego Maile.csv do bazy           
 scrape.py            skraper stron firm (kontekst i kontakty) — z terminala; to samo robi zakładka Skraper → perno.cli.scrape
 firmy.py             nowe firmy z CSV do bazy oraz przypisanie im kraju, miasta i adresu      → perno.cli.firms
 wypelnij.py          uzupełnianie maili treścią z zakończonych skanów                          → perno.cli.enrich
-ai.py                krótkie polecenia dla Claude Code: dodaj firmy, skrót po skanie, zapis maili → perno.cli.ai (instrukcja: AI_INSTRUCTIONS.md)
+ai.py                krótkie polecenia dla Claude Code: dodaj firmy, skrót po skanie, zapis maili, skan stron bez bazy → perno.cli.ai (instrukcja: AI_INSTRUCTIONS.md)
 build_seed_data.py   buduje data/*.csv (dane firm) ze źródeł                                  → perno.cli.seed
 dashboard.py         statyczny podgląd index.html tylko do odczytu — powstaje na żądanie (bez treści maili; --with-bodies) → perno.cli.dashboard
 index.html           wynik dashboard.py (te same tokeny designu co panel); nie jest odświeżany po każdej zmianie, bo przy tysiącach firm byłoby to kosztowne
@@ -558,6 +558,10 @@ python3 ai.py brief --segment kancelarie --limit 10 [--po ID] # skrót firm po s
 python3 ai.py zapisz maile.json --dry-run         # reguły treści + złożenie maila z szablonu; bez --dry-run zapis (status „Do wysłania”)
 python3 ai.py pomin ID... --powod "..."           # status „Nie pasuje” (firma nie wraca do kolejki treści)
 python3 ai.py skan stop|wznow
+python3 ai.py zeskrapuj example.com --nazwa test --max-stron 25    # skan stron BEZ bazy: CSV + tekst w data/skrap/test/
+python3 ai.py szukaj test "rezerwacja online" --domeny             # fragmenty wokół fraz ze źródłem / trafienia na domenę
+python3 ai.py wyciagnij test --pole nip --pole cena --ma "rezerwacje=rezerwacja|booking" --dowod   # tabela CSV z polami
+python3 ai.py zbiory
 ```
 
 - **Typ firm (segment) jest dowolną etykietą** (małe litery, cyfry, myślniki; „Szkoły jazdy” zapisze się jako `szkoly-jazdy`).
@@ -571,6 +575,17 @@ python3 ai.py skan stop|wznow
   `zapisz` nie umie złożyć (np. follow-up), są odrzucane z komunikatem. Zapis robi kopię w `backup/`; niczego nie wysyła.
 - **Skan z `dodaj --skan`:** tylko nowo dodane firmy, najwyżej 100 naraz, zawsze profil `kontekst`; zasady uprzejmości skrapera
   (sekcja 5) obowiązują bez zmian.
+- **Skan bez bazy (`zeskrapuj`, `szukaj`, `wyciagnij`, `zbiory`; komenda `ZESKRAPUJ … i PRZEANALIZUJ …` w `AI_INSTRUCTIONS.md`, sekcja 4).**
+  Jednorazowe pobranie stron, gdy chodzi o informacje ze stron, a nie o firmy do kampanii. Używa tego samego crawlera co skan firm
+  (`scraper/company_crawl`, robots.txt, odstęp ≥ 1 s, limity na IP, zatrzymanie po odmowie serwera, profil `kontekst`, domyślnie 25 stron
+  na domenę, najwyżej 200 domen naraz), ale zamiast `Store` dostaje `scraper/memory_store.py` (magazyn w pamięci bez dostępu do bazy; kontakty
+  są wyciągane tak samo jak w skanie firm). Wyniki witryny trafiają do plików zaraz po jej zakończeniu (`services/adhoc_scrape`,
+  `services/scrape_dataset`): `data/skrap/<nazwa>/witryny.csv` (status skanu, tytuł, opis, e-maile, telefony, social, formularz),
+  `strony.csv`, `tekst/<domena>.txt`, `meta.json` i `skraper.log`. `szukaj` pokazuje fragmenty wokół fraz (bez wielkości liter i
+  ogonków; `--regex` dla wyrażeń), `wyciagnij` buduje tabelę CSV z kolumn `--pole` (dane ze skanu, NIP/REGON/KRS/cena albo
+  `nazwa=regex`) i `--ma nazwa=fraza|fraza` (tak/nie; `brak_danych`, gdy witryna się nie zeskanowała). Logika dopasowań:
+  `domain/text_search.py`, zapytania: `services/scrape_query.py`. Wartości w CSV są zabezpieczone przed formułami arkusza, a tekst stron
+  jest niezaufany (znaki sterujące usuwane, linie `####` w treści escapowane). `data/skrap/` jest w `.gitignore`.
 
 ## 6. Terminal (`send_emails.py`)
 

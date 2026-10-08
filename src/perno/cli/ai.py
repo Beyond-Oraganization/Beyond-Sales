@@ -10,6 +10,12 @@
   python3 ai.py pomin ID... --powod "..."          # firma nie pasuje: wychodzi z kolejki treści
   python3 ai.py skan stop|wznow                    # zatrzymanie / wznowienie skanu stron
 
+Skan jednorazowy bez bazy (pliki w data/skrap/<nazwa>/, nic nie trafia do tabel firm ani maili):
+  python3 ai.py zeskrapuj ADRES... [--plik f] [--nazwa N] [--max-stron 25]   # strony do CSV + tekstu
+  python3 ai.py szukaj NAZWA FRAZA... [--domeny] [--csv]                    # fragmenty wokół fraz / trafienia na domenę
+  python3 ai.py wyciagnij NAZWA --pole nip --ma "rezerwacje=rezerwacja|booking" # tabela CSV z polami
+  python3 ai.py zbiory                                                       # zbiory zeskrapowane wcześniej
+
 Nic tu nie wysyła maili: zapisane wiersze mają status „Do wysłania”, a wysyłkę zatwierdza człowiek (panel / Automat).
 Każde polecenie zmieniające bazę najpierw zapisuje jej kopię w backup/.
 """
@@ -22,6 +28,7 @@ import sys
 from typing import Optional
 
 from perno import settings as cfg
+from perno.cli import ai_scrape
 from perno.cli import scrape as scrape_cli
 from perno.cli.firms import segment_arg
 from perno.db import Database, DbError
@@ -80,6 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan = sub.add_parser("skan", help="Zatrzymaj albo wznów skan stron.")
     scan.add_argument("akcja", choices=("stop", "wznow"))
+    ai_scrape.add_parsers(sub)
     return parser
 
 
@@ -209,7 +217,7 @@ def cmd_scan(args) -> int:
 
 
 COMMANDS = {"szablony": cmd_templates, "znane": cmd_known, "dodaj": cmd_add, "status": cmd_status, "brief": cmd_brief,
-            "zapisz": cmd_save, "pomin": cmd_skip, "skan": cmd_scan}
+            "zapisz": cmd_save, "pomin": cmd_skip, "skan": cmd_scan, **ai_scrape.COMMANDS}
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -217,7 +225,7 @@ def main(argv: Optional[list] = None) -> int:
     try:
         return COMMANDS[args.command](args)
     except (DbError, ConfigError, SettingsError, firms_import.FirmsError, scan_control.ScanRequestError, RunActive,
-            template_catalog.UnknownTemplate, OSError, ValueError) as exc:
+            template_catalog.UnknownTemplate, OSError, ValueError, *ai_scrape.ERRORS) as exc:
         print(f"BŁĄD: {exc}", file=sys.stderr)
         return 1
 
