@@ -611,6 +611,10 @@ maili jedzie do firm spoza Polski (szablony są po polsku). Świeża instalacja 
   Po zmianie uruchom `--dry-run --regenerate-pending` (wysłane maile nigdy nie są nadpisywane). Wersje językowe
   (`icebreaker.en.html`, `icebreaker.de.html`, `icebreaker.es.html`) są używane tylko przez `wypelnij.py`. `{{season}}` to
   opcjonalne zdanie o sezonowości: bez niego (puste pole) akapit znika z maila.
+- Szablon follow-upu (przypomnienie po wysłanym mailu): `templates/followup.html` oraz `followup.en.html`, `followup.de.html`,
+  `followup.es.html`. Tokeny: `{{sent_date}}` (data pierwszego maila), `{{recap}}` (co i o co pytał pierwszy mail), `{{angle}}`
+  (akapit dopasowany do firmy), `{{f_dop}}` (Pana/Pani/Państwa, tylko wersja polska) i `{{sender_name}}`. Szablon nie jest jeszcze
+  podpięty do generowania ani wysyłki; `{{recap}}` i `{{angle}}` pisze się osobno dla każdej firmy.
 - **Uzupełnianie ze skanu — `wypelnij.py`.** Dla firm z zakończonym skanem (zakładka Skraper albo `scrape.py`) przygotowuje
   treść maila z kontaktów znalezionych na stronach firmy:
   `python3 wypelnij.py lista` (które firmy się kwalifikują), `kontekst --out DIR` (po jednym pliku .md na firmę: opis,
