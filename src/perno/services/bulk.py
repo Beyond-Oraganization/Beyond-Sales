@@ -38,6 +38,7 @@ WARNING_TEXT = {
     "drops_sent_at": "Tym firmom zniknie zapisana data wysłania",
     "manual_sent": "Te firmy zostaną oznaczone jako wysłane (z datą „teraz”), choć program niczego do nich nie wysłał",
     "reopens_blocked": "Te firmy miały status „Nie kontaktować” — po zmianie wrócą do puli wysyłkowej",
+    "reopens_bounced": "Poczta na te adresy wróciła (status „Zwrot”) — po zmianie znów pójdzie na adres, który nie istnieje",
 }
 
 
@@ -210,6 +211,8 @@ def _warnings_for(row: Mapping, after: Mapping) -> list:
         codes.append("manual_sent")
     if row["status"] == st.STATUS_DO_NOT_CONTACT and new_status in st.SENDABLE_STATUSES:
         codes.append("reopens_blocked")
+    if row["status"] == st.STATUS_BOUNCED and new_status in st.SENDABLE_STATUSES:
+        codes.append("reopens_bounced")
     return codes
 
 

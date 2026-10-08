@@ -157,6 +157,13 @@ class PreviewTests(BulkCase):
         plan = self.preview(8, status="blad")
         self.assertEqual(plan.warnings, {"reopens_blocked": ["eventy-008"]})
 
+    def test_putting_a_bounced_address_back_in_the_queue_needs_an_acknowledgement(self):
+        put(self.database, sample_row(9, status="zwrot", sent_at="2026-09-25T10:00:00"))
+        plan = self.preview(9, status="do_wyslania")
+        self.assertIn("reopens_bounced", plan.needs_ack)
+        self.assertEqual(plan.warnings["reopens_bounced"], ["eventy-009"])
+        self.assertNotIn("reopens_bounced", self.preview(9, status="odpowiedzial").warnings)  # nie wraca do wysyłki
+
     def test_data_fields_compare_with_what_is_stored(self):
         plan = self.preview(1, 7, country="GB")
         self.assertEqual(plan.unchanged, ["eventy-007"])  # 007 jest już w GB

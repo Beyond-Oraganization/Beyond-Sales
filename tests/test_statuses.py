@@ -19,9 +19,18 @@ class MetaTests(unittest.TestCase):
     def test_order_follows_the_lifecycle_of_a_firm(self):
         self.assertEqual(list(st.STATUS_META), [
             "do_wyslania", "wysylanie", "wyslano", "odpowiedzial", "zainteresowany",
-            "blad", "pominieto_brak_email", "pominieto_klient", "oczekuje_na_tresc", "nie_kontaktowac",
+            "blad", "zwrot", "pominieto_brak_email", "pominieto_klient", "oczekuje_na_tresc", "nie_kontaktowac",
             "pominieto_dopasowanie",
         ])
+
+    def test_a_bounce_is_a_known_status_that_cannot_be_sent_from_and_does_not_stop_the_company(self):
+        self.assertEqual(st.STATUS_META["zwrot"][0], "Zwrot")
+        self.assertIn(st.STATUS_BOUNCED, st.MANUAL_STATUSES)
+        self.assertNotIn(st.STATUS_BOUNCED, st.SENDABLE_STATUSES)
+        self.assertNotIn(st.STATUS_BOUNCED, st.COMPANY_STOPS)  # inne adresy firmy nadal wolno wysyłać
+        self.assertIn(st.STATUS_BOUNCED, st.KEEPS_SENT_AT)  # mail wyszedł, więc dzienne liczniki się nie zmieniają
+        self.assertIn(st.STATUS_BOUNCED, st.PROTECTED_FROM_REGENERATION)
+        self.assertEqual(st.resolve_sent_at(st.STATUS_BOUNCED, SENT_AT, NOW), SENT_AT)
 
     def test_new_statuses_can_be_picked_by_hand_but_never_sent_from(self):
         for status in NEW_STATUSES:
