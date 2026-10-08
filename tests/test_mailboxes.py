@@ -23,6 +23,31 @@ class PrefixTests(unittest.TestCase):
         self.assertEqual([mb.smtp_prefix(n) for n in (1, 2, 3, 10)], ["SMTP", "SMTP2", "SMTP3", "SMTP10"])
 
 
+    def test_imap_keys_use_the_same_numbering(self):
+        self.assertEqual([mb.imap_prefix(n) for n in (1, 2, 12)], ["IMAP", "IMAP2", "IMAP12"])
+
+
+class SlotKeyTests(unittest.TestCase):
+    def test_keys_map_to_their_mailbox_number(self):
+        for key, slot in (("SMTP_HOST", 1), ("IMAP_PASSWORD", 1), ("SMTP2_USER", 2), ("IMAP37_HOST", 37), ("SMTP9999_PORT", 9999),
+                          ("SMTP10_USE_SSL", 10)):
+            with self.subTest(key=key):
+                self.assertEqual(mb.key_slot(key), slot)
+
+    def test_malformed_or_foreign_keys_have_no_mailbox(self):
+        for key in ("SMTP1_HOST", "SMTP0_HOST", "SMTP02_HOST", "SMTP10000_HOST", "SMTP_", "SMTPX_HOST", "NOTIFY_EMAIL", "DB_HOST", "smtp2_host"):
+            with self.subTest(key=key):
+                self.assertIsNone(mb.key_slot(key))
+
+    def test_extra_slots_come_sorted_and_unique_from_any_key(self):
+        keys = ["SMTP_HOST", "SMTP12_HOST", "IMAP12_HOST", "SMTP3_USER", "IMAP5_HOST", "SENDER_NAME", "SMTP1_X"]
+        self.assertEqual(mb.slots_in_keys(keys), [3, 5, 12])
+
+    def test_a_large_number_of_mailboxes_keeps_its_order(self):
+        keys = [f"SMTP{n}_HOST" for n in range(60, 1, -1)]
+        self.assertEqual(mb.slots_in_keys(keys), list(range(2, 61)))
+
+
 class ChooseTests(unittest.TestCase):
     def test_an_idle_day_starts_with_the_first_mailbox(self):
         self.assertEqual(mb.choose_mailbox([A, B, C], {}, 5), A)

@@ -463,8 +463,8 @@ resztę. Jedyna rzecz wymagająca terminala to ewentualne wybudzanie Maca przed 
   wysyłki zamiast się kończyć.
 - Każdy mail idzie tą samą drogą co z panelu (zajęcie wiersza w bazie), więc ręczna wysyłka obok automatu nie zrobi
   duplikatu, a dzienny limit liczy się z bazy — razem z ręcznymi wysyłkami.
-- **Kilka skrzynek nadawczych.** Skrzynki dodajesz w zakładce „Konfiguracja” (do 10; pierwsza to `SMTP_*`, kolejne
-  `SMTP2_*` … `SMTP10_*`). Maile wychodzą **po kolei** ze wszystkich: za każdym razem wybierana jest skrzynka, która dziś
+- **Kilka skrzynek nadawczych.** Skrzynki dodajesz w zakładce „Konfiguracja” (dowolnie wiele; pierwsza to `SMTP_*`, kolejne
+  `SMTP2_*`, `SMTP3_*` … o dowolnym numerze, nie muszą być ciągłe). Maile wychodzą **po kolei** ze wszystkich: za każdym razem wybierana jest skrzynka, która dziś
   wysłała najmniej, a przy remisie ta, która wysyłała najdawniej. Kolejność wynika z bazy (kolumna `maile.sent_from`, adres
   skrzynki), więc przeżywa restart demona i jest wspólna dla wysyłki ręcznej z panelu i automatu. **Dzienny limit obowiązuje
   każdą skrzynkę osobno** (limit 50 przy 3 skrzynkach = do 150 maili dziennie); plan, prognoza i podsumowania liczą sumę.

@@ -7,11 +7,16 @@ dla wysyłki ręcznej z panelu i dla automatu. Dzienny limit obowiązuje każdą
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Collection, Mapping, Optional, Sequence
+from typing import Collection, Iterable, Mapping, Optional, Sequence
 
-MAX_MAILBOXES = 10  # skrzynka 1 to SMTP_*, kolejne SMTP2_* … SMTP10_*
+# Skrzynek może być dowolnie wiele: skrzynka 1 to SMTP_* / IMAP_*, kolejne SMTP2_* / IMAP2_*, SMTP3_* … Numery nie muszą być
+# ciągłe. Sufit dotyczy tylko zapisu numeru w kluczu (cztery cyfry), nie liczby skrzynek w ruchu.
+MAX_SLOT = 9999
+
+_SLOT_KEY = re.compile(r"(SMTP|IMAP)(\d*)_[A-Z0-9_]+")
 
 
 @dataclass(frozen=True)
@@ -24,6 +29,29 @@ class DayUse:
 def smtp_prefix(slot: int) -> str:
     """Przedrostek kluczy config.env skrzynki: `SMTP` dla pierwszej, `SMTP2`, `SMTP3`… dla kolejnych."""
     return "SMTP" if slot == 1 else f"SMTP{slot}"
+
+
+def imap_prefix(slot: int) -> str:
+    """Przedrostek kluczy IMAP skrzynki: `IMAP` dla pierwszej, `IMAP2`, `IMAP3`… dla kolejnych."""
+    return "IMAP" if slot == 1 else f"IMAP{slot}"
+
+
+def key_slot(key: str) -> Optional[int]:
+    """Numer skrzynki, do której należy klucz `SMTPn_*` / `IMAPn_*` (1 dla `SMTP_*` / `IMAP_*`); None dla innych kluczy
+    oraz dla numerów w złym zapisie (`SMTP1_`, `SMTP02_`, powyżej `MAX_SLOT`)."""
+    match = _SLOT_KEY.fullmatch(key)
+    if match is None:
+        return None
+    digits = match.group(2)
+    if not digits:
+        return 1
+    number = int(digits)
+    return number if str(number) == digits and 2 <= number <= MAX_SLOT else None
+
+
+def slots_in_keys(keys: Iterable[str]) -> list:
+    """Numery dodatkowych skrzynek (2 i dalej) występujące w kluczach SMTP / IMAP, rosnąco."""
+    return sorted({slot for slot in map(key_slot, keys) if slot is not None and slot > 1})
 
 
 def choose_mailbox(addresses: Sequence[str], use: Mapping[str, DayUse], daily_cap: Optional[int],

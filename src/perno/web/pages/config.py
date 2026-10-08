@@ -13,7 +13,7 @@ from perno.web.context import AppContext
 from perno.web.http import HttpError, Request, Response, json_response
 from perno.web.page import Page
 
-_PASSWORD_KEY = re.compile(r"SMTP\d*_PASSWORD")
+_PASSWORD_KEY = re.compile(r"(SMTP|IMAP)\d*_PASSWORD")
 
 
 def render(ctx: AppContext) -> str:
@@ -30,6 +30,14 @@ def _description(ctx: AppContext) -> dict:
 
 def api_get(req: Request, ctx: AppContext) -> Response:
     return json_response(_description(ctx))
+
+
+def api_mailbox(req: Request, ctx: AppContext) -> Response:
+    try:
+        slot = int(req.arg("slot"))
+    except ValueError:
+        raise HttpError(400, "Parametr slot musi być liczbą całkowitą.") from None
+    return json_response(config_editor.describe_mailbox(ctx.config.load(), slot))
 
 
 def api_save(req: Request, ctx: AppContext) -> Response:
@@ -49,6 +57,7 @@ PAGE = Page(
     key="konfiguracja", label="Konfiguracja", path="/konfiguracja", render=render, order=40,
     routes={
         ("GET", "/api/config"): api_get,
+        ("GET", "/api/config/skrzynka"): api_mailbox,
         ("POST", "/api/config"): api_save,
         ("POST", "/api/config/test-smtp"): api_test_smtp,
     },

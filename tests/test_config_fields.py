@@ -9,29 +9,64 @@ from perno.scraper import settings as scraper_settings
 
 
 def check(key, raw):
-    return cf.validate(cf.BY_KEY[key], raw)
+    return cf.validate(cf.field_for(key), raw)
 
 
 class MailboxFieldTests(unittest.TestCase):
     def test_every_mailbox_slot_has_the_same_five_fields(self):
-        for slot in range(1, 11):
+        for slot in (1, 2, 10, 11, 25, 250, 9999):
             prefix = "SMTP" if slot == 1 else f"SMTP{slot}"
             group = "mail" if slot == 1 else f"mail{slot}"
-            keys = [f.key for f in cf.FIELDS if f.group == group and f.key.startswith(prefix + "_")]
+            keys = [f.key for f in cf.fields_in_group(group) if f.key.startswith(prefix + "_")]
             self.assertEqual(keys, [f"{prefix}_{name}" for name in ("HOST", "PORT", "USE_SSL", "USER", "PASSWORD")], slot)
             self.assertEqual(cf.mailbox_slot(group), slot)
+            self.assertTrue(all(cf.field_for(key) is not None for key in keys))
 
     def test_only_mailbox_groups_have_a_slot(self):
-        self.assertEqual([cf.mailbox_slot(key) for key in ("notify", "scraper", "mailx")], [None, None, None])
+        self.assertEqual([cf.mailbox_slot(key) for key in ("notify", "scraper", "mailx", "mail1", "mail02", "mail10000")],
+                         [None] * 6)
+
+    def test_the_number_of_mailboxes_is_not_capped(self):
+        config = {f"SMTP{n}_HOST": "h" for n in (2, 3, 11, 40, 120)}
+        keys = [key for key, _, _ in cf.groups_for(config)]
+        self.assertEqual(keys, ["mail", "mail2", "mail3", "mail11", "mail40", "mail120", "notify", "scraper"])
+
+    def test_invalid_slot_numbers_are_unknown_keys(self):
+        for key in ("SMTP1_HOST", "SMTP02_HOST", "SMTP0_HOST", "SMTP10000_HOST", "SMTP3_NOPE", "SMTPX_HOST", "DB_HOST"):
+            with self.subTest(key=key):
+                self.assertIsNone(cf.field_for(key))
+
+    def test_the_next_free_slot_fills_gaps(self):
+        self.assertEqual(cf.next_free_slot({}), 2)
+        self.assertEqual(cf.next_free_slot({"SMTP2_HOST": "h", "SMTP4_USER": "u"}), 3)
+        self.assertEqual(cf.next_free_slot({f"SMTP{n}_HOST": "h" for n in range(2, 30)}), 30)
+
+    def test_the_last_number_is_the_biggest_one_and_then_there_is_nothing_left(self):
+        config = {f"SMTP{n}_HOST": "h" for n in range(2, 9999)}
+        self.assertEqual(cf.next_free_slot(config), 9999)
+        config["SMTP9999_HOST"] = "h"
+        with self.assertRaises(cf.ConfigValueError):
+            cf.next_free_slot(config)
+
+    def test_groups_describe_the_main_and_the_extra_mailboxes_differently(self):
+        self.assertIn("główna", cf.mailbox_group(1)[2])
+        self.assertIn("Dodatkowa", cf.mailbox_group(2)[2])
+        self.assertEqual(cf.mailbox_group(7)[:2], ("mail7", "Poczta (SMTP): skrzynka 7"))
+
+    def test_fields_cannot_be_modified_after_they_are_defined(self):
+        with self.assertRaises(AttributeError):
+            cf.BY_KEY["SMTP_HOST"].label = "inna"  # type: ignore[misc]
 
     def test_extra_mailboxes_are_validated_like_the_first(self):
         self.assertEqual(check("SMTP3_PORT", " 587 "), "587")
-        for key, bad in (("SMTP3_PORT", "99999"), ("SMTP3_HOST", "złe host"), ("SMTP3_USER", "a b"), ("SMTP3_PASSWORD", "x" * 501)):
+        self.assertEqual(check("SMTP37_PORT", "465"), "465")
+        for key, bad in (("SMTP3_PORT", "99999"), ("SMTP3_HOST", "złe host"), ("SMTP3_USER", "a b"), ("SMTP3_PASSWORD", "x" * 501),
+                         ("SMTP37_HOST", "złe host")):
             with self.subTest(key=key), self.assertRaises(cf.ConfigValueError):
                 check(key, bad)
 
     def test_passwords_of_every_slot_are_secrets(self):
-        self.assertTrue(all(cf.BY_KEY[f"SMTP{n}_PASSWORD"].kind == cf.KIND_SECRET for n in range(2, 11)))
+        self.assertTrue(all(cf.field_for(f"SMTP{n}_PASSWORD").kind == cf.KIND_SECRET for n in range(2, 31)))
 
     def test_the_sender_name_stays_single_and_shared(self):
         self.assertEqual([f.key for f in cf.FIELDS if f.key.endswith("SENDER_NAME")], ["SENDER_NAME"])

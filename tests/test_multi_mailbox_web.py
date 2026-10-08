@@ -102,6 +102,23 @@ class ConfigTests(TwoMailboxCase):
         self.assertEqual(len(self.data(self.call("GET", "/api/status"))["mailboxes"]), 2)
         self.assertEqual([k for k in cfg.load_config(self.config_path) if k.startswith("SMTP3")], [])
 
+    def test_mailbox_numbers_above_ten_work_end_to_end(self):
+        box = {"SMTP14_HOST": "smtp14.invalid", "SMTP14_PORT": "587", "SMTP14_USER": "fourteen@example.com", "SMTP14_PASSWORD": "czternaste"}
+        self.assertEqual(self.call("POST", "/api/config", {"values": box}).status, 200)
+        data = self.data(self.call("GET", "/api/config"))
+        self.assertEqual([g["key"] for g in data["groups"]], ["mail", "mail2", "mail14", "notify", "scraper"])
+        self.assertEqual(data["next_slot"], 3)
+        self.assertEqual(len(self.data(self.call("GET", "/api/status"))["mailboxes"]), 3)
+        self.assertNotIn("czternaste", repr(data))
+
+    def test_a_card_for_the_next_mailbox_can_be_fetched(self):
+        card = self.data(self.call("GET", "/api/config/skrzynka", query={"slot": ["3"]}))
+        self.assertEqual((card["key"], card["mailbox"]), ("mail3", 3))
+        self.assertEqual(len(card["fields"]), 5)
+        for bad in ("1", "x", "10000", ""):
+            with self.subTest(slot=bad):
+                self.assertEqual(self.call("GET", "/api/config/skrzynka", query={"slot": [bad]}).status, 400)
+
     def test_half_a_mailbox_or_a_duplicate_address_is_a_400_and_changes_nothing(self):
         before = self.read_config()
         half = self.call("POST", "/api/config", {"values": {"SMTP3_HOST": "smtp3.invalid", "SMTP3_USER": "third@example.com"}})

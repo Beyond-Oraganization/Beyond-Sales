@@ -74,3 +74,40 @@ test('wyczyszczenie zwykłego pola jest zmianą (wraca domyślne)', async () => 
   const {page} = await renderHostilePage();
   assert.deepEqual(fill(page, {...UNTOUCHED, c_SMTP_HOST: {value: ''}}), {values: {SMTP_HOST: ''}, clear: []});
 });
+
+const NEW_CARD = {
+  key: 'mail2', mailbox: 2, title: EVIL.script, description: EVIL.img, fields: [
+    {key: 'SMTP2_HOST', label: EVIL.img, kind: 'text', help: EVIL.script, default: EVIL.attr, value: '', set: false, choices: [], restart: ''},
+    {key: 'SMTP2_PASSWORD', label: 'Hasło', kind: 'secret', help: '', default: '', set: false, choices: [], restart: ''},
+  ],
+};
+
+async function pageWithAddedMailbox() {
+  const requested = [];
+  const page = createPage((url) => {
+    requested.push(url);
+    return url.startsWith('/api/config/skrzynka') ? NEW_CARD : CONFIG;
+  });
+  vm.runInContext(read('common.js') + '\n' + read('konfiguracja.js'), page.context);
+  await settle();
+  await vm.runInContext('addMailbox()', page.context);
+  await settle();
+  return {page, requested};
+}
+
+test('dodanie skrzynki prosi serwer o kartę kolejnego numeru i nie wpuszcza znaczników', async () => {
+  const {page, requested} = await pageWithAddedMailbox();
+  assert.ok(requested.includes('/api/config/skrzynka?slot=2'), requested.join(', '));
+  const html = page.written.join('\n');
+  assert.ok(html.includes('id="card_mail2"'), 'karta nowej skrzynki jest w DOM');
+  assert.ok(!/<script/i.test(html) && !/<img/i.test(html), 'surowy znacznik z danych serwera');
+  assert.deepEqual(attributeNames(html).filter((name) => /^on/i.test(name)), []);
+});
+
+test('nowa skrzynka wysyła tylko to, co człowiek wpisał, a usunięta przed zapisem znika bez śladu', async () => {
+  const {page} = await pageWithAddedMailbox();
+  const typed = fill(page, {...UNTOUCHED, c_SMTP2_HOST: {value: 'smtp2.example.com'}, c_SMTP2_PASSWORD: {value: 'haslo-drugie'}});
+  assert.deepEqual(typed, {values: {SMTP2_HOST: 'smtp2.example.com', SMTP2_PASSWORD: 'haslo-drugie'}, clear: []});
+  vm.runInContext("removeMailbox('2')", page.context);
+  assert.deepEqual(fill(page, {...UNTOUCHED, c_SMTP2_HOST: {value: ''}, c_SMTP2_PASSWORD: {value: ''}}), {values: {}, clear: []});
+});

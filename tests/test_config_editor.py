@@ -27,13 +27,30 @@ class DescribeTests(unittest.TestCase):
         self.assertEqual((fields["HEALTHCHECK_URL"]["set"], "value" in fields["HEALTHCHECK_URL"]), (False, False))
         self.assertEqual((fields["SMTP_HOST"]["value"], fields["SMTP_PORT"]["value"]), ("smtp.example.com", ""))
 
-    def test_groups_and_all_fields_are_listed_in_order(self):
+    def test_an_empty_file_lists_the_main_mailbox_and_fixed_groups_only(self):
         data = ed.describe({}, file_exists=False)
-        self.assertEqual([g["key"] for g in data["groups"]],
-                         ["mail", *(f"mail{slot}" for slot in range(2, 11)), "notify", "scraper"])
-        self.assertEqual([g["mailbox"] for g in data["groups"]][:3] + [data["groups"][-1]["mailbox"]], [1, 2, 3, None])
+        self.assertEqual([g["key"] for g in data["groups"]], ["mail", "notify", "scraper"])
+        self.assertEqual([g["mailbox"] for g in data["groups"]], [1, None, None])
         self.assertEqual(sum(len(g["fields"]) for g in data["groups"]), len(cf.FIELDS))
+        self.assertEqual(data["next_slot"], 2)
         self.assertFalse(data["file_exists"])
+
+    def test_every_mailbox_in_the_file_is_listed_in_numeric_order(self):
+        config = {f"SMTP{n}_USER": f"u{n}@x.pl" for n in (12, 3, 40)}
+        data = ed.describe(config, file_exists=True)
+        self.assertEqual([g["key"] for g in data["groups"]], ["mail", "mail3", "mail12", "mail40", "notify", "scraper"])
+        self.assertEqual(data["next_slot"], 2)
+
+    def test_a_card_for_a_new_mailbox_has_the_same_fields_and_no_values(self):
+        card = ed.describe_mailbox({"SMTP2_USER": "b@b.pl"}, 57)
+        self.assertEqual((card["key"], card["mailbox"]), ("mail57", 57))
+        self.assertEqual([f["key"] for f in card["fields"]], [f"SMTP57_{n}" for n in ("HOST", "PORT", "USE_SSL", "USER", "PASSWORD")])
+        self.assertTrue(all(not f["set"] and f.get("value", "") == "" for f in card["fields"]))
+
+    def test_a_card_for_a_slot_out_of_range_is_refused(self):
+        for slot in (0, 1, -3, 10000):
+            with self.subTest(slot=slot), self.assertRaises(cf.ConfigValueError):
+                ed.describe_mailbox({}, slot)
 
 
 class MailboxChangesTests(unittest.TestCase):

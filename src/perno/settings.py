@@ -15,7 +15,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Mapping, Optional
 
-from perno.domain.mailboxes import MAX_MAILBOXES, smtp_prefix
+from perno.domain.mailboxes import slots_in_keys, smtp_prefix
 
 # Korzeń projektu (katalog z config.env, data/, templates/): src/perno/settings.py leży trzy poziomy niżej.
 # Zakłada instalację edytowalną (`uv sync`); przy zwykłej instalacji z wheela ścieżki danych trzeba by podać jawnie.
@@ -235,10 +235,10 @@ class SmtpSettings:
 
 
 def extra_smtp_slots(config: Mapping[str, str]) -> list:
-    """Dodatkowe skrzynki (SMTP2_* … SMTP10_*) w kolejności numerów. Slot z jakimkolwiek wpisem musi być kompletny
-    (inaczej `ConfigError`), więc połowicznie wpisana skrzynka nie wypadnie po cichu z rotacji."""
+    """Dodatkowe skrzynki (SMTP2_*, SMTP3_* … bez ograniczenia liczby) w kolejności numerów. Slot z jakimkolwiek wpisem
+    musi być kompletny (inaczej `ConfigError`), więc połowicznie wpisana skrzynka nie wypadnie po cichu z rotacji."""
     found = []
-    for slot in range(2, MAX_MAILBOXES + 1):
+    for slot in slots_in_keys(config):
         prefix = smtp_prefix(slot)
         if any(config.get(f"{prefix}_{name}") for name in SMTP_REQUIRED):
             found.append(SmtpSettings.from_config(config, slot))
@@ -249,7 +249,7 @@ def configured_mailboxes(config: Mapping[str, str]) -> list:
     """Skrzynki z kompletnymi danymi, do pokazania w panelu (niekompletne i powtórzone są pomijane bez błędu — rotację
     zabezpiecza `smtp_slots`, która takie przypadki zgłasza)."""
     found: list[SmtpSettings] = []
-    for slot in range(1, MAX_MAILBOXES + 1):
+    for slot in (1, *slots_in_keys(config)):
         try:
             candidate = SmtpSettings.from_config(config, slot)
         except ConfigError:

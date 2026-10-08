@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Optional
+from functools import cache
+from typing import Mapping, Optional
 
-from perno.domain.mailboxes import MAX_MAILBOXES, smtp_prefix
+from perno.domain.mailboxes import MAX_SLOT, key_slot, slots_in_keys, smtp_prefix
 
 KIND_TEXT = "text"
 KIND_SECRET = "secret"  # noqa: S105 — nazwa rodzaju pola, nie hasło
@@ -24,7 +25,7 @@ RESTART_DEMON = "demon"  # klucz czytany przez demona automatu przy starcie (kan
 
 _HOST_RE = re.compile(r"[A-Za-z0-9]([A-Za-z0-9.\-]{0,251}[A-Za-z0-9])?")
 _TOPIC_RE = re.compile(r"[A-Za-z0-9_\-]{8,64}")
-_SLOT_RE = re.compile(r"^SMTP\d+_")  # SMTP2_HOST → SMTP_HOST: te same reguły dla każdej skrzynki
+_SLOT_RE = re.compile(r"^(SMTP|IMAP)\d*_")  # SMTP2_HOST / IMAP_HOST → SMTP_HOST: te same reguły dla każdej skrzynki i dla SMTP, i dla IMAP
 _CONTACT_RE = re.compile(r"[A-Za-z0-9@._:/+\-]{3,200}")  # to samo co scraper.settings.CONTACT_RE (pilnuje tego test)
 
 
@@ -47,8 +48,10 @@ class ConfigField:
     restart: str = ""  # RESTART_DEMON albo pusty
 
 
-def _mailbox_fields(slot: int) -> tuple:
-    prefix, group = smtp_prefix(slot), "mail" if slot == 1 else f"mail{slot}"
+@cache
+def mailbox_fields(slot: int) -> tuple:
+    """Pola jednej skrzynki (numer dowolny, od 1): wysyłanie SMTP."""
+    prefix, group = smtp_prefix(slot), group_key(slot)
     return (
         ConfigField(f"{prefix}_HOST", "Serwer SMTP", group, help="np. smtp.zenbox.pl"),
         ConfigField(f"{prefix}_PORT", "Port SMTP", group, KIND_INT, "465 dla SSL, 587 dla STARTTLS.", low=1, high=65535),
@@ -58,26 +61,41 @@ def _mailbox_fields(slot: int) -> tuple:
     )
 
 
+def group_key(slot: int) -> str:
+    """Klucz grupy pól skrzynki: „mail” dla pierwszej, „mail2”, „mail3” … dla kolejnych."""
+    return "mail" if slot == 1 else f"mail{slot}"
+
+
 def mailbox_slot(group: str) -> Optional[int]:
     """Numer skrzynki grupy pól („mail” = 1, „mail2” = 2 …); None dla grup, które nie są skrzynką."""
     if group == "mail":
         return 1
     digits = group[len("mail"):] if group.startswith("mail") else ""
-    return int(digits) if digits.isdigit() else None
+    if not digits.isdigit() or str(int(digits)) != digits:
+        return None
+    return int(digits) if 2 <= int(digits) <= MAX_SLOT else None
 
 
-GROUPS = (
-    ("mail", "Poczta (SMTP): skrzynka 1", "Skrzynka główna. Maile wychodzą po kolei ze wszystkich skrzynek, a dzienny limit z zakładki Automat obowiązuje każdą z nich osobno. Hasło jest tylko do zapisu: panel go nie pokazuje."),
-    *((f"mail{slot}", f"Poczta (SMTP): skrzynka {slot}", "Dodatkowa skrzynka nadawcza. Wymaga serwera, portu, adresu i hasła.")
-      for slot in range(2, MAX_MAILBOXES + 1)),
+def mailbox_group(slot: int) -> tuple:
+    """Opis grupy skrzynki do formularza: (klucz, tytuł, opis)."""
+    if slot == 1:
+        note = ("Skrzynka główna. Maile wychodzą po kolei ze wszystkich skrzynek, a dzienny limit z zakładki Automat obowiązuje "
+                "każdą z nich osobno. Hasło jest tylko do zapisu: panel go nie pokazuje.")
+    else:
+        note = "Dodatkowa skrzynka nadawcza. Wymaga serwera, portu, adresu i hasła."
+    return (group_key(slot), f"Poczta (SMTP): skrzynka {slot}", note)
+
+
+STATIC_GROUPS = (
     ("notify", "Powiadomienia automatu", "Dokąd automat wysyła alerty i podsumowania. Zmiany widzi demon po ponownym uruchomieniu."),
     ("scraper", "Skraper", "Domyślne ustawienia skanowania stron firm. Zasady uprzejmości (robots.txt, minimum 1 s) nie są do ustawienia."),
 )
 
+GROUPS = (mailbox_group(1), *STATIC_GROUPS)  # grupy stałe; kolejne skrzynki dochodzą z `groups_for`
+
 FIELDS = (
-    *_mailbox_fields(1),
+    *mailbox_fields(1),
     ConfigField("SENDER_NAME", "Nazwa nadawcy", "mail", help="Wspólna dla wszystkich skrzynek: widoczna w nagłówku „Od” i jako podpis maila."),
-    *(field for slot in range(2, MAX_MAILBOXES + 1) for field in _mailbox_fields(slot)),
     ConfigField("NOTIFY_MACOS", "Powiadomienia macOS", "notify", KIND_BOOL, "Okienka w Centrum powiadomień.", "true", restart=RESTART_DEMON),
     ConfigField("NTFY_TOPIC", "Temat ntfy (telefon)", "notify", KIND_SECRET,
                 "Długi, losowy (8–64 znaków: litery, cyfry, - i _). To sekret: kto go zna, czyta i pisze. W aplikacji ntfy zasubskrybuj ten temat.",
@@ -101,7 +119,40 @@ FIELDS = (
     ConfigField("SKRAPER_MAX_MINUTES", "Minut na firmę", "scraper", KIND_INT, "Puste = z profilu.", low=1, high=240),
 )
 
-BY_KEY = {field.key: field for field in FIELDS}
+BY_KEY = {field.key: field for field in FIELDS}  # pola stałe, w tym skrzynki 1; pola kolejnych skrzynek daje `field_for`
+
+
+def field_for(key: str) -> Optional[ConfigField]:
+    """Pole o danym kluczu: stałe albo pole skrzynki o dowolnym numerze (`SMTP7_HOST`); None, gdy klucz nieznany."""
+    known = BY_KEY.get(key)
+    if known is not None:
+        return known
+    slot = key_slot(key)
+    if slot is None or slot == 1:
+        return None
+    return next((field for field in mailbox_fields(slot) if field.key == key), None)
+
+
+def groups_for(config: Mapping[str, str]) -> list:
+    """Grupy do formularza: skrzynka 1, skrzynki wpisane w pliku (w kolejności numerów), potem grupy stałe."""
+    return [mailbox_group(1), *(mailbox_group(slot) for slot in slots_in_keys(config)), *STATIC_GROUPS]
+
+
+def fields_in_group(group: str) -> tuple:
+    """Pola grupy w kolejności wyświetlania."""
+    slot = mailbox_slot(group)
+    if slot is not None and slot > 1:
+        return mailbox_fields(slot)
+    return tuple(field for field in FIELDS if field.group == group)
+
+
+def next_free_slot(config: Mapping[str, str]) -> int:
+    """Najmniejszy numer skrzynki (od 2), który nie występuje w pliku."""
+    used = set(slots_in_keys(config))
+    free = next((number for number in range(2, MAX_SLOT + 1) if number not in used), None)
+    if free is None:
+        raise ConfigValueError(f"Wszystkie numery skrzynek (2–{MAX_SLOT}) są zajęte.")
+    return free
 
 
 def _number(field: ConfigField, raw: str) -> str:

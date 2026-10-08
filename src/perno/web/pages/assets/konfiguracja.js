@@ -39,33 +39,34 @@ function fieldHtml(field) {
     + inputHtml(field) + '<span class="help">' + escapeHtml(field.help) + escapeHtml(restart) + '</span></div>';
 }
 
-// Skrzynka dodatkowa (numer 2 i dalej) jest „zajęta”, gdy w pliku ma jakąkolwiek wartość; puste zostają ukryte do kliknięcia „Dodaj skrzynkę”.
-function mailboxFilled(group) {
-  return group.fields.some((field) => field.set || (field.kind !== 'secret' && field.value));
+function isMailbox(group) {
+  return Boolean(group.mailbox) && group.mailbox > 1;
 }
 
 function groupHtml(group) {
-  const extra = group.mailbox && group.mailbox > 1;
-  const hidden = extra && !mailboxFilled(group) ? ' hidden' : '';
-  const remove = extra ? '<button type="button" class="cfg-remove" data-slot="' + group.mailbox + '">Usuń skrzynkę</button>' : '';
-  return '<section class="card" id="card_' + escapeHtml(group.key) + '"' + hidden + '><div class="card-head"><h2>'
+  const remove = isMailbox(group) ? '<button type="button" class="cfg-remove" data-slot="' + group.mailbox + '">Usuń skrzynkę</button>' : '';
+  return '<section class="card" id="card_' + escapeHtml(group.key) + '"><div class="card-head"><h2>'
     + escapeHtml(group.title) + '</h2>' + remove + '</div><p class="muted group-note">'
     + escapeHtml(group.description) + '</p><div class="cfg-grid">' + group.fields.map(fieldHtml).join('') + '</div></section>';
 }
 
-function mailboxGroups() {
-  return CONFIG.groups.filter((group) => group.mailbox && group.mailbox > 1);
+// Najmniejszy wolny numer skrzynki od 2: serwer wypisuje tylko skrzynki zapisane w pliku, więc numer liczymy też z kart dodanych w tej sesji.
+function nextSlot() {
+  const used = new Set(CONFIG.groups.filter(isMailbox).map((group) => group.mailbox));
+  let slot = 2;
+  while (used.has(slot)) slot += 1;
+  return slot;
 }
 
-function updateAddButton() {
-  el('addMailboxBtn').hidden = !mailboxGroups().some((group) => el('card_' + group.key).hidden);
-}
-
-function addMailbox() {
-  const group = mailboxGroups().find((g) => el('card_' + g.key).hidden);
-  if (!group) return;
-  const slot = group.mailbox;
-  el('card_' + group.key).hidden = false;
+async function addMailbox() {
+  const slot = nextSlot();
+  const {ok, data} = await apiGet('/api/config/skrzynka?slot=' + slot);
+  if (!ok) { toast(data.error || 'Nie udało się dodać skrzynki.', 'error'); return; }
+  const lastMailbox = CONFIG.groups.filter(isMailbox).pop();
+  const anchor = el('card_' + (lastMailbox ? lastMailbox.key : 'mail'));
+  CONFIG.groups.splice(CONFIG.groups.indexOf(lastMailbox || CONFIG.groups[0]) + 1, 0, data);
+  for (const field of data.fields) INITIAL[field.key] = field.kind === 'secret' ? '' : fieldValue(field);
+  anchor.insertAdjacentHTML('afterend', groupHtml(data));
   // Najczęściej kolejne skrzynki są u tego samego dostawcy: podpowiadamy serwer, port i SSL z głównej.
   for (const suffix of ['HOST', 'PORT', 'USE_SSL']) {
     const source = el('c_SMTP_' + suffix);
@@ -73,19 +74,23 @@ function addMailbox() {
     if (source && target) target.value = source.value;
   }
   const user = el('c_SMTP' + slot + '_USER');
-  if (user) user.focus();
-  updateAddButton();
+  if (user) { user.scrollIntoView({block: 'center'}); user.focus(); }
 }
 
 function removeMailbox(slot) {
   const group = CONFIG.groups.find((g) => g.mailbox === Number(slot));
   if (!group) return;
-  if (mailboxFilled(group)) REMOVED.add(group.mailbox);
-  for (const field of group.fields) {
-    el('c_' + field.key).value = field.kind === 'bool' || field.kind === 'choice' ? INITIAL[field.key] : '';
+  const saved = group.fields.some((field) => field.set || (field.kind !== 'secret' && field.value));
+  if (saved) {
+    REMOVED.add(group.mailbox);
+    for (const field of group.fields) {
+      el('c_' + field.key).value = field.kind === 'bool' || field.kind === 'choice' ? INITIAL[field.key] : '';
+    }
+    el('card_' + group.key).hidden = true;
+  } else {  // karta dodana w tej sesji i jeszcze niezapisana: znika bez śladu
+    CONFIG.groups = CONFIG.groups.filter((g) => g !== group);
+    el('card_' + group.key).remove();
   }
-  el('card_' + group.key).hidden = true;
-  updateAddButton();
 }
 
 // Jeden nasłuch na kontenerze: karty są przerysowywane (innerHTML), więc przyciski „Usuń skrzynkę” nie mają własnych.
@@ -101,7 +106,6 @@ function render() {
     for (const field of group.fields) INITIAL[field.key] = field.kind === 'secret' ? '' : fieldValue(field);
     return groupHtml(group);
   }).join('');
-  updateAddButton();
   el('banners').innerHTML = CONFIG.file_exists ? '' : '<div class="banner warn">Plik config.env nie istnieje — zapis go utworzy.</div>';
 }
 

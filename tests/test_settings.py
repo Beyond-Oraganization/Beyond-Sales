@@ -110,6 +110,17 @@ class SmtpSettingsTests(unittest.TestCase):
         self.assertEqual([slot.user for slot in cfg.smtp_slots(config)], ["me@example.com", "two@example.com", "four@example.com"])
         self.assertEqual(cfg.extra_smtp_slots(SMTP), [])
 
+    def test_there_is_no_cap_on_the_number_of_mailboxes(self):
+        config = dict(SMTP)
+        for n in (2, 9, 10, 11, 25, 99, 250):
+            config.update({f"SMTP{n}_HOST": "h", f"SMTP{n}_PORT": "465", f"SMTP{n}_USER": f"box{n}@example.com", f"SMTP{n}_PASSWORD": "p"})
+        slots = cfg.smtp_slots(config)
+        self.assertEqual([slot.slot for slot in slots], [1, 2, 9, 10, 11, 25, 99, 250])
+        self.assertEqual([box.slot for box in cfg.configured_mailboxes(config)], [1, 2, 9, 10, 11, 25, 99, 250])
+
+    def test_a_slot_with_only_other_keys_is_not_a_mailbox(self):
+        self.assertEqual(cfg.extra_smtp_slots({**SMTP, "IMAP5_HOST": "imap.example.com"}), [])
+
     def test_a_half_filled_extra_mailbox_is_an_error_not_a_silent_skip(self):
         with self.assertRaisesRegex(ConfigError, "SMTP3_HOST, SMTP3_PORT, SMTP3_PASSWORD"):
             cfg.smtp_slots({**SMTP, "SMTP3_USER": "three@example.com"})
