@@ -45,3 +45,17 @@ def build_message(
                 filename=os.path.basename(path),
             )
     return msg
+
+
+_THREAD_HEADERS = {"message_id": "Message-ID", "date": "Date", "in_reply_to": "In-Reply-To", "references": "References"}
+
+
+def add_thread_headers(message: EmailMessage, *, message_id: str = "", date: str = "", in_reply_to: str = "",
+                       references: str = "") -> EmailMessage:
+    """Dopisuje do gotowej wiadomości nagłówki potrzebne do dopasowania odpowiedzi; puste wartości są pomijane (wtedy
+    `Message-ID` i `Date` dopisze serwer SMTP, ale my nie poznamy identyfikatora wysłanego maila)."""
+    values = {"message_id": message_id, "date": date, "in_reply_to": in_reply_to, "references": references}
+    for key, value in values.items():
+        if value:
+            message[_THREAD_HEADERS[key]] = value
+    return message

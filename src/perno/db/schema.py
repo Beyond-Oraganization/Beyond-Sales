@@ -75,9 +75,13 @@ maile = sa.Table(
     # Skrzynka, z której wyszedł mail (adres SMTP_USER); NULL = mail sprzed wielu skrzynek albo jeszcze niewysłany.
     # Nie jest w `COLUMNS`, więc nie pojawia się w API ani w eksporcie; czyta ją tylko rotacja skrzynek.
     sa.Column("sent_from", sa.String(320)),
+    # `Message-ID` wysłanego maila (bez nawiasów, małymi literami); NULL = mail wysłany przed modułem odpowiedzi albo
+    # jeszcze niewysłany. Po nim dopasowujemy odpowiedzi (In-Reply-To / References). Poza `COLUMNS`, jak `sent_from`.
+    sa.Column("message_id", sa.String(255)),
     sa.Index("ix_maile_status_sent_at", "status", "sent_at"),
     sa.Index("ix_maile_segment_row", legacy_key("segment"), legacy_key("row_number")),
     sa.Index("ix_maile_email", "email"),
+    sa.Index("ix_maile_message_id", "message_id"),
     sa.Index(COMPANY_STATUS_INDEX, "company_id", "status"),
     # Ten sam adres dwa razy w jednej firmie jest błędem; NULL (wiersz bez adresu albo jeszcze bez firmy) nie koliduje.
     sa.Index("uq_maile_company_email", "company_id", "email", unique=True),

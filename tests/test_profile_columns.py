@@ -45,7 +45,7 @@ class CountryValidationTests(unittest.TestCase):
         self.assertEqual(dbmod.LINK_COLUMNS, ("company_id", "position"))
         # sent_from (skrzynka nadawcy) jest tylko dla rotacji: poza COLUMNS, więc nie trafia do API ani eksportu
         self.assertEqual({c.name for c in dbmod.maile.columns} - {"updated_at"},
-                         set(dbmod.COLUMNS) | set(dbmod.LINK_COLUMNS) | {"sent_from"})
+                         set(dbmod.COLUMNS) | set(dbmod.LINK_COLUMNS) | {"sent_from", "message_id"})
         self.assertEqual(set(dbmod.COMPANY_COLUMNS) | set(dbmod.MAIL_COLUMNS), set(dbmod.COLUMNS))
         self.assertFalse(set(dbmod.COMPANY_COLUMNS) & set(dbmod.MAIL_COLUMNS))
         self.assertEqual({c.name for c in dbmod.companies.columns} - {"id", "updated_at"}, set(dbmod.COMPANY_COLUMNS))
@@ -108,7 +108,7 @@ class ProfileRoundtripTests(unittest.TestCase):
 class SchemaUpgradeTests(unittest.TestCase):
     def test_old_table_gets_new_columns_and_keeps_every_value(self):
         database = old_database(3)
-        new_columns = set(dbmod.PROFILE_COLUMNS) | set(dbmod.LINK_COLUMNS) | {"sent_from"}
+        new_columns = set(dbmod.PROFILE_COLUMNS) | set(dbmod.LINK_COLUMNS) | {"sent_from", "message_id"}
         self.assertEqual({c.name for c in database.missing_columns()}, new_columns)
         before = [dict(r) for r in database.engine.connect().execute(sa.text("SELECT * FROM maile ORDER BY id")).mappings()]
         added = database.upgrade_schema()

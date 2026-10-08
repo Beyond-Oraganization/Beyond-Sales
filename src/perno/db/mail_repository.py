@@ -451,13 +451,14 @@ class MailRepository(ListingQueries, CompanyMails):
                                            maile.c.status.in_(busy)).limit(1)
         return conn.execute(stmt).first() is not None
 
-    def mark_sent(self, row_id: str, sent_from: Optional[str] = None) -> Optional[dict]:
-        """Zapisuje wysłanie; `sent_from` to adres skrzynki, z której wyszedł mail (rotacja liczy po nim wysyłki)."""
+    def mark_sent(self, row_id: str, sent_from: Optional[str] = None, message_id: Optional[str] = None) -> Optional[dict]:
+        """Zapisuje wysłanie; `sent_from` to adres skrzynki, z której wyszedł mail (rotacja liczy po nim wysyłki), a
+        `message_id` identyfikator wysłanej wiadomości w postaci porównywalnej (`domain.message_ids.key`)."""
         now = self.now()
         with self.engine.begin() as conn:
             conn.execute(
                 sa.update(maile).where(maile.c.id == row_id)
-                .values(status=st.STATUS_SENT, sent_at=now, error=None, updated_at=now, sent_from=sent_from)
+                .values(status=st.STATUS_SENT, sent_at=now, error=None, updated_at=now, sent_from=sent_from, message_id=message_id)
             )
             return self.get(row_id, conn)
 

@@ -14,11 +14,12 @@ from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime
 from email.message import EmailMessage
+from email.utils import formatdate
 from typing import Callable, Collection, Mapping, Optional, Sequence
 
 from perno import settings as cfg
 from perno.db import DB_ERRORS, Database, RowNotFound
-from perno.domain import company_rules, mail_rules, mailboxes
+from perno.domain import company_rules, mail_rules, mailboxes, message_ids
 from perno.domain import statuses as st
 from perno.mailer import image_prep, mime_builder, smtp_client
 from perno.settings import ConfigError, Environment, SmtpSettings, require_smtp
@@ -122,18 +123,20 @@ def get_inline_image() -> tuple:
     return image_prep.prepare_inline_image(cfg.INLINE_IMAGE_SRC, cfg.INLINE_IMAGE_CACHE_BASE)
 
 
-def build_message_for_row(row: Mapping, to_addr: str, sender: Sender) -> EmailMessage:
-    """Buduje wiadomość MIME z wiersza; obraz jest osadzany tylko wtedy, gdy treść go używa."""
+def build_message_for_row(row: Mapping, to_addr: str, sender: Sender, message_id: str = "") -> EmailMessage:
+    """Buduje wiadomość MIME z wiersza; obraz jest osadzany tylko wtedy, gdy treść go używa. Z `message_id` mail dostaje
+    własny `Message-ID` i `Date` (po nich dopasowujemy odpowiedzi); bez niego nagłówki dopisze serwer SMTP."""
     cid = mime_builder.INLINE_IMAGE_CID
     inline_images = []
     if f"cid:{cid}" in row["body_html"]:
         data, subtype = get_inline_image()
         inline_images.append((cid, data, subtype))
-    return mime_builder.build_message(
+    message = mime_builder.build_message(
         from_addr=sender.address, from_name=sender.name, to_addr=to_addr,
         subject=row["subject"], html_body=row["body_html"], text_body=row["body_text"],
         inline_images=inline_images,
     )
+    return mime_builder.add_thread_headers(message, message_id=message_id, date=formatdate(localtime=True) if message_id else "")
 
 
 def send_row(
@@ -146,8 +149,9 @@ def send_row(
         reason = company_rules.hold_message(row["hold"]) if row and row.get("hold") else (
             "zmieniony status, brak e-maila/treści albo inny adres tej firmy jest właśnie wysyłany")
         return SendResult("skipped", row, f"{reason} — nic nie wysłano")
+    message_id = message_ids.new_message_id(mailer.sender.address)
     try:
-        message = build_message_for_row(claimed, claimed["email"], mailer.sender)
+        message = build_message_for_row(claimed, claimed["email"], mailer.sender, message_id)
         with mailer.smtp_factory() as client:
             client.send(message)
     except KeyboardInterrupt:
@@ -159,7 +163,7 @@ def send_row(
 
     for attempt in range(3):
         try:
-            return SendResult("sent", db.mark_sent(row_id, mailer.sender.address))
+            return SendResult("sent", db.mark_sent(row_id, mailer.sender.address, message_ids.key(message_id)))
         except DB_ERRORS:
             time.sleep(0.5 * (attempt + 1))
     warning = (f"UWAGA: mail do {claimed['email']} ({row_id}) WYSŁANO, ale nie udało się zapisać statusu "

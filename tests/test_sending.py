@@ -5,10 +5,12 @@ import unittest
 from datetime import datetime
 from unittest import mock
 
+import sqlalchemy as sa
 import sqlalchemy.exc as sa_exc
 
 from perno import settings as cfg
 from perno.db import RowNotFound
+from perno.domain import message_ids
 from perno.domain import statuses as st
 from perno.mailer import mime_builder
 from perno.services import sending
@@ -42,6 +44,42 @@ class SendRowTests(NoRealSmtpMixin, unittest.TestCase):
         message = smtp.sent[0]
         self.assertEqual((message["To"], message["Subject"]), ("cel@example.com", "Temat X"))
         self.assertIn("Roman", message["From"])
+
+    def test_the_sent_message_carries_its_own_message_id_and_date_and_the_database_remembers_the_id(self):
+        database = make_db()
+        put(database, sample_row(1, email="cel@example.com"))
+        smtp = FakeSmtp()
+        self.send(database, "eventy-001", smtp)
+        message = smtp.sent[0]
+        header = str(message["Message-ID"])
+        self.assertRegex(header, r"^<[^<>\s]+@z3x\.pl>$")
+        self.assertTrue(message["Date"])
+        row = database.get("eventy-001")
+        self.assertIsNone(row.get("message_id"))  # to pole nie wychodzi do API, jak sent_from
+        stored = database.engine.connect().execute(
+            sa.text("SELECT message_id FROM maile WHERE id = 'eventy-001'")).scalar()
+        self.assertEqual(stored, message_ids.key(header))
+        self.assertEqual(stored, stored.lower())
+
+    def test_two_mails_get_different_message_ids(self):
+        database = make_db()
+        put(database, sample_row(1), sample_row(2))
+        smtp = FakeSmtp()
+        for n in (1, 2):
+            self.send(database, f"eventy-00{n}", smtp)
+        self.assertNotEqual(smtp.sent[0]["Message-ID"], smtp.sent[1]["Message-ID"])
+
+    def test_a_failed_send_stores_no_message_id(self):
+        database = make_db()
+        put(database, sample_row(1))
+        self.send(database, "eventy-001", FakeSmtp(fail_with=RuntimeError("serwer odmówił")))
+        stored = database.engine.connect().execute(sa.text("SELECT message_id FROM maile WHERE id = 'eventy-001'")).scalar()
+        self.assertIsNone(stored)
+
+    def test_the_test_message_without_an_id_leaves_the_header_to_the_server(self):
+        message = sending.build_message_for_row(sample_row(1, email="cel@example.com"), "cel@example.com", SENDER)
+        self.assertIsNone(message["Message-ID"])
+        self.assertIsNone(message["Date"])
 
     @unittest.skipUnless(os.path.exists(cfg.INLINE_IMAGE_SRC), "brak obrazka źródłowego")
     def test_inline_image_follows_the_body_not_the_column(self):
@@ -129,11 +167,11 @@ class SendRowTests(NoRealSmtpMixin, unittest.TestCase):
         broken = sa_exc.OperationalError("UPDATE", {}, Exception("chwilowa awaria"))
         real_mark_sent, calls = database.mark_sent, []
 
-        def flaky(row_id, sent_from=None):
+        def flaky(row_id, sent_from=None, message_id=None):
             calls.append(row_id)
             if len(calls) == 1:
                 raise broken
-            return real_mark_sent(row_id, sent_from)
+            return real_mark_sent(row_id, sent_from, message_id)
 
         with mock.patch.object(database, "mark_sent", side_effect=flaky), mock.patch("time.sleep") as sleep:
             result = self.send(database, "eventy-001", FakeSmtp())
@@ -412,3 +450,19 @@ class SentFromTests(unittest.TestCase):
         database.mark_sent("eventy-001", "Roman@Z3X.pl")
         database.mark_sent("eventy-002", "roman@z3x.pl")
         self.assertEqual({k: v.sent for k, v in database.sent_by_sender_today().items()}, {"roman@z3x.pl": 2})
+
+
+class MimeBuilderHeaderTests(unittest.TestCase):
+    def build(self):
+        return mime_builder.build_message(from_addr="a@x.pl", from_name="A", to_addr="b@y.pl", subject="T",
+                                          html_body="<p>x</p>", text_body="x")
+
+    def test_threading_headers_are_added_only_when_given(self):
+        plain = mime_builder.add_thread_headers(self.build())
+        for name in ("Message-ID", "Date", "In-Reply-To", "References"):
+            self.assertIsNone(plain[name], name)
+        full = mime_builder.add_thread_headers(
+            self.build(), message_id="<id@x.pl>", date="Thu, 08 Oct 2026 10:00:00 +0200", in_reply_to="<prev@y.pl>",
+            references="<first@x.pl> <prev@y.pl>")
+        self.assertEqual((full["Message-ID"], full["In-Reply-To"], full["References"]), ("<id@x.pl>", "<prev@y.pl>", "<first@x.pl> <prev@y.pl>"))
+        self.assertEqual(full["Date"], "Thu, 08 Oct 2026 10:00:00 +0200")
