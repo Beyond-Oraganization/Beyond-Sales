@@ -127,7 +127,7 @@ def cmd_fetch(args) -> int:
     config, db, store = open_replies(args)
     options = replies_sync.options_from_config(config, since=_day(args.od), only=args.skrzynka or "", dry_run=args.dry_run)
     if not args.dry_run:
-        backup = firms_import.backup_table(db, cfg.BACKUP_DIR, "przed-pobraniem-odpowiedzi", replies=True)
+        backup = firms_import.backup_table(db, cfg.BACKUP_DIR, "pobraniem-odpowiedzi", replies=True)
         print(f"Kopia zapasowa: {backup}")
     report = replies_sync.fetch_replies(db, store, config, imap_factory(), options=options)
     print("\n".join(report_lines(report)))

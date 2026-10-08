@@ -157,7 +157,7 @@ def write_ratings(db: Database, store: ReplyStore, plan: WritePlan, now: datetim
     `optout: true` tylko włącza ostrzeżenie w panelu; status maila zmienia wyłącznie człowiek."""
     if not plan.items:
         return 0, ""
-    backup = firms_import.backup_table(db, backup_dir, "przed-ocenami-ai", replies=True)
+    backup = firms_import.backup_table(db, backup_dir, "ocenami-ai", replies=True)
     done = 0
     for item in plan.items:
         try:
@@ -215,7 +215,7 @@ def write_drafts(db: Database, store: ReplyStore, config: Mapping, plan: WritePl
     """Zapisuje szkice jako szkice AI (po kopii zapasowej). Szkic człowieka nie jest nadpisywany. Zwraca `(zapisane, pominięte, kopia)`."""
     if not plan.items:
         return 0, [], ""
-    backup = firms_import.backup_table(db, backup_dir, "przed-szkicami-ai", replies=True)
+    backup = firms_import.backup_table(db, backup_dir, "szkicami-ai", replies=True)
     saved, skipped = 0, []
     for item in plan.items:
         result = replies_send.save_draft(store, config, item["id"], item["body"], author=rp.BY_AI, now=now, keep_human=True)

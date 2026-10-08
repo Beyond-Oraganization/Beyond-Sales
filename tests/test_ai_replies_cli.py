@@ -85,7 +85,7 @@ class FetchTests(CliCase):
         self.assertIn("zapisano 1", out)
         self.assertIn("„odpowiedział” 1", out)
         self.assertEqual(self.status(), "odpowiedzial")
-        self.assertTrue(any(name.startswith("Maile_") for name in os.listdir(self.backups)))
+        self.assertTrue(any(name.startswith("Maile_") and name.endswith("_przed-pobraniem-odpowiedzi.csv") for name in os.listdir(self.backups)))
 
     def test_the_output_never_names_third_parties_or_quotes_their_text(self):
         _, out, _ = self.ai("pobierz")
@@ -217,7 +217,8 @@ class RateCommandTests(AiCommandCase):
         self.assertIn("Zapisano 1 z 1 ocen", out)
         self.assertIn("Kopia:", out)
         self.assertEqual((self.thread()["rating"], self.thread()["rating_by"]), ("positive", "ai"))
-        self.assertTrue(any(name.startswith("OdpWatki_") for name in os.listdir(self.backups)))
+        names = os.listdir(self.backups)
+        self.assertTrue(any(name.startswith("OdpWatki_") and name.endswith("_przed-ocenami-ai.csv") for name in names), names)
 
     def test_a_rating_never_changes_the_company_status(self):
         self.ai("ocen", "--id", "eventy-001", "--ocena", "positive", "--wypisanie")
@@ -272,6 +273,7 @@ class DraftCommandTests(AiCommandCase):
         self.assertIn("Wysyła człowiek z panelu", out)
         draft = self.store.get_draft("eventy-001")
         self.assertEqual((draft["author"], draft["state"], draft["body_text"]), ("ai", "draft", "Dziękuję za wiadomość, cennik wyślę jutro."))
+        self.assertTrue(any(name.endswith("_przed-szkicami-ai.csv") for name in os.listdir(self.backups)))
         self.assertEqual((self.status(), self.store.thread_detail("eventy-001")["thread"]["last_direction"]), ("odpowiedzial", "in"))
 
     def test_a_dry_run_validates_without_saving(self):
