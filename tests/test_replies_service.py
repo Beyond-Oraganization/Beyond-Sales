@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 
 import sqlalchemy as sa
 
-from perno.db.replies_schema import odp_oceny, odp_watki
-from perno.db.replies_store import ReplyStore
+from perno.db.replies_schema import odp_oceny, odp_watki, odp_wiadomosci
+from perno.db.replies_store import Cursor, ReplyStore
 from perno.db.schema import maile
 from perno.domain import replies as rp
 from perno.domain import reply_listing as rl
@@ -173,6 +173,23 @@ class ThreadViewTests(ServiceCase):
         self.assertEqual((message["new"], message["quoted"].endswith("> nasz mail"), message["attachments"][0]["name"]), ("Nowy tekst.", True, "oferta.pdf"))
         self.assertEqual(message["date"], "2026-10-05T11:00:00")
 
+    def test_an_unsent_draft_belongs_to_the_composer_and_is_not_listed_as_a_message(self):
+        draft = dict(body="Dziękuję, wracam z ofertą.", subject="Re: Temat", to_addr="x@firma.pl", mailbox=BOX1, author=rp.BY_HUMAN, now=T0 + timedelta(days=6))
+        self.store.save_draft("eventy-001", **draft)
+        self.store.save_message(msg("sent1", "eventy-001", direction="out", state="sent", author=rp.BY_HUMAN, when=T0 + timedelta(hours=1), text="Wysłana odpowiedź."), T0)
+        view = svc.thread_view(self.store, "eventy-001", {"SMTP_USER": BOX1, "SMTP_HOST": "s", "SMTP_PORT": "465", "SMTP_PASSWORD": "p"})
+        self.assertEqual([m["new"] for m in view["messages"]], ["Proszę o cennik dla naszej firmy.", "Wysłana odpowiedź."])
+        self.assertEqual(view["messages"][-1]["state"], "sent")
+        self.assertEqual(view["compose"]["draft"]["body"], "Dziękuję, wracam z ofertą.")
+
+    def test_a_failed_or_sending_draft_is_not_listed_either(self):
+        draft_id = self.store.save_draft("eventy-001", body="Szkic", subject="Re: x", to_addr="x@firma.pl", mailbox=BOX1, author=rp.BY_HUMAN, now=T0 + timedelta(days=6))
+        for state in ("failed", "sending"):
+            with self.db.engine.begin() as conn:
+                conn.execute(sa.update(odp_wiadomosci).where(odp_wiadomosci.c.id == draft_id).values(state=state))
+            with self.subTest(state=state):
+                self.assertEqual([m["state"] for m in svc.thread_view(self.store, "eventy-001")["messages"]], ["received"])
+
     def test_broken_attachment_json_is_ignored_not_fatal(self):
         self.store.save_message(msg("b1", "eventy-001", when=T0 + timedelta(hours=2), attachments="to nie json"), T0)
         self.assertEqual(svc.thread_view(self.store, "eventy-001")["messages"][-1]["attachments"], [])
@@ -282,7 +299,7 @@ class AssignTests(ServiceCase):
     def test_an_unassigned_message_joins_a_campaign_mail_and_creates_its_thread(self):
         message_id = self.unassigned_id()
         result = svc.assign(self.store, message_id, "eventy-004", BOX1, self.clock())
-        self.assertEqual(result["thread"], "eventy-004")
+        self.assertEqual(result, {"ok": True, "thread": "eventy-004"})
         thread = svc.thread_view(self.store, "eventy-004")
         self.assertEqual((thread["thread"]["human_in_count"], thread["thread"]["mailbox"], thread["messages"][-1]["match_method"]),
                          (1, BOX1, "manual"))
@@ -303,6 +320,46 @@ class AssignTests(ServiceCase):
             svc.assign(self.store, message_id, "eventy-005", BOX1, self.clock())
         with self.assertRaises(svc.ThreadNotFound):
             svc.assign(self.store, 999999, "eventy-005", BOX1, self.clock())
+
+
+PANEL_CONFIG = {"SMTP_HOST": "s", "SMTP_PORT": "465", "SMTP_USER": BOX1, "SMTP_PASSWORD": "p", "IMAP_HOST": "imap.example.com",
+                "SMTP2_HOST": "s", "SMTP2_PORT": "465", "SMTP2_USER": BOX2, "SMTP2_PASSWORD": "p2", "IMAP2_HOST": "imap2.example.com",
+                "SMTP3_HOST": "s", "SMTP3_PORT": "465", "SMTP3_USER": "trzeci@z3x.pl", "SMTP3_PASSWORD": "p3"}
+
+
+class PanelStateTests(ServiceCase):
+    def state(self, running=False, config=None):
+        return svc.panel_state(self.store, config or PANEL_CONFIG, running)
+
+    def test_only_mailboxes_that_cannot_be_read_are_listed_as_problems(self):
+        self.store.record_error(BOX2, "Authentication failed", "auth", T0)
+        problems = self.state()["mailboxes"]["problems"]
+        self.assertEqual(problems, [{"mailbox": BOX2, "kind": "auth", "error": "Authentication failed"},
+                                    {"mailbox": "trzeci@z3x.pl", "kind": "no_imap", "error": ""}])
+        mailboxes = self.state()["mailboxes"]
+        self.assertEqual((mailboxes["configured"], mailboxes["receiving"], mailboxes["names"]), (3, 2, [BOX1, BOX2, "trzeci@z3x.pl"]))
+
+    def test_an_old_error_of_a_mailbox_that_no_longer_receives_is_not_repeated(self):
+        self.store.record_error("trzeci@z3x.pl", "Authentication failed", "auth", T0)
+        self.assertEqual([p["kind"] for p in self.state()["mailboxes"]["problems"]], ["no_imap"])
+
+    def test_a_healthy_receiving_mailbox_is_not_a_problem(self):
+        self.store.save_cursor(BOX1, "INBOX", Cursor(1, 5), T0)
+        self.assertNotIn(BOX1, [p["mailbox"] for p in self.state()["mailboxes"]["problems"]])
+
+    def test_a_fetch_is_running_when_this_server_or_the_database_lock_says_so(self):
+        self.assertFalse(self.state()["fetch"]["running"])
+        self.assertTrue(self.state(running=True)["fetch"]["running"])
+        self.assertTrue(self.store.acquire_run("token", T0))
+        self.assertTrue(self.state()["fetch"]["running"])
+
+    def test_an_empty_list_has_one_page_and_the_unread_total_matches_the_menu_badge(self):
+        listing = svc.list_replies(self.store, {"tab": "positive", "q": "zzzz-nic-takiego"})
+        self.assertEqual((listing["total"], listing["pages"]), (0, 1))
+        self.assertEqual(self.state()["unread"], self.store.unread_total())
+
+    def test_a_simple_action_reports_ok(self):
+        self.assertEqual(svc.set_state(self.store, "eventy-001", "read", T0), {"ok": True, "action": "read"})
 
 
 if __name__ == "__main__":

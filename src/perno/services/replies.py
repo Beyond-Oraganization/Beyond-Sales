@@ -69,9 +69,15 @@ def _message(row: Mapping) -> dict:
             "bounce_type": row["bounce_type"], "optout_hint": bool(row["optout_hint"]), "error": row["error"]}
 
 
+def _unsent(row: Mapping) -> bool:
+    """Nasza wiadomość, która jeszcze nie wyszła (szkic, wysyłka w toku, nieudana próba): należy do edytora, nie do listy wiadomości."""
+    return row["direction"] == rp.DIRECTION_OUT and row["state"] in (rp.STATE_DRAFT, rp.STATE_SENDING, rp.STATE_FAILED)
+
+
 def thread_view(store: ReplyStore, thread_id: str, config: Optional[Mapping] = None) -> dict:
-    """Wszystko do widoku wątku: wiersz listy, nasz mail kampanii, wiadomości (z cytatem rozdzielonym od nowego tekstu), historia
-    ocen, podpowiedź statusu, statusy do ustawienia jednym kliknięciem i (z `config`) stan edytora odpowiedzi."""
+    """Wszystko do widoku wątku: wiersz listy, nasz mail kampanii, wiadomości (z cytatem rozdzielonym od nowego tekstu; bez
+    szkicu, bo ten jest w edytorze), historia ocen, podpowiedź statusu, statusy do ustawienia jednym kliknięciem i (z `config`)
+    stan edytora odpowiedzi."""
     detail = store.thread_detail(thread_id)
     if detail is None:
         raise ThreadNotFound(f"Nie ma wątku {thread_id}.")
@@ -80,7 +86,7 @@ def thread_view(store: ReplyStore, thread_id: str, config: Optional[Mapping] = N
                    "text": reply_text.normalize(origin.get("body_text") or "")}
     mail_status = thread["mail_status"] or ""
     return {
-        "thread": thread, "origin": origin_view, "messages": [_message(row) for row in detail["messages"]],
+        "thread": thread, "origin": origin_view, "messages": [_message(row) for row in detail["messages"] if not _unsent(row)],
         "ratings": [{**{key: iso(value) for key, value in row.items()}} for row in detail["ratings"]],
         "suggestion": reply_rules.status_suggestion(thread["rating"], thread["optout"], mail_status),
         "compose": replies_send.compose_view(detail, config, store.get_draft(thread_id)) if config is not None else {"can_reply": False, "reason": ""},
