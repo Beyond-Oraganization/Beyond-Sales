@@ -111,3 +111,85 @@ test('nowa skrzynka wysyła tylko to, co człowiek wpisał, a usunięta przed za
   vm.runInContext("removeMailbox('2')", page.context);
   assert.deepEqual(fill(page, {...UNTOUCHED, c_SMTP2_HOST: {value: ''}, c_SMTP2_PASSWORD: {value: ''}}), {values: {}, clear: []});
 });
+
+function mailboxCard(slot, extra) {
+  const key = (name) => (slot === 1 ? name : name.replace('_', slot + '_'));
+  const field = (name, kind, value) => ({key: key(name), label: name, kind: kind || 'text', help: '', default: '', value: value || '', set: false, choices: [], restart: ''});
+  return {key: slot === 1 ? 'mail' : 'mail' + slot, mailbox: slot, title: 'Skrzynka ' + slot, description: '', fields: [
+    field('SMTP_HOST', 'text', extra && extra.host), field('SMTP_PORT', 'text', '465'), field('SMTP_USE_SSL', 'bool', 'true'),
+    field('SMTP_USER', 'text', extra && extra.user), field('SMTP_PASSWORD', 'secret'), field('IMAP_HOST', 'text', extra && extra.imap),
+    field('IMAP_PORT', 'text'), field('IMAP_USE_SSL', 'bool', 'true'), field('IMAP_USER', 'text'), field('IMAP_PASSWORD', 'secret'),
+  ]};
+}
+
+async function pageWithMailboxes(count) {
+  const cards = [];
+  for (let slot = 1; slot <= count; slot++) cards.push(mailboxCard(slot, {user: 'box' + slot + '@x.pl', imap: slot % 2 ? 'imap.x.pl' : '', host: 'smtp.zenbox.pl'}));
+  const requested = [];
+  const page = createPage((url) => {
+    requested.push(url);
+    const asked = /slot=(\d+)/.exec(url);
+    if (asked) return mailboxCard(Number(asked[1]));
+    return {file_exists: true, groups: cards};
+  });
+  vm.runInContext(read('common.js') + '\n' + read('konfiguracja.js'), page.context);
+  await settle();
+  return {page, requested};
+}
+
+const run = (page, code) => vm.runInContext(code, page.context);
+
+test('wklejone linie: adres;hasło, hasło może zawierać średnik, złe linie są nazwane', async () => {
+  const {page} = await pageWithMailboxes(1);
+  const parsed = JSON.parse(run(page, `JSON.stringify(parseMailboxLines("a@x.pl;h1\\n\\n  b@x.pl\\ttab;haslo ze ; srednikiem  \\nbez-malpy;h\\nc@x.pl;\\nd@x.pl"))`));
+  assert.deepEqual(parsed.entries, [{user: 'a@x.pl', password: 'h1'}, {user: 'b@x.pl', password: 'tab;haslo ze ; srednikiem'}]);
+  assert.deepEqual(parsed.problems, ['linia 4: oczekiwano „adres;hasło”', 'linia 5: oczekiwano „adres;hasło”', 'linia 6: oczekiwano „adres;hasło”']);
+});
+
+test('naraz najwyżej 200 skrzynek', async () => {
+  const {page} = await pageWithMailboxes(1);
+  const many = JSON.parse(run(page, `JSON.stringify(parseMailboxLines(Array.from({length: 201}, (_, i) => 'u' + i + '@x.pl;h').join('\\n')))`));
+  assert.equal(many.entries.length, 201);
+  assert.deepEqual(many.problems, ['najwyżej 200 skrzynek naraz']);
+});
+
+test('dodanie wielu skrzynek tworzy karty po kolei i wpisuje adres oraz hasło', async () => {
+  const {page, requested} = await pageWithMailboxes(1);
+  run(page, `document.getElementById('c_SMTP_HOST').value = 'smtp.zenbox.pl'; document.getElementById('c_IMAP_HOST').value = 'imap.zenbox.pl'`);
+  run(page, `document.getElementById('bulkMailboxText').value = 'a@x.pl;h1\\nb@x.pl;h2\\nc@x.pl;h3'`);
+  assert.equal(await run(page, 'addManyMailboxes()'), true);
+  await settle();
+  assert.deepEqual(requested.filter((url) => url.includes('slot=')), ['/api/config/skrzynka?slot=2', '/api/config/skrzynka?slot=3', '/api/config/skrzynka?slot=4']);
+  const result = JSON.parse(run(page, 'JSON.stringify(collect())'));
+  assert.equal(result.values.SMTP2_USER, 'a@x.pl');
+  assert.equal(result.values.SMTP3_PASSWORD, 'h2');
+  assert.equal(result.values.SMTP4_USER, 'c@x.pl');
+  assert.equal(result.values.SMTP2_HOST, 'smtp.zenbox.pl', 'serwer SMTP podpowiedziany ze skrzynki głównej');
+  assert.equal(result.values.IMAP4_HOST, 'imap.zenbox.pl', 'serwer IMAP też');
+  assert.equal(result.values.IMAP3_USER, undefined, 'login IMAP zostaje pusty (wtedy jak w SMTP)');
+});
+
+test('niepoprawna linia zatrzymuje dodawanie i nic nie jest zgłaszane do serwera', async () => {
+  const {page, requested} = await pageWithMailboxes(1);
+  run(page, `document.getElementById('bulkMailboxText').value = 'a@x.pl;h1\\nbez-malpy;h2'`);
+  assert.equal(await run(page, 'addManyMailboxes()'), false);
+  assert.equal(requested.filter((url) => url.includes('slot=')).length, 0);
+  assert.match(run(page, "document.getElementById('bulkMailboxProblems').textContent"), /linia 2/);
+});
+
+test('od czterech skrzynek dodatkowe karty są zwinięte, a główna nie', async () => {
+  const few = await pageWithMailboxes(3);
+  assert.ok(!few.page.written.join('\n').includes('is-collapsed'), 'trzy skrzynki mieszczą się rozwinięte');
+  const many = await pageWithMailboxes(4);
+  const html = many.page.written.join('\n');
+  assert.ok(/id="card_mail"/.test(html) && !/class="card is-collapsed" id="card_mail"/.test(html), 'główna zostaje rozwinięta');
+  for (const key of ['mail2', 'mail3', 'mail4']) assert.ok(html.includes('class="card is-collapsed" id="card_' + key + '"'), key);
+  assert.ok(html.includes('aria-expanded="false"'));
+});
+
+test('wyszukiwarka skrzynek pojawia się dopiero przy kilku skrzynkach', async () => {
+  const one = await pageWithMailboxes(1);
+  assert.equal(run(one.page, "document.getElementById('mailboxSearchWrap').hidden"), true);
+  const four = await pageWithMailboxes(4);
+  assert.equal(run(four.page, "document.getElementById('mailboxSearchWrap').hidden"), false);
+});

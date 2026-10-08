@@ -6,11 +6,30 @@
     <button id="saveBtn" class="primary">Zapisz zmiany</button>
     <button id="reloadBtn">Cofnij niezapisane</button>
     <button id="addMailboxBtn">Dodaj skrzynkę nadawczą</button>
+    <button id="bulkMailboxBtn">Dodaj wiele skrzynek</button>
     <button id="smtpBtn">Sprawdź połączenie SMTP</button>
     <button id="imapBtn">Sprawdź połączenie IMAP</button>
   </div>
   <div id="smtpResult" class="muted small"></div>
   <div id="imapResult" class="muted small"></div>
+  <div id="mailboxSearchWrap" class="controls spaced" hidden>
+    <input type="search" id="mailboxSearch" placeholder="Szukaj skrzynki (adres, numer)…" autocomplete="off" aria-label="Szukaj skrzynki">
+  </div>
 </div>
+
+<dialog id="bulkMailboxDialog" class="sheet">
+  <form id="bulkMailboxForm" class="sheet-form" method="dialog">
+    <header><h2>Dodaj wiele skrzynek</h2></header>
+    <div class="sheet-body">
+      <p>Jedna skrzynka w linii: <code>adres;hasło</code>. Serwer, port i SSL (SMTP i IMAP) wezmą się ze skrzynki głównej, a login IMAP będzie taki jak adres. Skrzynki pojawią się w formularzu, zapisujesz je przyciskiem „Zapisz zmiany”.</p>
+      <textarea id="bulkMailboxText" rows="8" spellcheck="false" autocomplete="off" aria-label="Skrzynki, jedna w linii"></textarea>
+      <p id="bulkMailboxProblems" class="muted" role="alert"></p>
+    </div>
+    <footer>
+      <button type="button" id="bulkMailboxCancel" class="btn">Anuluj</button>
+      <button type="submit" class="btn primary">Dodaj do formularza</button>
+    </footer>
+  </form>
+</dialog>
 
 <main class="page-main is-narrow cfg-main" id="groups">Ładowanie…</main>

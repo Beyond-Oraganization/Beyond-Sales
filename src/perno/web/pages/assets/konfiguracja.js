@@ -43,11 +43,54 @@ function isMailbox(group) {
   return Boolean(group.mailbox) && group.mailbox > 1;
 }
 
-function groupHtml(group) {
+function smtpPrefix(slot) {
+  return slot === 1 ? 'SMTP' : 'SMTP' + slot;
+}
+
+function groupHtml(group, collapsed) {
+  const mailbox = Boolean(group.mailbox);
   const remove = isMailbox(group) ? '<button type="button" class="cfg-remove" data-slot="' + group.mailbox + '">Usuń skrzynkę</button>' : '';
-  return '<section class="card" id="card_' + escapeHtml(group.key) + '"><div class="card-head"><h2>'
-    + escapeHtml(group.title) + '</h2>' + remove + '</div><p class="muted group-note">'
+  const title = mailbox
+    ? '<button type="button" class="cfg-toggle" data-key="' + escapeHtml(group.key) + '" aria-expanded="' + (collapsed ? 'false' : 'true') + '">'
+      + '<span class="cfg-title">' + escapeHtml(group.title) + '</span><span class="cfg-summary muted"></span></button>'
+    : '<h2>' + escapeHtml(group.title) + '</h2>';
+  return '<section class="card' + (collapsed ? ' is-collapsed' : '') + '" id="card_' + escapeHtml(group.key) + '"><div class="card-head">'
+    + title + remove + '</div><p class="muted group-note">'
     + escapeHtml(group.description) + '</p><div class="cfg-grid">' + group.fields.map(fieldHtml).join('') + '</div></section>';
+}
+
+// Jedna linia podsumowania zwiniętej karty: adres skrzynki i to, czy odbiera pocztę (IMAP). Tekst ustawiamy przez textContent.
+function refreshSummary(group) {
+  const card = el('card_' + group.key);
+  if (!card || !group.mailbox) return;
+  const slot = group.mailbox;
+  const value = (name) => { const input = el('c_' + name); return input ? input.value : ''; };
+  const user = value(smtpPrefix(slot) + '_USER');
+  const imap = value((slot === 1 ? 'IMAP' : 'IMAP' + slot) + '_HOST') ? ' · odbiór IMAP' : ' · bez odbioru';
+  card.querySelector('.cfg-summary').textContent = user ? user + imap : 'nowa skrzynka';
+}
+
+function setCollapsed(card, collapsed) {
+  card.classList.toggle('is-collapsed', collapsed);
+  const toggle = card.querySelector('.cfg-toggle');
+  if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
+
+// Przy wielu skrzynkach lista byłaby bardzo długa: skrzynki dodatkowe są zwinięte, a wyszukiwarka zostawia pasujące.
+const COLLAPSE_FROM = 4;
+
+function filterMailboxes() {
+  const query = el('mailboxSearch').value.trim().toLowerCase();
+  for (const group of CONFIG.groups.filter((g) => g.mailbox)) {
+    const card = el('card_' + group.key);
+    if (!card) continue;
+    const text = (group.title + ' ' + card.querySelector('.cfg-summary').textContent).toLowerCase();
+    card.classList.toggle('is-filtered', Boolean(query) && !text.includes(query));
+  }
+}
+
+function updateSearchVisibility() {
+  el('mailboxSearchWrap').hidden = CONFIG.groups.filter(isMailbox).length + 1 < COLLAPSE_FROM;
 }
 
 // Najmniejszy wolny numer skrzynki od 2: serwer wypisuje tylko skrzynki zapisane w pliku, więc numer liczymy też z kart dodanych w tej sesji.
@@ -58,23 +101,65 @@ function nextSlot() {
   return slot;
 }
 
-async function addMailbox() {
+async function addMailbox(prefill) {
   const slot = nextSlot();
   const {ok, data} = await apiGet('/api/config/skrzynka?slot=' + slot);
-  if (!ok) { toast(data.error || 'Nie udało się dodać skrzynki.', 'error'); return; }
+  if (!ok) { toast(data.error || 'Nie udało się dodać skrzynki.', 'error'); return false; }
   const lastMailbox = CONFIG.groups.filter(isMailbox).pop();
   const anchor = el('card_' + (lastMailbox ? lastMailbox.key : 'mail'));
   CONFIG.groups.splice(CONFIG.groups.indexOf(lastMailbox || CONFIG.groups[0]) + 1, 0, data);
   for (const field of data.fields) INITIAL[field.key] = field.kind === 'secret' ? '' : fieldValue(field);
-  anchor.insertAdjacentHTML('afterend', groupHtml(data));
-  // Najczęściej kolejne skrzynki są u tego samego dostawcy: podpowiadamy serwer, port i SSL z głównej.
-  for (const suffix of ['HOST', 'PORT', 'USE_SSL']) {
-    const source = el('c_SMTP_' + suffix);
-    const target = el('c_SMTP' + slot + '_' + suffix);
+  anchor.insertAdjacentHTML('afterend', groupHtml(data, false));
+  // Najczęściej kolejne skrzynki są u tego samego dostawcy: podpowiadamy serwer, port i SSL (SMTP i IMAP) z głównej.
+  const prefix = (name) => name + (slot === 1 ? '' : slot);
+  for (const [family, suffix] of [['SMTP', 'HOST'], ['SMTP', 'PORT'], ['SMTP', 'USE_SSL'], ['IMAP', 'HOST'], ['IMAP', 'PORT'], ['IMAP', 'USE_SSL']]) {
+    const source = el('c_' + family + '_' + suffix);
+    const target = el('c_' + prefix(family) + '_' + suffix);
     if (source && target) target.value = source.value;
   }
+  const given = prefill || {};
+  if (given.user) el('c_SMTP' + slot + '_USER').value = given.user;
+  if (given.password) el('c_SMTP' + slot + '_PASSWORD').value = given.password;
+  refreshSummary(data);
+  updateSearchVisibility();
   const user = el('c_SMTP' + slot + '_USER');
-  if (user) { user.scrollIntoView({block: 'center'}); user.focus(); }
+  if (!prefill && user) { user.scrollIntoView({block: 'center'}); user.focus(); }
+  return true;
+}
+
+// „Dodaj wiele”: każda linia to `adres;hasło`. Karty powstają jak przy pojedynczym dodawaniu, a zapis zostaje decyzją człowieka.
+const BULK_LIMIT = 200;
+
+function parseMailboxLines(text) {
+  const entries = [];
+  const problems = [];
+  String(text).split('\n').forEach((raw, index) => {
+    const line = raw.trim();
+    if (!line) return;
+    const split = /^([^;\t]+)[;\t](.*)$/.exec(line);  // adres to wszystko przed pierwszym separatorem, reszta to hasło (może mieć średniki)
+    const user = split ? split[1].trim() : '';
+    const password = split ? split[2].trim() : '';
+    if (!user.includes('@') || /\s/.test(user) || !password) {
+      problems.push('linia ' + (index + 1) + ': oczekiwano „adres;hasło”');
+    } else {
+      entries.push({user, password});
+    }
+  });
+  if (entries.length > BULK_LIMIT) problems.push('najwyżej ' + BULK_LIMIT + ' skrzynek naraz');
+  return {entries, problems};
+}
+
+async function addManyMailboxes() {
+  const {entries, problems} = parseMailboxLines(el('bulkMailboxText').value);
+  if (problems.length) { el('bulkMailboxProblems').textContent = problems.slice(0, 5).join('\n'); return false; }
+  if (!entries.length) { el('bulkMailboxProblems').textContent = 'Wklej przynajmniej jedną linię.'; return false; }
+  let added = 0;
+  for (const entry of entries) {
+    if (!(await addMailbox(entry))) break;
+    added += 1;
+  }
+  if (added) toast('Dodano ' + added + ' skrzynek do formularza. Sprawdź i kliknij „Zapisz zmiany”.', 'ok');
+  return added === entries.length;
 }
 
 function removeMailbox(slot) {
@@ -91,21 +176,34 @@ function removeMailbox(slot) {
     CONFIG.groups = CONFIG.groups.filter((g) => g !== group);
     el('card_' + group.key).remove();
   }
+  updateSearchVisibility();
 }
 
 // Jeden nasłuch na kontenerze: karty są przerysowywane (innerHTML), więc przyciski „Usuń skrzynkę” nie mają własnych.
 el('groups').addEventListener('click', (event) => {
   const target = event.target;
-  if (target && target.className === 'cfg-remove') removeMailbox(target.dataset.slot);
+  if (target && target.className === 'cfg-remove') { removeMailbox(target.dataset.slot); return; }
+  const toggle = target && target.closest ? target.closest('.cfg-toggle') : null;
+  if (toggle) setCollapsed(toggle.closest('.card'), toggle.getAttribute('aria-expanded') === 'true');
+});
+
+el('groups').addEventListener('change', (event) => {
+  const card = event.target && event.target.closest ? event.target.closest('.card') : null;
+  const group = card ? CONFIG.groups.find((g) => 'card_' + g.key === card.id) : null;
+  if (group) refreshSummary(group);
 });
 
 function render() {
   INITIAL = {};
   REMOVED = new Set();
+  const many = CONFIG.groups.filter(isMailbox).length + 1 >= COLLAPSE_FROM;
   el('groups').innerHTML = CONFIG.groups.map((group) => {
     for (const field of group.fields) INITIAL[field.key] = field.kind === 'secret' ? '' : fieldValue(field);
-    return groupHtml(group);
+    return groupHtml(group, many && isMailbox(group));
   }).join('');
+  CONFIG.groups.filter((group) => group.mailbox).forEach(refreshSummary);
+  updateSearchVisibility();
+  filterMailboxes();
   el('banners').innerHTML = CONFIG.file_exists ? '' : '<div class="banner warn">Plik config.env nie istnieje — zapis go utworzy.</div>';
 }
 
@@ -189,5 +287,18 @@ el('saveBtn').addEventListener('click', save);
 el('reloadBtn').addEventListener('click', render);
 el('smtpBtn').addEventListener('click', testSmtp);
 el('imapBtn').addEventListener('click', testImap);
-el('addMailboxBtn').addEventListener('click', addMailbox);
+el('addMailboxBtn').addEventListener('click', () => addMailbox());
+el('mailboxSearch').addEventListener('input', filterMailboxes);
+el('bulkMailboxBtn').addEventListener('click', () => {
+  el('bulkMailboxProblems').textContent = '';
+  el('bulkMailboxDialog').showModal();
+});
+el('bulkMailboxForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (await addManyMailboxes()) {
+    el('bulkMailboxText').value = '';
+    el('bulkMailboxDialog').close();
+  }
+});
+el('bulkMailboxCancel').addEventListener('click', () => el('bulkMailboxDialog').close());
 load();
