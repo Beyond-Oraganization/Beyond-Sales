@@ -68,17 +68,31 @@ function toastHost() {
   return host;
 }
 
-function showToast(text, tone) {
+// Komunikat u góry. `options.action` ({label, onClick}) dodaje przycisk (np. „Cofnij”), a `options.timeout` (ms) zmienia czas pokazania.
+function showToast(text, tone, options) {
   const message = String(text == null ? '' : text);
   if (!message) return null;
+  const o = options || {};
   const item = document.createElement('div');
   item.className = 'toast' + (tone ? ' ' + tone : '');
   item.setAttribute('role', tone === 'error' ? 'alert' : 'status');
-  item.textContent = message;
   const close = () => { item.classList.add('is-leaving'); setTimeout(() => item.remove(), 200); };
+  if (o.action && typeof o.action.onClick === 'function') {
+    const label = document.createElement('span');
+    label.textContent = message;
+    item.appendChild(label);
+    const button = document.createElement('button');
+    button.className = 'toast-action';
+    button.setAttribute('type', 'button');
+    button.textContent = String(o.action.label || 'Cofnij');
+    button.addEventListener('click', (event) => { event.stopPropagation(); close(); o.action.onClick(); });
+    item.appendChild(button);
+  } else {
+    item.textContent = message;
+  }
   item.addEventListener('click', close);
   toastHost().appendChild(item);
-  setTimeout(close, tone === 'error' ? 10000 : 5000);
+  setTimeout(close, o.timeout || (tone === 'error' ? 10000 : (o.action ? 8000 : 5000)));
   return item;
 }
 
@@ -124,3 +138,63 @@ function showSheet(options) {
     ((o.tone === 'danger' || o.focusCancel) && cancel ? cancel : okButton).focus();
   });
 }
+
+
+// Skróty klawiszy strony: `map` to {'j': fn, 'ctrl+Enter': fn, '?': fn}. W polach tekstowych działają tylko klawisze z `options.whileTyping`
+// (domyślnie Esc i Ctrl/Cmd+Enter), a przy otwartym oknie dialogowym żadne. Zwraca funkcję zdejmującą nasłuch.
+function bindShortcuts(map, options) {
+  const o = options || {};
+  const allowedWhileTyping = new Set(o.whileTyping || ['Escape', 'ctrl+Enter', 'meta+Enter']);
+  const handler = (event) => {
+    if (event.defaultPrevented || event.altKey) return;
+    const target = event.target || {};
+    const typing = Boolean(target.isContentEditable) || /^(INPUT|TEXTAREA|SELECT)$/.test(String(target.tagName || ''));
+    const key = (event.ctrlKey ? 'ctrl+' : '') + (event.metaKey ? 'meta+' : '') + event.key;
+    if (typing && !allowedWhileTyping.has(key)) return;
+    if (document.querySelector && document.querySelector('dialog[open]')) return;
+    const action = Object.prototype.hasOwnProperty.call(map, key) ? map[key] : null;
+    if (typeof action !== 'function') return;
+    event.preventDefault();
+    action(event);
+  };
+  document.addEventListener('keydown', handler);
+  return () => document.removeEventListener('keydown', handler);
+}
+
+// Ściąga skrótów w arkuszu: `rows` to [[klawisze, opis], …].
+function showShortcutHelp(rows) {
+  return showSheet({title: 'Skróty klawiszy', message: rows.map((row) => row[0] + '   ' + row[1]).join('\n'),
+                    confirmLabel: 'Zamknij', cancelLabel: null});
+}
+
+// Odpytuje `fn` co `options.interval` ms (domyślnie 60 s), ale tylko gdy karta jest widoczna; po powrocie do karty odpytuje od razu.
+// Zwraca funkcję zatrzymującą. Błąd w `fn` nie przerywa odpytywania.
+function pollWhileVisible(fn, options) {
+  const interval = (options && options.interval) || 60000;
+  let timer = null;
+  let stopped = false;
+  const schedule = () => { clearTimeout(timer); if (!stopped) timer = setTimeout(tick, interval); };
+  const tick = async () => {
+    if (!document.hidden) { try { await fn(); } catch (error) { /* następny przebieg spróbuje ponownie */ } }
+    schedule();
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !stopped) { clearTimeout(timer); tick(); } });
+  schedule();
+  return () => { stopped = true; clearTimeout(timer); };
+}
+
+// Pole tekstowe rośnie z treścią (do `max` px).
+function autosize(textarea, max) {
+  const limit = max || 320;
+  const fit = () => { textarea.style.height = 'auto'; textarea.style.height = Math.min(textarea.scrollHeight, limit) + 'px'; };
+  textarea.addEventListener('input', fit);
+  fit();
+  return fit;
+}
+
+// Na telefonie menu przewija się w poziomie: aktywna zakładka ma być widoczna.
+(() => {
+  if (typeof document.querySelector !== 'function') return;
+  const current = document.querySelector('.topnav-link[aria-current="page"]');
+  if (current && typeof current.scrollIntoView === 'function') current.scrollIntoView({inline: 'center', block: 'nearest'});
+})();

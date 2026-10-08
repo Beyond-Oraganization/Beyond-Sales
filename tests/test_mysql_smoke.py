@@ -657,3 +657,26 @@ class MysqlRepliesSmokeTests(unittest.TestCase):
         self.assertTrue(self.database.transition_status("eventy-001", ["wyslano"], "odpowiedzial"))
         self.assertFalse(self.database.transition_status("eventy-001", ["wyslano"], "zwrot"))
         self.assertEqual(self.database.get("eventy-001")["status"], "odpowiedzial")
+
+    def test_the_list_queries_run_on_mysql_for_every_tab_filter_and_search(self):
+        from perno.services import replies as svc
+
+        with self.database.transaction() as conn:
+            self.database.insert_rows(conn, [sample_row(n, company=f"Firma ąć {n}", country="PL", status="wyslano", sent_at="2026-09-29T13:00:00")
+                                             for n in (1, 2, 3)])
+        for n, kind in ((1, "human"), (2, "bounce"), (3, "human")):
+            self.store.save_message(self.message(f"l{n}@x.pl", thread_id=f"eventy-00{n}", company_id=f"eventy-00{n}", kind=kind,
+                                                 body_text="Zażółć 100% pewne _tak_ \\ ukośnik", snippet="Zażółć gęślą"), datetime(2026, 10, 8, 11, 0))
+        self.store.set_rating("eventy-003", "positive", "human", "", datetime(2026, 10, 8, 12, 0))
+        for tab in ("todo", "all", "positive", "neutral", "negative", "unrated", "machine", "unassigned"):
+            result = svc.list_replies(self.store, {"tab": tab, "mailboxes": ["Roman@z3x.pl"], "segments": ["eventy"], "countries": ["PL"],
+                                                   "from": "2026-10-01", "to": "2026-10-31", "q": "firma"})
+            self.assertEqual(result["tab"], tab)
+        self.assertEqual([r["id"] for r in svc.list_replies(self.store, {"tab": "all"})["rows"]], ["eventy-001", "eventy-003"])  # ta sama chwila: po id
+        self.assertEqual(svc.list_replies(self.store, {"tab": "positive"})["counts"]["positive"], 1)
+        for query, expected in (("100%", 2), ("_tak_", 2), ("ukośnik", 2), ("ZAŻÓŁĆ", 2), ("zażolc", 2), ("100% pewne", 2), ("%%", 0), ("\\", 2)):
+            found = svc.list_replies(self.store, {"tab": "all", "q": query})["total"]
+            self.assertEqual(found, expected, query)
+        self.assertEqual(svc.list_replies(self.store, {"tab": "machine"})["total"], 1)
+        view = svc.thread_view(self.store, "eventy-001")
+        self.assertEqual((view["thread"]["company"], len(view["messages"])), ("Firma ąć 1", 1))

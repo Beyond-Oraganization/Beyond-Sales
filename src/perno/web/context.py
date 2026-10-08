@@ -12,10 +12,12 @@ from typing import Callable, Optional, Sequence
 
 from perno.db import Database
 from perno.db.automat_store import AutomatStore
+from perno.db.replies_store import ReplyStore
 from perno.scraper.store import Store
 from perno.services import automat_control, imap_access, sending
 from perno.services.automat_log import EventLog
 from perno.services.bulk import UndoLog
+from perno.services.replies_runner import FetchRunner
 from perno.settings import ConfigFile
 from perno.web.page import Page
 
@@ -53,6 +55,13 @@ def open_automat_store(db: Database) -> AutomatStore:
     return store
 
 
+def open_replies_store(db: Database) -> ReplyStore:
+    """Magazyn odpowiedzi na bazie panelu; jeden na aplikację, tabele zakładane od razu."""
+    store = ReplyStore(db)
+    store.ensure_schema()
+    return store
+
+
 @dataclass
 class AppContext:
     db: Database
@@ -63,11 +72,14 @@ class AppContext:
     imap_factory: Optional[Callable] = None  # jw. dla poczty przychodzącej (ImapSettings → sesja IMAP)
     scan_store: Lazy[Store] = field(init=False)
     automat_store: Lazy[AutomatStore] = field(init=False)
+    replies_store: Lazy[ReplyStore] = field(init=False)
+    reply_runner: FetchRunner = field(default_factory=FetchRunner)  # pobieranie odpowiedzi w tle (jedno naraz)
     automat_probes: automat_control.Probes = field(default_factory=automat_control.Probes)
 
     def __post_init__(self) -> None:
         self.scan_store = Lazy(lambda: open_scan_store(self.db))
         self.automat_store = Lazy(lambda: open_automat_store(self.db))
+        self.replies_store = Lazy(lambda: open_replies_store(self.db))
 
     def notify_channels(self) -> list:
         """Kanały powiadomień z kompletnym ustawieniem w config.env (macos, ntfy, email)."""

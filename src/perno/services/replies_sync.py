@@ -265,6 +265,12 @@ def _persist(db: Database, store: ReplyStore, mailbox_report: MailboxReport, sca
 
 # ---- przebieg ----------------------------------------------------------------------------------------------
 
+def options_from_config(config: Mapping, *, since: Optional[date] = None, only: str = "", dry_run: bool = False) -> SyncOptions:
+    """Opcje przebiegu z `config.env` (REPLIES_*): wspólne dla `ai.py odpowiedzi pobierz` i dla panelu."""
+    settings = cfg.ReplySettings.from_config(config)
+    return SyncOptions(ignore=settings.ignore, folders=settings.folders, since=since, workers=settings.workers, only=only, dry_run=dry_run)
+
+
 def _snapshot(db: Database, store: ReplyStore, config: Mapping, options: SyncOptions, now: datetime,
               clock: Callable[[], datetime]) -> Optional[Snapshot]:
     first = store.first_sent_at()

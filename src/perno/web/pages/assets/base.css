@@ -49,6 +49,8 @@ code{font:12px/1.4 var(--mono);background:var(--fill);border-radius:5px;padding:
 .topnav-link{display:flex;align-items:center;height:26px;padding:0 14px;border-radius:6px;color:var(--label);
              font-size:var(--fs-ui);font-weight:500;white-space:nowrap;text-decoration:none;
              transition:background var(--dur-1) var(--ease),color var(--dur-1) var(--ease);}
+.topnav-badge{display:inline-grid;place-content:center;min-width:18px;height:18px;margin-left:6px;padding:0 5px;border-radius:var(--r-pill);
+  background:var(--accent);color:#fff;font-size:var(--fs-caption);font-weight:700;line-height:1;font-variant-numeric:tabular-nums;}
 .topnav-link:hover{background:var(--fill);text-decoration:none;}
 .topnav-link[aria-current="page"]{background:var(--surface);box-shadow:var(--sh-seg);font-weight:600;}
 .topnav-db{justify-self:end;display:inline-flex;align-items:center;gap:6px;max-width:320px;padding:3px 10px;
@@ -253,3 +255,27 @@ dialog.bulk-dialog[open],dialog.sheet[open]{animation:sheet-in var(--dur-2) var(
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;
                        transition-duration:.01ms !important;scroll-behavior:auto !important;}
 }
+
+
+/* ---- układ lista | podgląd (poczta, a w przyszłości inne strony): dwie kolumny przewijane osobno ------------------- */
+.split{display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);min-height:0;flex:1;}
+.split-list{min-height:0;overflow-y:auto;overscroll-behavior:contain;background:var(--surface);border-right:1px solid var(--separator);}
+.split-detail{min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+.split-back{display:none;}
+@media (max-width:900px){
+  /* wąski ekran: jedna kolumna naraz; wybór wiersza przełącza na podgląd (data-view="detail"), „Wstecz” wraca do listy */
+  .split{grid-template-columns:minmax(0,1fr);}
+  .split-detail{display:none;}
+  .split[data-view="detail"] .split-list{display:none;}
+  .split[data-view="detail"] .split-detail{display:block;}
+  .split-back{display:inline-flex;}
+}
+
+/* ---- klawisze w ściądze skrótów i podpowiedziach --------------------------------------------------------------- */
+kbd{display:inline-block;min-width:20px;padding:1px 6px;border-radius:var(--r-sm);border:1px solid var(--field-border);background:var(--btn);
+  font:500 var(--fs-foot)/1.4 var(--mono);color:var(--label-2);text-align:center;}
+
+/* przycisk w toaście („Cofnij”) */
+.toast .toast-action{margin-left:var(--s-2);padding:2px 6px;border:none;background:none;box-shadow:none;color:var(--accent-ink);
+  font:600 var(--fs-ui)/1.2 var(--font);cursor:pointer;border-radius:var(--r-sm);}
+.toast .toast-action:hover{background:var(--accent-tint);}

@@ -47,6 +47,9 @@ odp_watki = sa.Table(
     sa.Column("last_in_at", sa.DateTime),
     sa.Column("last_out_at", sa.DateTime),
     sa.Column("last_activity_at", sa.DateTime),
+    sa.Column("last_snippet", sa.String(255)),  # początek ostatniej rozmowy (bez cytatu): lista nie czyta wiadomości
+    sa.Column("last_from", sa.String(255)),  # nadawca ostatniej wiadomości (imię albo adres)
+    sa.Column("last_direction", sa.String(3)),  # in | out: czyja była ostatnia wiadomość
     sa.Column("created_at", sa.DateTime),
     sa.Index("ix_odp_watki_activity", "last_activity_at"),
     sa.Index("ix_odp_watki_mailbox", "mailbox"),

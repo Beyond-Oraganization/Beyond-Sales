@@ -1,0 +1,104 @@
+/* Zakładka Odpowiedzi: lista rozmów po lewej, wątek po prawej (jak w poczcie). Kolory tylko z tokenów. */
+
+.replies{display:flex;flex-direction:column;height:calc(100dvh - var(--nav-h));min-height:420px;background:var(--bg);}
+.rp-top{flex:none;display:flex;flex-direction:column;gap:var(--s-2);padding:var(--s-3) var(--s-4) var(--s-2);border-bottom:1px solid var(--separator);}
+.rp-tabs{display:flex;gap:var(--s-2);overflow-x:auto;padding-bottom:2px;scrollbar-width:none;}
+.rp-tabs::-webkit-scrollbar{display:none;}
+.rp-tools{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-2);}
+.rp-search{flex:1 1 220px;max-width:360px;}
+.rp-pop-wrap{position:relative;}
+.rp-pop{position:absolute;z-index:var(--z-pop);top:calc(100% + 6px);left:0;width:min(340px,92vw);display:flex;flex-direction:column;gap:var(--s-3);
+  padding:var(--s-3);background:var(--surface);border:1px solid var(--separator);border-radius:var(--r-lg);box-shadow:var(--sh-pop);}
+.rp-pop[hidden]{display:none;}
+.rp-field{display:flex;flex-direction:column;gap:var(--s-1);font-size:var(--fs-foot);font-weight:600;color:var(--label-2);}
+.rp-field input,.rp-field select{font-weight:400;color:var(--label);}
+.rp-dates{display:grid;grid-template-columns:1fr 1fr;gap:var(--s-2);}
+.rp-mailboxes{max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
+.rp-mailboxes label{display:flex;align-items:center;gap:var(--s-2);padding:4px 6px;border-radius:var(--r-sm);font-size:var(--fs-ui);cursor:pointer;}
+.rp-mailboxes label:hover{background:var(--fill);}
+.rp-pop-foot{display:flex;justify-content:flex-end;}
+.rp-status{font-size:var(--fs-foot);color:var(--label-2);}
+.rp-status button{margin-left:var(--s-2);}
+.rp-status .rp-problems{margin:var(--s-2) 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px;}
+.rp-status.is-bad{color:var(--warn);}
+
+/* lista */
+.rp-row{display:grid;grid-template-columns:14px minmax(0,1fr);gap:0 var(--s-2);width:100%;padding:var(--s-3) var(--s-4);text-align:left;font:inherit;color:var(--label);
+  background:transparent;border:none;border-bottom:1px solid var(--separator);border-radius:0;box-shadow:none;cursor:pointer;}
+.rp-row:hover{background:var(--fill);}
+.rp-row[aria-current="true"]{background:var(--accent-tint);}
+.rp-row:focus-visible{outline:3px solid var(--accent-ring);outline-offset:-3px;}
+.rp-dot{width:8px;height:8px;margin-top:6px;border-radius:50%;background:transparent;}
+.rp-row.is-unread .rp-dot{background:var(--accent);}
+.rp-line{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s-2);min-width:0;}
+.rp-company{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-ui);font-weight:500;}
+.rp-row.is-unread .rp-company{font-weight:700;}
+.rp-date{flex:none;font-size:var(--fs-foot);color:var(--label-2);font-variant-numeric:tabular-nums;}
+.rp-snippet{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px;font-size:var(--fs-foot);color:var(--label-2);line-height:1.4;}
+.rp-meta{display:flex;flex-wrap:wrap;gap:var(--s-1);margin-top:var(--s-1);}
+.rp-empty{padding:var(--s-8) var(--s-4);text-align:center;color:var(--label-2);font-size:var(--fs-ui);}
+.rp-pager{display:flex;justify-content:center;align-items:center;gap:var(--s-3);padding:var(--s-3);font-size:var(--fs-foot);color:var(--label-2);}
+
+/* oceny: kolor niesie ton, a obok zawsze jest tekst */
+.is-positive{--c:var(--rating-pos);}
+.is-neutral{--c:var(--rating-neu);}
+.is-negative{--c:var(--rating-neg);}
+.is-ai .badge::after{content:"AI";margin-left:2px;font-weight:700;}
+
+/* wątek */
+.rp-thread{display:flex;flex-direction:column;gap:var(--s-3);max-width:860px;margin:0 auto;padding:var(--s-4);}
+.rp-thead{display:flex;flex-direction:column;gap:var(--s-2);}
+.rp-title{display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap;}
+.rp-title h2{margin:0;font-size:var(--fs-title);font-weight:700;letter-spacing:-.01em;}
+.rp-sub{font-size:var(--fs-foot);color:var(--label-2);overflow-wrap:anywhere;}
+.rp-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-2);}
+.rp-rate{display:inline-flex;gap:2px;padding:2px;background:var(--fill);border-radius:var(--r-md);}
+.rp-rate button{--c:var(--label-2);min-height:26px;padding:0 12px;border:none;border-radius:6px;background:transparent;box-shadow:none;
+  font:500 var(--fs-ui)/1 var(--font);color:var(--label);cursor:pointer;}
+.rp-rate button:hover{background:var(--fill-hover);}
+.rp-rate button[aria-pressed="true"]{background:var(--surface);box-shadow:var(--sh-seg);font-weight:600;
+  color:color-mix(in srgb,var(--c) var(--ink-mix),var(--label));}
+.rp-ai{display:inline-flex;align-items:center;gap:var(--s-2);font-size:var(--fs-foot);color:var(--label-2);}
+.rp-menu-wrap{position:relative;}
+.rp-menu{position:absolute;z-index:var(--z-pop);top:calc(100% + 6px);right:0;min-width:240px;display:flex;flex-direction:column;padding:var(--s-1);
+  background:var(--surface);border:1px solid var(--separator);border-radius:var(--r-lg);box-shadow:var(--sh-pop);}
+.rp-menu[hidden]{display:none;}
+.rp-menu button,.rp-menu a{display:block;width:100%;padding:8px 10px;text-align:left;font:500 var(--fs-ui)/1.2 var(--font);color:var(--label);background:none;border:none;
+  border-radius:var(--r-sm);box-shadow:none;cursor:pointer;text-decoration:none;}
+.rp-menu button:hover,.rp-menu a:hover{background:var(--fill);}
+.rp-more::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--i-more) center/contain no-repeat;mask:var(--i-more) center/contain no-repeat;}
+
+.rp-msgs{display:flex;flex-direction:column;gap:var(--s-2);}
+.rp-msg{background:var(--surface);border:1px solid var(--separator);border-radius:var(--r-lg);box-shadow:var(--sh-1);overflow:hidden;}
+.rp-msg.is-ours{border-left:3px solid var(--accent);}
+.rp-msg-head{display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap;width:100%;padding:var(--s-3) var(--s-4);text-align:left;font:inherit;color:var(--label);
+  background:none;border:none;border-radius:0;box-shadow:none;cursor:pointer;}
+.rp-msg-head:hover{background:var(--fill);}
+.rp-from{font-size:var(--fs-ui);font-weight:600;}
+.rp-when{margin-left:auto;font-size:var(--fs-foot);color:var(--label-2);font-variant-numeric:tabular-nums;}
+.rp-msg-preview{flex-basis:100%;font-size:var(--fs-foot);color:var(--label-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rp-msg-body{padding:0 var(--s-4) var(--s-4);}
+.rp-msg.is-collapsed .rp-msg-body{display:none;}
+.rp-msg:not(.is-collapsed) .rp-msg-preview{display:none;}
+.rp-text{margin:0;font:400 var(--fs-body)/1.5 var(--font);white-space:pre-wrap;overflow-wrap:anywhere;}
+.rp-quote-toggle{margin-top:var(--s-2);}
+.rp-quote{margin:var(--s-2) 0 0;padding-left:var(--s-3);border-left:2px solid var(--separator);color:var(--label-2);font:400 var(--fs-ui)/1.45 var(--font);
+  white-space:pre-wrap;overflow-wrap:anywhere;}
+.rp-quote[hidden]{display:none;}
+.rp-files{display:flex;flex-wrap:wrap;gap:var(--s-1);margin-top:var(--s-2);}
+.rp-file{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--r-pill);background:var(--fill);font-size:var(--fs-foot);color:var(--label-2);}
+.rp-file::before{content:"";width:12px;height:12px;background:currentColor;-webkit-mask:var(--i-clip) center/contain no-repeat;mask:var(--i-clip) center/contain no-repeat;}
+
+.rp-assign{display:flex;flex-direction:column;gap:var(--s-2);}
+.rp-assign-results{display:flex;flex-direction:column;gap:2px;}
+.rp-assign-results button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;padding:8px 10px;text-align:left;font:inherit;background:var(--surface);
+  border:1px solid var(--separator);border-radius:var(--r-md);box-shadow:none;cursor:pointer;}
+.rp-assign-results button:hover{background:var(--fill);}
+.rp-hint{font-size:var(--fs-foot);color:var(--label-2);}
+
+@media (max-width:900px){
+  .replies:has(.split[data-view="detail"]) .rp-top{display:none;}  /* na telefonie otwarty wątek dostaje cały ekran */
+  .rp-top{padding:var(--s-2) var(--s-3);}
+  .rp-thread{padding:var(--s-3);}
+  .rp-tools .rp-search{max-width:none;}
+}

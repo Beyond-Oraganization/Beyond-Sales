@@ -16,9 +16,11 @@ from typing import Iterable, Optional
 import sqlalchemy as sa
 from sqlalchemy import exc as sa_exc
 
+from perno.db import replies_queries as rq
 from perno.db.company_sql import column_for, company_key, select_mails
 from perno.db.replies_schema import (
     RUN_ROW_ID,
+    odp_oceny,
     odp_przebieg,
     odp_stan,
     odp_watki,
@@ -26,8 +28,9 @@ from perno.db.replies_schema import (
     replies_metadata,
 )
 from perno.db.schema import maile
-from perno.domain import message_ids
+from perno.domain import message_ids, reply_rules
 from perno.domain import replies as rp
+from perno.domain import reply_listing as rl
 from perno.domain import statuses as st
 from perno.scraper.store.core import StoreCore, clean_text
 
@@ -220,6 +223,9 @@ class ReplyStore(StoreCore):
             values["last_out_at"] = max(filter(None, (row["last_out_at"], when)))
             if row["last_in_at"] is None or when >= row["last_in_at"]:
                 values["awaiting_reply"] = False  # odpisaliśmy po ostatniej wiadomości firmy
+        if human and (row["last_activity_at"] is None or when >= row["last_activity_at"]):
+            values.update(last_snippet=clean_text(msg.snippet, 255), last_direction=msg.direction,
+                          last_from=clean_text(msg.from_name or msg.from_addr, 255))
         conn.execute(sa.update(odp_watki).where(odp_watki.c.id == msg.thread_id).values(**values))
 
     # ---- liczniki (do `ai.py odpowiedzi stan` i panelu) -------------------------------------------------------
@@ -243,3 +249,88 @@ class ReplyStore(StoreCore):
                 "unassigned": count(messages.where(odp_wiadomosci.c.thread_id.is_(None))),
                 "messages": count(messages),
             }
+
+    # ---- lista i widok wątku (panel) ---------------------------------------------------------------------
+
+    def list_page(self, flt: rl.ReplyFilter, page: int, size: int) -> tuple:
+        """`(wiersze, suma)` strony wybranej zakładki: wątki albo (dla „Nieprzypisanych”) wiadomości bez wątku."""
+        with self._read() as conn:
+            if flt.tab == rl.TAB_UNASSIGNED:
+                return rq.list_unassigned(conn, flt, page, size)
+            return rq.list_threads(conn, flt, page, size)
+
+    def tab_counts(self, flt: rl.ReplyFilter) -> dict:
+        """Liczby wątków w zakładkach przy zawężeniach z `flt` (zakładka z `flt` jest pomijana)."""
+        with self._read() as conn:
+            return rq.tab_counts(conn, flt)
+
+    def unread_total(self) -> int:
+        """Ile wątków czeka na nas nieprzeczytanych (licznik w menu)."""
+        with self._read() as conn:
+            return rq.unread_total(conn)
+
+    def thread_detail(self, thread_id: str) -> Optional[dict]:
+        """Wszystko do widoku wątku: wiersz listy, mail kampanii, wiadomości i historia ocen (None, gdy wątku nie ma)."""
+        with self._read() as conn:
+            thread = rq.thread_row(conn, thread_id)
+            if thread is None:
+                return None
+            return {"thread": thread, "origin": rq.origin_mail(conn, thread_id), "messages": rq.thread_messages(conn, thread_id),
+                    "ratings": rq.rating_log(conn, thread_id)}
+
+    def origin_info(self, mail_id: str) -> Optional[dict]:
+        """Mail kampanii o tym id: firma, status i skrzynka, z której wyszedł (None, gdy go nie ma)."""
+        with self._read() as conn:
+            row = conn.execute(select_mails(maile.c.id, company_key().label("company_id"), maile.c.status, maile.c.sent_from)
+                               .where(maile.c.id == mail_id)).mappings().first()
+        return dict(row) if row else None
+
+    def unassigned_message(self, message_id: int) -> Optional[dict]:
+        with self._read() as conn:
+            return rq.unassigned_message(conn, message_id)
+
+    def search_sent_mails(self, words: tuple, limit: int = 20) -> list:
+        """Wysłane maile pasujące do słów (firma, adres, temat): do ręcznego przypisania nieprzypisanej wiadomości."""
+        with self._read() as conn:
+            return rq.search_sent_mails(conn, words, limit)
+
+    def thread_exists(self, thread_id: str) -> bool:
+        with self._read() as conn:
+            return conn.execute(sa.select(odp_watki.c.id).where(odp_watki.c.id == thread_id)).first() is not None
+
+    # ---- ocena i stan wątku ----------------------------------------------------------------------------------
+
+    def set_rating(self, thread_id: str, rating: Optional[str], by: str, note: str, now: datetime, *, force: bool = False) -> Optional[dict]:
+        """Zapisuje ocenę wątku i dopisuje ją do dziennika. Zwraca poprzednią ocenę (do „Cofnij”), a None, gdy wątku nie ma albo
+        AI próbowałoby nadpisać ocenę człowieka (`force`: przywrócenie oceny po „Cofnij”, bez tej reguły)."""
+        with self._tx() as conn:
+            row = conn.execute(sa.select(odp_watki.c.rating, odp_watki.c.rating_by, odp_watki.c.rating_note)
+                               .where(odp_watki.c.id == thread_id).with_for_update()).mappings().first()
+            if row is None or (by == rp.BY_AI and not force and not reply_rules.ai_may_rate(row["rating_by"])):
+                return None
+            conn.execute(sa.update(odp_watki).where(odp_watki.c.id == thread_id).values(
+                rating=rating, rating_by=by if rating else None, rating_note=note[:500] or None if rating else None,
+                rated_at=now if rating else None))
+            conn.execute(sa.insert(odp_oceny).values(thread_id=thread_id, rating=rating, by=by, note=note[:500] or None, at=now))
+            return dict(row)
+
+    def update_thread(self, thread_id: str, **values) -> bool:
+        """Zmienia pola stanu wątku (`read_at`, `closed_at`, `optout`); zwraca, czy wątek istnieje."""
+        allowed = {key: value for key, value in values.items() if key in ("read_at", "closed_at", "optout")}
+        with self._tx() as conn:
+            return conn.execute(sa.update(odp_watki).where(odp_watki.c.id == thread_id).values(**allowed)).rowcount == 1
+
+    def assign_message(self, message_id: int, thread_id: str, company_id: str, mailbox: str, now: datetime) -> bool:
+        """Przypisuje wiadomość bez wątku do wątku (ręcznie): wątek powstaje, jeśli go nie było, i przelicza swoje liczniki.
+        Zwraca False, gdy wiadomości nie ma albo ma już wątek."""
+        with self._tx() as conn:
+            row = conn.execute(sa.select(odp_wiadomosci).where(odp_wiadomosci.c.id == message_id, odp_wiadomosci.c.thread_id.is_(None))
+                               .with_for_update()).mappings().first()
+            if row is None:
+                return False
+            conn.execute(sa.update(odp_wiadomosci).where(odp_wiadomosci.c.id == message_id).values(thread_id=thread_id, match_method=rp.MATCH_MANUAL))
+            self._touch_thread(conn, rp.NewMessage(
+                direction=row["direction"], kind=row["kind"], mailbox=row["mailbox"] or "", identity="", from_addr=row["from_addr"] or "",
+                from_name=row["from_name"] or "", snippet=row["snippet"] or "", date_at=row["date_at"], thread_id=thread_id,
+                company_id=company_id, match_method=rp.MATCH_MANUAL, optout_hint=bool(row["optout_hint"]), thread_mailbox=mailbox), now)
+            return True

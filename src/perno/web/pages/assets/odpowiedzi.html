@@ -1,0 +1,32 @@
+<div class="replies" id="replies">
+  <header class="rp-top">
+    <div class="rp-tabs" id="tabs" role="tablist" aria-label="Widoki odpowiedzi"></div>
+    <div class="rp-tools">
+      <input type="search" id="q" class="rp-search" placeholder="Szukaj: firma, adres, treść…" autocomplete="off" aria-label="Szukaj w odpowiedziach">
+      <div class="rp-pop-wrap">
+        <button type="button" id="filterBtn" class="kit-btn" aria-expanded="false" aria-controls="filterPop">Filtry</button>
+        <div class="rp-pop" id="filterPop" hidden>
+          <label class="rp-field"><span>Skrzynka</span>
+            <input type="search" id="mailboxFind" placeholder="Szukaj skrzynki…" autocomplete="off" aria-label="Szukaj skrzynki">
+          </label>
+          <div class="rp-mailboxes" id="mailboxList" role="group" aria-label="Skrzynki"></div>
+          <label class="rp-field"><span>Segment</span><select id="segmentSel"><option value="">wszystkie</option></select></label>
+          <label class="rp-field"><span>Kraj</span><select id="countrySel"><option value="">wszystkie</option></select></label>
+          <div class="rp-dates">
+            <label class="rp-field"><span>Od</span><input type="date" id="fromDay"></label>
+            <label class="rp-field"><span>Do</span><input type="date" id="toDay"></label>
+          </div>
+          <div class="rp-pop-foot"><button type="button" id="clearFilters" class="btn plain">Wyczyść filtry</button></div>
+        </div>
+      </div>
+      <button type="button" id="fetchBtn" class="btn">Pobierz teraz</button>
+      <span id="fetchInfo" class="muted small" role="status"></span>
+      <button type="button" id="helpBtn" class="btn plain" title="Skróty klawiszy (?)" aria-label="Skróty klawiszy">?</button>
+    </div>
+    <div id="mailStatus" class="rp-status" hidden></div>
+  </header>
+  <div class="split" id="split" data-view="list">
+    <section class="split-list" id="list" aria-label="Lista rozmów"></section>
+    <section class="split-detail" id="detail" aria-label="Rozmowa"></section>
+  </div>
+</div>

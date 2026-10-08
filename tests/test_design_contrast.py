@@ -112,6 +112,23 @@ class ContrastTests(unittest.TestCase):
                         with self.subTest(theme=mode, status=code, alpha=alpha):
                             self.assert_contrast(mode, f"odznaka {code} {meta[1]}", text, over(tint(color, alpha), background), 4.5)
 
+    def test_rating_tokens_point_at_the_tones_and_their_badges_are_readable(self):
+        """Oceny (pozytywna / neutralna / negatywna) używają tonów ok / warn / danger i muszą być czytelne jak odznaki statusów."""
+        pointers = {"--rating-pos": "--ok", "--rating-neu": "--warn", "--rating-neg": "--danger"}
+        css = read_tokens()
+        for name, tone in pointers.items():
+            self.assertIn(f"{name}:var({tone})", css.replace(" ", ""), f"{name} ma wskazywać na {tone}")
+        for mode, tokens in themes().items():
+            surface, bg, label = parse_color(tokens["--surface"]), parse_color(tokens["--bg"]), parse_color(tokens["--label"])
+            share = float(tokens["--ink-mix"].rstrip("%")) / 100
+            for name, tone in pointers.items():
+                color = parse_color(tokens[tone])
+                text = mix(color, share, label)
+                for background in (surface, bg):
+                    with self.subTest(theme=mode, rating=name):
+                        self.assert_contrast(mode, f"odznaka oceny {name}", text, over(tint(color, 0.16), background), 4.5)
+                        self.assert_contrast(mode, f"przycisk oceny {name} na tle odznaczonego przełącznika", text, surface, 4.5)
+
 
 if __name__ == "__main__":
     unittest.main()

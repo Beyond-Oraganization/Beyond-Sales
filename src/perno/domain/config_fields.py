@@ -109,6 +109,8 @@ FIELDS = (
                 help="Po przecinku. Puste = wykryj automatycznie (Odebrane, Wysłane, Spam); nazwy takie, jak widzi je serwer."),
     ConfigField("REPLIES_FETCH_WORKERS", "Skrzynek naraz", "replies", KIND_INT,
                 "Ile skrzynek pobierać równolegle (przy wielu skrzynkach 4–8).", "4", low=1, high=16),
+    ConfigField("REPLIES_AUTO_FETCH_MIN", "Odświeżanie przy otwartej zakładce (min)", "replies", KIND_INT,
+                "Co ile minut zakładka Odpowiedzi sama pobiera pocztę, dopóki jest otwarta. 0 = tylko przyciskiem.", "5", low=0, high=1440),
     ConfigField("NOTIFY_MACOS", "Powiadomienia macOS", "notify", KIND_BOOL, "Okienka w Centrum powiadomień.", "true", restart=RESTART_DEMON),
     ConfigField("NTFY_TOPIC", "Temat ntfy (telefon)", "notify", KIND_SECRET,
                 "Długi, losowy (8–64 znaków: litery, cyfry, - i _). To sekret: kto go zna, czyta i pisze. W aplikacji ntfy zasubskrybuj ten temat.",

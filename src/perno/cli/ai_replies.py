@@ -83,9 +83,7 @@ def report_lines(report: replies_sync.SyncReport) -> list:
 
 def cmd_fetch(args) -> int:
     config, db, store = open_replies(args)
-    settings = cfg.ReplySettings.from_config(config)
-    options = replies_sync.SyncOptions(ignore=settings.ignore, folders=settings.folders, since=_day(args.od), workers=settings.workers,
-                                       only=args.skrzynka or "", dry_run=args.dry_run)
+    options = replies_sync.options_from_config(config, since=_day(args.od), only=args.skrzynka or "", dry_run=args.dry_run)
     if not args.dry_run:
         backup = firms_import.backup_table(db, cfg.BACKUP_DIR, "przed-pobraniem-odpowiedzi", replies=True)
         print(f"Kopia zapasowa: {backup}")
