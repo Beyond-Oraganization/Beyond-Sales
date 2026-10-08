@@ -15,6 +15,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Mapping, Optional
 
+from perno.domain.imap_folders import parse_selection
 from perno.domain.mailboxes import imap_prefix, slots_in_keys, smtp_prefix
 
 # Korzeń projektu (katalog z config.env, data/, templates/): src/perno/settings.py leży trzy poziomy niżej.
@@ -276,6 +277,26 @@ class ImapSettings:
         except ValueError:
             raise ConfigError(f"{prefix}_PORT w config.env nie jest liczbą.") from None
         return cls(config[f"{prefix}_HOST"], port, config.get(f"{prefix}_USER") or address, password, use_ssl, slot, address)
+
+
+@dataclass(frozen=True)
+class ReplySettings:
+    """Ustawienia pobierania odpowiedzi z config.env (wszystkie klucze opcjonalne)."""
+
+    ignore: tuple = ()  # REPLIES_IGNORE: adresy i domeny wewnętrzne, małymi literami
+    folders: tuple = ()  # REPLIES_FOLDERS: nazwy folderów; puste = wykryj automatycznie
+    workers: int = 4  # REPLIES_FETCH_WORKERS: ile skrzynek naraz
+
+    @classmethod
+    def from_config(cls, config: Mapping[str, str]) -> "ReplySettings":
+        try:
+            workers = int(config.get("REPLIES_FETCH_WORKERS") or 4)
+        except ValueError:
+            raise ConfigError("REPLIES_FETCH_WORKERS w config.env nie jest liczbą.") from None
+        if not 1 <= workers <= 16:
+            raise ConfigError("REPLIES_FETCH_WORKERS w config.env musi być z zakresu 1–16.")
+        ignore = tuple(item.lower() for item in parse_selection(config.get("REPLIES_IGNORE", "")))
+        return cls(ignore, tuple(parse_selection(config.get("REPLIES_FOLDERS", ""))), workers)
 
 
 def imap_slot_numbers(config: Mapping[str, str]) -> list:

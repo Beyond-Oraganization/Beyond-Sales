@@ -106,7 +106,7 @@ class ConfigTests(TwoMailboxCase):
         box = {"SMTP14_HOST": "smtp14.invalid", "SMTP14_PORT": "587", "SMTP14_USER": "fourteen@example.com", "SMTP14_PASSWORD": "czternaste"}
         self.assertEqual(self.call("POST", "/api/config", {"values": box}).status, 200)
         data = self.data(self.call("GET", "/api/config"))
-        self.assertEqual([g["key"] for g in data["groups"]], ["mail", "mail2", "mail14", "notify", "scraper"])
+        self.assertEqual([g["key"] for g in data["groups"]], ["mail", "mail2", "mail14", "replies", "notify", "scraper"])
         self.assertEqual(data["next_slot"], 3)
         self.assertEqual(len(self.data(self.call("GET", "/api/status"))["mailboxes"]), 3)
         self.assertNotIn("czternaste", repr(data))

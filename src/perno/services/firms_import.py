@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 from perno.db import Database, DbError, InvalidValue, format_value, from_api
 from perno.db import companies as companies_table
 from perno.db import maile as maile_table
+from perno.db.replies_schema import odp_oceny, odp_watki, odp_wiadomosci
 from perno.domain import countries, segments
 from perno.domain import statuses as st
 from perno.scraper.urls import host_key
@@ -50,6 +51,8 @@ def domain_key(url: object) -> Optional[str]:
 
 # ---- kopia zapasowa ------------------------------------------------------------------
 
+REPLY_BACKUPS = (("OdpWatki", odp_watki), ("OdpWiadomosci", odp_wiadomosci), ("OdpOceny", odp_oceny))
+
 def _unused_path(directory: str, prefix: str, stamp: str, label: str) -> str:
     path = os.path.join(directory, f"{prefix}_{stamp}_przed-{label}.csv")
     counter = 1
@@ -69,16 +72,21 @@ def _dump_csv(db: Database, table: Any, path: str) -> None:
     os.replace(tmp, path)
 
 
-def backup_table(db: Database, directory: str, label: str, now: Optional[datetime] = None) -> str:
+def backup_table(db: Database, directory: str, label: str, now: Optional[datetime] = None, *, replies: bool = False) -> str:
     """Zapisuje całą tabelę `maile` (wszystkie kolumny, które w niej są teraz) do CSV, a gdy istnieje tabela firm
-    (`podmioty`), obok niej drugi plik `Podmioty_*`. Działa także na bazie sprzed uaktualnienia schematu, bo bierze
-    kolumny z samej tabeli, a nie z definicji w kodzie. Zwraca ścieżkę pliku z `maile`."""
+    (`podmioty`), obok niej drugi plik `Podmioty_*`. Z `replies=True` także tabele odpowiedzi, które już istnieją
+    (`OdpWatki_*`, `OdpWiadomosci_*`, `OdpOceny_*`; zawierają cudzą korespondencję, więc katalog kopii jest poza gitem).
+    Działa także na bazie sprzed uaktualnienia schematu, bo bierze kolumny z samej tabeli, a nie z definicji w kodzie.
+    Zwraca ścieżkę pliku z `maile`."""
     os.makedirs(directory, exist_ok=True)
     stamp = (now or datetime.now()).strftime("%Y%m%d_%H%M%S")
     path = _unused_path(directory, "Maile", stamp, label)
     _dump_csv(db, maile_table, path)
     if db.has_table(companies_table.name):
         _dump_csv(db, companies_table, _unused_path(directory, "Podmioty", stamp, label))
+    for prefix, table in (REPLY_BACKUPS if replies else ()):
+        if db.has_table(table.name):
+            _dump_csv(db, table, _unused_path(directory, prefix, stamp, label))
     return path
 
 

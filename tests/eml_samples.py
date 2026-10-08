@@ -6,6 +6,8 @@ cytatem, sam HTML, autoodpowiedź, raport doręczenia (DSN) z oryginałem, zwrot
 
 from __future__ import annotations
 
+import zlib
+
 CRLF = "\r\n"
 
 
@@ -87,13 +89,14 @@ Jestem poza biurem do 10.10.""")
 
 def dsn_bounce(*, recipient: str = "nieistnieje@firma.pl", original_id: str = "<orig1@z3x.pl>", status: str = "5.1.1",
                action: str = "failed", as_message: bool = False) -> bytes:
+    bounce_id = f"<bounce-{zlib.crc32((recipient + original_id + status).encode()):08x}@mx.z3x.pl>"
     original = (f"Message-ID: {original_id}\nFrom: roman@z3x.pl\nTo: {recipient}\nSubject: Rezerwacje limuzyn, Kraków\n")
     tail = ("Content-Type: message/rfc822\n\n" + original) if as_message else ("Content-Type: text/rfc822-headers\n\n" + original)
     return raw(f"""From: Mail Delivery System <MAILER-DAEMON@mx.z3x.pl>
 To: roman@z3x.pl
 Subject: Undelivered Mail Returned to Sender
 Date: Fri, 02 Oct 2026 12:01:00 +0200
-Message-ID: <bounce1@mx.z3x.pl>
+Message-ID: {bounce_id}
 Auto-Submitted: auto-replied
 MIME-Version: 1.0
 Content-Type: multipart/report; report-type=delivery-status; boundary="DSN"

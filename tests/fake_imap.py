@@ -103,6 +103,7 @@ class FakeImap:
         self.selected: Optional[str] = None
         self.header_fetches: list = []
         self.full_fetches: list = []
+        self.searches: list = []
         self.appended: list = []
         self.opened_readonly = True
 
@@ -128,6 +129,7 @@ class FakeImap:
         return FolderState(self.uidvalidity, max(items, default=0) + 1, len(items))
 
     def search_uids(self, *, since: Optional[date] = None, after_uid: int = 0) -> list:
+        self.searches.append((self.selected, since, after_uid))
         return sorted(uid for uid in self.folders[self.selected or "INBOX"] if uid > after_uid)
 
     def fetch_headers(self, uids: Sequence[int]) -> dict:

@@ -48,7 +48,7 @@ class MailboxFieldTests(unittest.TestCase):
     def test_the_number_of_mailboxes_is_not_capped(self):
         config = {f"SMTP{n}_HOST": "h" for n in (2, 3, 11, 40, 120)}
         keys = [key for key, _, _ in cf.groups_for(config)]
-        self.assertEqual(keys, ["mail", "mail2", "mail3", "mail11", "mail40", "mail120", "notify", "scraper"])
+        self.assertEqual(keys, ["mail", "mail2", "mail3", "mail11", "mail40", "mail120", "replies", "notify", "scraper"])
 
     def test_invalid_slot_numbers_are_unknown_keys(self):
         for key in ("SMTP1_HOST", "SMTP02_HOST", "SMTP0_HOST", "SMTP10000_HOST", "SMTP3_NOPE", "SMTPX_HOST", "DB_HOST"):
@@ -144,6 +144,25 @@ class ValidationTests(unittest.TestCase):
 
     def test_smtp_password_accepts_any_printable_text(self):
         self.assertEqual(check("SMTP_PASSWORD", "  p@ss=wo#rd ąę 'x' \"y\" "), "p@ss=wo#rd ąę 'x' \"y\"")
+
+
+class ReplyFieldTests(unittest.TestCase):
+    def test_the_shared_reply_settings_live_in_their_own_group(self):
+        self.assertEqual([f.key for f in cf.fields_in_group("replies")], ["REPLIES_IGNORE", "REPLIES_FOLDERS", "REPLIES_FETCH_WORKERS"])
+        self.assertNotIn("replies", [key for key in (cf.group_key(n) for n in range(1, 5))])
+
+    def test_the_worker_count_is_validated_like_the_settings_parser_expects(self):
+        self.assertEqual(check("REPLIES_FETCH_WORKERS", " 8 "), "8")
+        self.assertEqual((check("REPLIES_FETCH_WORKERS", "1"), check("REPLIES_FETCH_WORKERS", "16")), ("1", "16"))
+        for bad in ("0", "17", "abc", "2.5"):
+            with self.subTest(bad=bad), self.assertRaises(cf.ConfigValueError):
+                check("REPLIES_FETCH_WORKERS", bad)
+
+    def test_text_settings_reject_line_breaks(self):
+        for key in ("REPLIES_IGNORE", "REPLIES_FOLDERS"):
+            with self.subTest(key=key), self.assertRaises(cf.ConfigValueError):
+                check(key, "a\nb")
+        self.assertEqual(check("REPLIES_IGNORE", " jakub@z3x.io, z3x.io "), "jakub@z3x.io, z3x.io")
 
 
 class TableTests(unittest.TestCase):

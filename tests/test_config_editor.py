@@ -29,8 +29,8 @@ class DescribeTests(unittest.TestCase):
 
     def test_an_empty_file_lists_the_main_mailbox_and_fixed_groups_only(self):
         data = ed.describe({}, file_exists=False)
-        self.assertEqual([g["key"] for g in data["groups"]], ["mail", "notify", "scraper"])
-        self.assertEqual([g["mailbox"] for g in data["groups"]], [1, None, None])
+        self.assertEqual([g["key"] for g in data["groups"]], ["mail", "replies", "notify", "scraper"])
+        self.assertEqual([g["mailbox"] for g in data["groups"]], [1, None, None, None])
         self.assertEqual(sum(len(g["fields"]) for g in data["groups"]), len(cf.FIELDS))
         self.assertEqual(data["next_slot"], 2)
         self.assertFalse(data["file_exists"])
@@ -38,7 +38,7 @@ class DescribeTests(unittest.TestCase):
     def test_every_mailbox_in_the_file_is_listed_in_numeric_order(self):
         config = {f"SMTP{n}_USER": f"u{n}@x.pl" for n in (12, 3, 40)}
         data = ed.describe(config, file_exists=True)
-        self.assertEqual([g["key"] for g in data["groups"]], ["mail", "mail3", "mail12", "mail40", "notify", "scraper"])
+        self.assertEqual([g["key"] for g in data["groups"]], ["mail", "mail3", "mail12", "mail40", "replies", "notify", "scraper"])
         self.assertEqual(data["next_slot"], 2)
 
     def test_a_card_for_a_new_mailbox_has_the_same_fields_and_no_values(self):

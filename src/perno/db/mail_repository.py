@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
-from typing import Callable, Iterable, Iterator, Mapping, Optional
+from typing import Callable, Collection, Iterable, Iterator, Mapping, Optional
 
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
@@ -421,6 +421,25 @@ class MailRepository(ListingQueries, CompanyMails):
             conn.execute(sa.update(maile).where(maile.c.id == row_id).values(**mail, updated_at=now))
             cw.write_company_values(conn, [owner], company, now)
             return self.get(row_id, conn) or {}
+
+    def transition_status(self, row_id: str, expected: Collection[str], new_status: str) -> bool:
+        """Zmienia status maila tylko wtedy, gdy ma teraz jeden z `expected` (sprawdzenie i zapis pod blokadą firmy, więc nie
+        nadpisze statusu, który człowiek ustawił w międzyczasie). Zwraca, czy zmieniło. Datę wysłania traktuje jak
+        ręczna zmiana (`statuses.resolve_sent_at`). Używa tego pobieranie odpowiedzi: „wysłano” → „odpowiedział” / „zwrot”."""
+        if new_status not in st.VALID_STATUSES:
+            raise InvalidValue(f"Nieznany status: {new_status}.")
+        now = self.now()
+        with self.engine.begin() as conn:
+            owner = cw.company_ids_of(conn, [row_id]).get(row_id)
+            if owner is None:
+                return False
+            cw.lock_company(conn, owner)
+            found = conn.execute(sa.select(maile.c.status, maile.c.sent_at).where(maile.c.id == row_id).with_for_update()).first()
+            if found is None or found[0] not in expected:
+                return False
+            conn.execute(sa.update(maile).where(maile.c.id == row_id).values(
+                status=new_status, sent_at=st.resolve_sent_at(new_status, found[1], now), updated_at=now))
+            return True
 
     def claim_for_sending(self, row_id: str, allowed_from: tuple = (st.STATUS_PENDING, st.STATUS_ERROR)) -> Optional[dict]:
         """Zajmuje adres do wysyłki (None = nie wolno albo ktoś był pierwszy). Pod blokadą firmy: nie zajmie adresu, gdy inny

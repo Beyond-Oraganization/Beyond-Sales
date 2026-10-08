@@ -16,6 +16,11 @@ Skan jednorazowy bez bazy (pliki w data/skrap/<nazwa>/, nic nie trafia do tabel 
   python3 ai.py wyciagnij NAZWA --pole nip --ma "rezerwacje=rezerwacja|booking" # tabela CSV z polami
   python3 ai.py zbiory                                                       # zbiory zeskrapowane wcześniej
 
+Odpowiedzi firm (pobieranie z poczty, tylko odczyt):
+  python3 ai.py odpowiedzi pobierz [--dry-run] [--od RRRR-MM-DD] [--skrzynka ADRES]   # pobierz odpowiedzi ze skrzynek z IMAP
+  python3 ai.py odpowiedzi doctor                                                     # sprawdź połączenia IMAP
+  python3 ai.py odpowiedzi stan                                                       # liczniki i stan skrzynek
+
 Nic tu nie wysyła maili: zapisane wiersze mają status „Do wysłania”, a wysyłkę zatwierdza człowiek (panel / Automat).
 Każde polecenie zmieniające bazę najpierw zapisuje jej kopię w backup/.
 """
@@ -28,7 +33,7 @@ import sys
 from typing import Optional
 
 from perno import settings as cfg
-from perno.cli import ai_scrape
+from perno.cli import ai_replies, ai_scrape
 from perno.cli import scrape as scrape_cli
 from perno.cli.firms import segment_arg
 from perno.db import Database, DbError
@@ -88,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan = sub.add_parser("skan", help="Zatrzymaj albo wznów skan stron.")
     scan.add_argument("akcja", choices=("stop", "wznow"))
     ai_scrape.add_parsers(sub)
+    ai_replies.add_parsers(sub)
     return parser
 
 
@@ -217,7 +223,7 @@ def cmd_scan(args) -> int:
 
 
 COMMANDS = {"szablony": cmd_templates, "znane": cmd_known, "dodaj": cmd_add, "status": cmd_status, "brief": cmd_brief,
-            "zapisz": cmd_save, "pomin": cmd_skip, "skan": cmd_scan, **ai_scrape.COMMANDS}
+            "zapisz": cmd_save, "pomin": cmd_skip, "skan": cmd_scan, **ai_scrape.COMMANDS, **ai_replies.COMMANDS}
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -225,7 +231,7 @@ def main(argv: Optional[list] = None) -> int:
     try:
         return COMMANDS[args.command](args)
     except (DbError, ConfigError, SettingsError, firms_import.FirmsError, scan_control.ScanRequestError, RunActive,
-            template_catalog.UnknownTemplate, OSError, ValueError, *ai_scrape.ERRORS) as exc:
+            template_catalog.UnknownTemplate, OSError, ValueError, *ai_scrape.ERRORS, *ai_replies.ERRORS) as exc:
         print(f"BŁĄD: {exc}", file=sys.stderr)
         return 1
 

@@ -93,6 +93,7 @@ def mailbox_group(slot: int) -> tuple:
 
 
 STATIC_GROUPS = (
+    ("replies", "Odpowiedzi", "Pobieranie odpowiedzi z poczty (IMAP skrzynek ustawiasz w ich kartach powyżej). Zakładka Odpowiedzi i polecenie ai.py odpowiedzi pobierz."),
     ("notify", "Powiadomienia automatu", "Dokąd automat wysyła alerty i podsumowania. Zmiany widzi demon po ponownym uruchomieniu."),
     ("scraper", "Skraper", "Domyślne ustawienia skanowania stron firm. Zasady uprzejmości (robots.txt, minimum 1 s) nie są do ustawienia."),
 )
@@ -102,6 +103,12 @@ GROUPS = (mailbox_group(1), *STATIC_GROUPS)  # grupy stałe; kolejne skrzynki do
 FIELDS = (
     *mailbox_fields(1),
     ConfigField("SENDER_NAME", "Nazwa nadawcy", "mail", help="Wspólna dla wszystkich skrzynek: widoczna w nagłówku „Od” i jako podpis maila."),
+    ConfigField("REPLIES_IGNORE", "Adresy i domeny wewnętrzne", "replies",
+                help="Po przecinku, np. jakub@z3x.io, z3x.io. Wiadomości od nich w Odebranych nie są odpowiedziami (np. przekazania)."),
+    ConfigField("REPLIES_FOLDERS", "Przeszukiwane foldery", "replies",
+                help="Po przecinku. Puste = wykryj automatycznie (Odebrane, Wysłane, Spam); nazwy takie, jak widzi je serwer."),
+    ConfigField("REPLIES_FETCH_WORKERS", "Skrzynek naraz", "replies", KIND_INT,
+                "Ile skrzynek pobierać równolegle (przy wielu skrzynkach 4–8).", "4", low=1, high=16),
     ConfigField("NOTIFY_MACOS", "Powiadomienia macOS", "notify", KIND_BOOL, "Okienka w Centrum powiadomień.", "true", restart=RESTART_DEMON),
     ConfigField("NTFY_TOPIC", "Temat ntfy (telefon)", "notify", KIND_SECRET,
                 "Długi, losowy (8–64 znaków: litery, cyfry, - i _). To sekret: kto go zna, czyta i pisze. W aplikacji ntfy zasubskrybuj ten temat.",

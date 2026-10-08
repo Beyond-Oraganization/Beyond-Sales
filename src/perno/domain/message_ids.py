@@ -38,3 +38,11 @@ def keys_in(header: str) -> list:
 def digest(message_key: str) -> str:
     """Skrót (SHA-1, 40 znaków) identyfikatora do unikalnego indeksu: `Message-ID` z cudzych maili bywa bardzo długi."""
     return hashlib.sha1(message_key.encode("utf-8", "replace")).hexdigest()  # noqa: S324 — skrót do indeksu, nie bezpieczeństwo
+
+
+def identity(message_key: str, sender: str, when_iso: str, subject: str, body_head: str) -> str:
+    """Tożsamość wiadomości do wykrywania duplikatów: jej `Message-ID`, a gdy go brak (zdarza się), skrót z nadawcy, daty,
+    tematu i początku treści, żeby ta sama wiadomość pobrana drugi raz nie powstała podwójnie."""
+    if message_key:
+        return message_key
+    return "brak-id:" + "|".join((sender.strip().lower(), when_iso, subject.strip(), body_head[:200]))
