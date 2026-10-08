@@ -7,8 +7,10 @@ const {read, EVIL, createPage, attributeNames, settle, vm} = require('./support/
 
 const CONFIG = {
   file_exists: false,
+  mailboxes: [{slot: 1, address: EVIL.img, state: 'off', error: EVIL.script, until: EVIL.attr, sent_today: 2,
+    test: {ok: false, message: EVIL.script, at: EVIL.attr}}],
   groups: [{
-    key: 'mail', title: EVIL.script, description: EVIL.img, fields: [
+    mailbox: 1, key: 'mail', title: EVIL.script, description: EVIL.img, fields: [
       {key: 'SMTP_HOST', label: EVIL.img, kind: 'text', help: EVIL.script, default: EVIL.attr, value: EVIL.attr, set: true, choices: [], restart: ''},
       {key: 'SENDER_NAME', label: 'Nazwa', kind: 'text', help: '', default: '', value: EVIL.script, set: true, choices: [], restart: 'demon'},
       {key: 'SMTP_PASSWORD', label: 'Hasło', kind: 'secret', help: EVIL.script, default: '', set: true, choices: [], restart: ''},
@@ -37,6 +39,13 @@ test('wrogie dane nie stają się znacznikami ani atrybutami', async () => {
   assert.ok(!/<script/i.test(html), 'surowy <script> w HTML');
   assert.ok(!/<img/i.test(html), 'surowy <img> w HTML');
   assert.deepEqual(attributeNames(html).filter((name) => /^on/i.test(name)), [], 'atrybut zdarzenia (onerror, onmouseover…)');
+});
+
+test('stan skrzynki (adres, powód błędu, czasy) jest zeskapowany i ma przycisk testu', async () => {
+  const {html} = await renderHostilePage();
+  assert.match(html, /mbox-tag off">Wyłączona</);
+  assert.match(html, /class="mbox-error">&lt;script&gt;/);
+  assert.match(html, /class="mbox-test" data-slot="1"/);
 });
 
 test('pole sekretu nie ma wartości, tylko podpowiedź o stanie', async () => {

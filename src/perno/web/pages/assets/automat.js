@@ -66,13 +66,20 @@ function isDirty() {
   return !STATE || normalized(form) !== normalized(STATE.settings);
 }
 
+// Skrzynka wyłączona po błędach nie wysyła, więc „limit dnia” dotyczy już tylko pozostałych: mówimy to wprost.
+function offNote(stats) {
+  const off = (stats.wylaczone || []).map((n) => 'nr ' + n);
+  return off.length ? ' · wyłączona po błędach: skrzynka ' + off.join(', ') : '';
+}
+
 function statusText(state) {
   const stats = (state.daemon && state.daemon.stats) || {};
   if (!state.armed) return 'plan nieuzbrojony';
   if (state.paused) return 'WSTRZYMANY: ' + (state.pause_reason || '');
-  if (stats.stan === 'send') return 'wysyła';
-  const reason = REASONS[stats.powod] || stats.powod || '';
-  return reason + (stats.do ? ' (następna wysyłka ' + fmtTime(stats.do) + ')' : '');
+  if (stats.stan === 'send') return 'wysyła' + offNote(stats);
+  const capped = stats.powod === 'cap_reached' && (stats.wylaczone || []).length;
+  const reason = capped ? 'limit dnia wyczerpany na sprawnych skrzynkach' : REASONS[stats.powod] || stats.powod || '';
+  return reason + (stats.do ? ' (następna wysyłka ' + fmtTime(stats.do) + ')' : '') + offNote(stats);
 }
 
 function card(label, value) {

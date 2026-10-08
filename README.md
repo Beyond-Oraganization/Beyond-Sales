@@ -115,8 +115,8 @@ Otwiera `http://localhost:8765/` (serwer słucha wyłącznie na `127.0.0.1`). Me
 - **Odpowiedzi** — skrzynka odbiorcza dla odpowiedzi na nasze maile: lista wątków, wątek z edytorem odpowiedzi, ocena, raport.
   Szczegóły w sekcji 5d.
 
-- **Konfiguracja** — ustawienia z `config.env` w formularzu: poczta (skrzynki z wysyłką SMTP i odbiorem IMAP, z przyciskami
-  „Sprawdź połączenie” i „Przetestuj IMAP”), odpowiedzi, powiadomienia automatu i domyślne ustawienia skrapera. Szczegóły w sekcji 5b.
+- **Konfiguracja** — ustawienia z `config.env` w formularzu: poczta (skrzynki z wysyłką SMTP i odbiorem IMAP, z testem i stanem każdej skrzynki
+  oraz przyciskiem „Sprawdź połączenie IMAP”), odpowiedzi, powiadomienia automatu i domyślne ustawienia skrapera. Szczegóły w sekcji 5b.
 
 - **Automat** — wysyłka w tle przez kilka dni: limity, plan, stan demona, prognoza i dziennik. Szczegóły w sekcji 5a.
 
@@ -499,10 +499,13 @@ python3 automat.py status | pause | resume | stop | uninstall | print-pmset
 
 **Błędy.** Błąd logowania, limit nadawcy albo odrzucenie jako spam wstrzymują automat od razu; inne błędy (sieć) po
 zadanej serii z rzędu; błąd adresata (nie istnieje) nie wstrzymuje. Przy kilku skrzynkach zawiodła skrzynka jest
-**wyłączana do końca dnia** (powiadomienie „skrzynka wyłączona”, w tekście numer skrzynki jak w Konfiguracji, bez adresu), a
-pozostałe wysyłają dalej; automat wstrzymuje się dopiero wtedy, gdy zawiedzie ostatnia sprawna skrzynka, i tak samo przy
-globalnej serii błędów. Następnego dnia skrzynka wraca do rotacji; zatrzymanie demona też czyści wyłączenia. Gdy
-wszystkie skrzynki wyczerpały dzienny limit, plan czeka do jutra. Gdy mail wyszedł, a baza nie zapisała statusu,
+wyłączana (powiadomienie „skrzynka wyłączona”, w tekście numer skrzynki jak w Konfiguracji, bez adresu), a pozostałe
+wysyłają dalej: po błędzie logowania albo limicie dostawcy **do końca dnia**, po błędzie połączenia **na godzinę**, po
+której dostaje jedną próbę (kolejna porażka wyłącza ją od razu na następną godzinę). Automat wstrzymuje się dopiero wtedy,
+gdy zawiedzie ostatnia sprawna skrzynka, i tak samo przy globalnej serii błędów. Zatrzymanie demona czyści wyłączenia.
+Dzienny limit liczy się osobno dla każdej skrzynki: wyłączona skrzynka nie zabiera pojemności pozostałym tym, co sama
+wysłała, a w panelu przy „Teraz” widać, która skrzynka jest wyłączona. Gdy wszystkie sprawne skrzynki wyczerpały dzienny
+limit, plan czeka do jutra. Gdy mail wyszedł, a baza nie zapisała statusu,
 automat wstrzymuje się i prosi o sprawdzenie folderu „Wysłane” — nie wysyłaj wtedy ponownie.
 
 **Powiadomienia** (zdarzenie → kanały: macOS / telefon przez [ntfy](https://docs.ntfy.sh/) / e-mail do siebie):
@@ -541,11 +544,11 @@ Edytuje `config.env` bez otwierania pliku: Poczta (SMTP i IMAP), Odpowiedzi, Pow
   podpowiedziane z poprzedniej skrzynki, wystarczy adres i hasło); „Dodaj wiele skrzynek” przyjmuje wklejone linie `adres;hasło`;
   przy dużej liczbie skrzynek karty są zwinięte do jednego wiersza i mają wyszukiwarkę. „Usuń skrzynkę” czyści wszystkie jej klucze.
   Skrzynka musi mieć host, port, użytkownika i hasło SMTP, a adresy użytkowników muszą się różnić — inaczej zapis kończy się
-  komunikatem i plik zostaje bez zmian. „Sprawdź połączenie SMTP” loguje się na każdą skrzynkę osobno. Skrzynkę główną (`SMTP_*`)
+  komunikatem i plik zostaje bez zmian. Skrzynkę główną (`SMTP_*`)
   edytujesz w miejscu, więc bez niej nie ma wysyłki.
 - **Odbiór (IMAP) skrzynki.** Wystarczy `IMAPn_HOST`: port (993) i SSL mają wartości domyślne, a login i hasło są domyślnie te same
   co SMTP tej skrzynki (osobne `IMAPn_USER` / `IMAPn_PASSWORD` tylko, gdy konto jest inne). Skrzynka bez hosta IMAP nie jest odbierana:
-  jej odpowiedzi nie trafią do zakładki Odpowiedzi, a raport ostrzega, że odsetek odpowiedzi jest zaniżony. „Przetestuj IMAP” loguje się
+  jej odpowiedzi nie trafią do zakładki Odpowiedzi, a raport ostrzega, że odsetek odpowiedzi jest zaniżony. „Sprawdź połączenie IMAP” loguje się
   na każdą skrzynkę z IMAP (tylko odczyt) i pokazuje wykryte foldery. Przy bazie demo (`PERNO_DB_URL`) prawdziwy IMAP jest zablokowany,
   dopóki nie ustawisz `PERNO_ALLOW_REAL_IMAP=1` (tak jak `PERNO_ALLOW_REAL_SMTP` dla wysyłki).
 - **Odpowiedzi (wspólne dla wszystkich skrzynek).** `REPLIES_IGNORE` (adresy i domeny wewnętrzne, np. przekazania od kolegi),
@@ -554,8 +557,12 @@ Edytuje `config.env` bez otwierania pliku: Poczta (SMTP i IMAP), Odpowiedzi, Pow
   (co ile minut otwarta zakładka sama pobiera pocztę, domyślnie 5, 0 = tylko przyciskiem).
 - **Bazy (`DB_*`) tu nie ma**: błędna wartość uniemożliwiłaby następny start, a działający panel nie miałby jak ostrzec.
   Ustawiasz ją raz, ręcznie (sekcja 2).
-- „Sprawdź połączenie SMTP” loguje się na serwer pocztowy (bez wysyłania maila) i pokazuje wynik; przy bazie demo
-  (`PERNO_DB_URL`) jest zablokowane tak samo jak wysyłka.
+- Każda skrzynka ma w swojej karcie stan i przycisk „Sprawdź skrzynkę” (u góry „Sprawdź wszystkie skrzynki”): test loguje
+  się na serwer pocztowy (bez wysyłania maila) i pokazuje wynik; przy bazie demo (`PERNO_DB_URL`) jest zablokowany tak samo
+  jak wysyłka. Stan: **Działa** (test się udał albo skrzynka wysłała dziś maile), **Nie działa** (ostatni test się nie udał,
+  z komunikatem błędu), **Wyłączona** (demon automatu wyłączył ją po błędach; widać powód i godzinę, o której spróbuje
+  ponownie — udany test jej nie włącza, robi to sam demon) albo **Nie sprawdzona**. Stan z demona odświeża się co 15 s.
+  Wynik testu panel pamięta do restartu serwera. Wymaga to, by demon i panel były uruchomione z tej wersji kodu.
 
 ## 5c. Praca z AI (`ai.py` i `AI_INSTRUCTIONS.md`)
 

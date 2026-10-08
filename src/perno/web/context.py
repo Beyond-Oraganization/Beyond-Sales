@@ -75,6 +75,7 @@ class AppContext:
     replies_store: Lazy[ReplyStore] = field(init=False)
     reply_runner: FetchRunner = field(default_factory=FetchRunner)  # pobieranie odpowiedzi w tle (jedno naraz)
     automat_probes: automat_control.Probes = field(default_factory=automat_control.Probes)
+    mailbox_tests: dict = field(default_factory=dict)  # adres (małymi literami) → wynik ostatniego testu połączenia z panelu
 
     def __post_init__(self) -> None:
         self.scan_store = Lazy(lambda: open_scan_store(self.db))

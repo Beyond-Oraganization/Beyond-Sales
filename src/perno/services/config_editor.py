@@ -6,7 +6,7 @@ zwraca ich wartości. Pole sekretu pozostawione puste oznacza „bez zmian”; u
 
 from __future__ import annotations
 
-from typing import Callable, Iterable, Mapping
+from typing import Callable, Iterable, Mapping, Optional
 
 from perno import settings as cfg
 from perno.domain import config_fields as cf
@@ -105,13 +105,17 @@ def _test_mailbox(mailer: sending.Mailer, passwords: Iterable[str]) -> dict:
     return {"address": address, "ok": True, "message": f"Połączono i zalogowano jako {address}."}
 
 
-def test_smtp(mailers: Callable, passwords: Iterable[str] = ()) -> dict:
-    """Łączy się z serwerem każdej skrzynki i loguje (bez wysyłania maila). Zwraca `{"ok", "message", "results"}`, gdzie
-    `results` to wynik dla każdej skrzynki; hasła nie trafiają do komunikatów."""
+def test_smtp(mailers: Callable, passwords: Iterable[str] = (), only: Optional[str] = None) -> dict:
+    """Łączy się z serwerem każdej skrzynki (albo tylko tej o adresie `only`) i loguje, bez wysyłania maila. Zwraca
+    `{"ok", "message", "results"}`, gdzie `results` to wynik dla każdej testowanej skrzynki; hasła nie trafiają do komunikatów."""
     try:
         resolved = mailers()
     except cfg.ConfigError as exc:
         return {"ok": False, "message": str(exc), "results": []}
+    if only is not None:
+        resolved = [m for m in resolved if m.sender.address.casefold() == only.casefold()]
+        if not resolved:
+            return {"ok": False, "message": "Nie ma takiej skrzynki w konfiguracji.", "results": []}
     results = [_test_mailbox(mailer, passwords) for mailer in resolved]
     if len(results) == 1:
         message = results[0]["message"]

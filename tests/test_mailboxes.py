@@ -104,5 +104,30 @@ class LegacyTests(unittest.TestCase):
         self.assertIn("", use)
 
 
+class MailboxStateTests(unittest.TestCase):
+    OFF = {"blad": "Connection unexpectedly closed", "do": "2026-10-08T14:00:00"}
+    GOOD = {"ok": True, "message": "ok", "at": "2026-10-08T13:00:00"}
+    BAD = {"ok": False, "message": "535 odrzucono", "at": "2026-10-08T13:00:00"}
+
+    def test_nothing_known_is_unknown(self):
+        self.assertEqual(mb.mailbox_state(None, None, 0)["state"], mb.STATE_UNKNOWN)
+
+    def test_a_good_test_or_todays_sends_mean_it_works(self):
+        self.assertEqual(mb.mailbox_state(None, self.GOOD, 0)["state"], mb.STATE_OK)
+        self.assertEqual(mb.mailbox_state(None, None, 3)["state"], mb.STATE_OK)
+
+    def test_a_failed_test_shows_its_error(self):
+        state = mb.mailbox_state(None, self.BAD, 3)
+        self.assertEqual((state["state"], state["error"]), (mb.STATE_ERROR, "535 odrzucono"))
+
+    def test_the_daemon_switch_off_outranks_a_good_test(self):
+        state = mb.mailbox_state(self.OFF, self.GOOD, 5)
+        self.assertEqual((state["state"], state["error"], state["until"]), (mb.STATE_OFF, self.OFF["blad"], self.OFF["do"]))
+        self.assertEqual(state["test"], self.GOOD)
+
+    def test_a_switch_off_without_a_reason_has_no_error(self):
+        self.assertIsNone(mb.mailbox_state({"do": "x"}, None, 0)["error"])
+
+
 if __name__ == "__main__":
     unittest.main()

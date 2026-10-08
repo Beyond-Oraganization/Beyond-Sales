@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 IDLE_SECONDS = ar.TICK_SECONDS
 FAULT_SECONDS = 60.0  # po awarii bazy albo błędzie w pętli nie męczymy jej co 30 s
 SKIPPED_ROW_SECONDS = 1.0
+BOX_COOLDOWN = timedelta(minutes=60)  # skrzynka po błędzie połączenia wraca na próbę po tej przerwie (błąd krytyczny: do północy)
 
 
 @dataclass
@@ -50,6 +51,11 @@ class RunnerDeps:
     power: Callable[[], PowerState] = read_power_state
     sleep: Callable[[float], None] = time.sleep
     jitter: Callable[[float, float], float] = random.uniform
+
+
+def _short_error(message: str) -> str:
+    """Komunikat błędu do panelu: bez znaków sterujących i długi najwyżej na 200 znaków (pochodzi z serwera poczty)."""
+    return "".join(ch if ch.isprintable() else " " for ch in (message or ""))[:200].strip()
 
 
 def _label(row: Optional[dict]) -> str:
@@ -71,8 +77,9 @@ class AutomatRunner:
         self._power_day: Optional[date] = None
         self._last_alert: dict = {}
         self._mailbox_count = 1  # skrzynki, które dziś mogą wysyłać (mnożnik dziennego limitu w planie)
-        self._suspended: dict = {}  # adres (małymi literami) → dzień, w którym skrzynkę wyłączono po błędach
+        self._suspended: dict = {}  # adres (małymi literami) → chwila, do której skrzynka jest wyłączona po błędach
         self._box_failures: dict = {}  # adres → kolejne nieudane wysyłki z tej skrzynki
+        self._box_error: dict = {}  # adres → komunikat ostatniego błędu skrzynki (panel pokazuje go przy wyłączonej)
 
     # ---- cykl życia -----------------------------------------------------------------------------------------------
 
@@ -122,10 +129,12 @@ class AutomatRunner:
         self._gap_minutes = None
         self._on_new_day(now, state)
         sent_today = self.d.db.sent_today_count(now)
-        self._mailbox_count = len(self._usable(self._configured_mailers(), now)) or 1
+        mailers = self._configured_mailers()
+        self._mailbox_count = len(self._usable(mailers, now)) or 1
+        planned = self._planned_today(mailers, now, state.settings.daily_cap)
         decision = ar.plan_tick(now, self._total(state.settings), armed=state.armed, paused=state.paused,
-                                armed_until=state.armed_until, sent_today=sent_today)
-        self._housekeeping(now, state, decision, sent_today)
+                                armed_until=state.armed_until, sent_today=planned)
+        self._housekeeping(now, state, decision, (sent_today, planned))
         if decision.action == ar.ACTION_END:
             self._end_plan(state)
             return IDLE_SECONDS
@@ -138,6 +147,31 @@ class AutomatRunner:
         w ciągu dnia zmniejsza sumę, a jej dzisiejsze wysyłki zostają w liczniku: plan nigdy nie przekroczy limitów."""
         return ar.scaled(settings, self._mailbox_count)
 
+    def _planned_today(self, mailers: list, now: datetime, daily_cap: int) -> int:
+        """Ile z łącznego limitu sprawnych skrzynek dziś zużyto: każda liczy się osobno (najwyżej do swojego limitu), a
+        skrzynka wyłączona w ciągu dnia nie zabiera pojemności pozostałym przez to, co sama wysłała."""
+        if not mailers:
+            return self.d.db.sent_today_count(now)
+        off = self._unavailable(now)
+        usage = sending.mailbox_usage(self.d.db, [mailer.sender.address for mailer in mailers], now)
+        return sum(min(box["sent_today"], daily_cap) for box in usage if box["address"].casefold() not in off)
+
+    def _off_numbers(self, now: datetime) -> list:
+        """Numery (jak w Konfiguracji) skrzynek wyłączonych teraz po błędach."""
+        return [number for number, _ in self._off_boxes(now)]
+
+    def _off_boxes(self, now: datetime) -> list:
+        off = self._unavailable(now)
+        return [(number, mailer.sender.address) for number, mailer in enumerate(self._configured_mailers(), 1)
+                if mailer.sender.address.casefold() in off]
+
+    def _off_beat(self, now: datetime) -> dict:
+        """Pola znaku życia o wyłączonych skrzynkach: numery i (dla panelu) adres, powód oraz chwila powrotu."""
+        boxes = self._off_boxes(now)
+        info = [{"address": address, "blad": self._box_error.get(address.casefold(), ""),
+                 "do": self._suspended[address.casefold()].strftime("%Y-%m-%dT%H:%M:%S")} for _, address in boxes]
+        return {"wylaczone": [number for number, _ in boxes], "wylaczone_info": info}
+
     def _configured_mailers(self) -> list:
         try:
             return self.d.mailers()
@@ -145,7 +179,7 @@ class AutomatRunner:
             return []  # wysyłka zgłosi to jako pauzę; tu tylko liczymy pojemność
 
     def _unavailable(self, now: datetime) -> set:
-        return {address for address, day in self._suspended.items() if day == now.date()}
+        return {address for address, until in self._suspended.items() if until > now}
 
     def _usable(self, mailers: list, now: datetime) -> list:
         off = self._unavailable(now)
@@ -208,20 +242,21 @@ class AutomatRunner:
 
     # ---- porządki w każdym kroku ----------------------------------------------------------------------------------
 
-    def _housekeeping(self, now: datetime, state: AutomatState, decision: ar.Decision, sent_today: int) -> None:
+    def _housekeeping(self, now: datetime, state: AutomatState, decision: ar.Decision, counts: tuple) -> None:
+        sent_today, planned = counts
         working = state.armed and not state.paused and ar.in_window(now, state.settings)
         if self.run_id is not None:
             self.d.store.heartbeat(self.run_id, {
                 "v": ar.DAEMON_VERSION, "stan": decision.action, "powod": decision.reason, "dzis": sent_today,
                 "limit": self._total(state.settings).daily_cap, "skrzynki": self._mailbox_count,
-                "do": decision.until.strftime("%Y-%m-%dT%H:%M:%S") if decision.until else None})
+                **self._off_beat(now), "do": decision.until.strftime("%Y-%m-%dT%H:%M:%S") if decision.until else None})
         if self.d.guard is not None:
             self.d.guard.set_needed(working)
         if working:
             self._ping()
             self._check_power(now)
         if state.armed:
-            self._maybe_summary(now, state, sent_today)
+            self._maybe_summary(now, state, sent_today, planned)
 
     def _ping(self) -> None:
         if self.d.pinger is None:
@@ -268,8 +303,8 @@ class AutomatRunner:
         self.log.emit(ev.EVENT_SKIPPED_DAY, f"Pominięte dni wysyłki: {listing} — komputer był wyłączony albo uśpiony przez "
                                             "całe okno. Plan nie nadrabia zaległości.", key=fresh[-1].isoformat())
 
-    def _maybe_summary(self, now: datetime, state: AutomatState, sent_today: int) -> None:
-        if not ar.summary_due(now, self._total(state.settings), sent_today=sent_today, reported_today=False, armed_at=state.armed_at):
+    def _maybe_summary(self, now: datetime, state: AutomatState, sent_today: int, planned: int) -> None:
+        if not ar.summary_due(now, self._total(state.settings), sent_today=planned, reported_today=False, armed_at=state.armed_at):
             return
         key = now.date().isoformat()
         if self.d.store.has_event(ev.EVENT_DAILY_SUMMARY, key):
@@ -281,15 +316,18 @@ class AutomatRunner:
         today_start = datetime.combine(now.date(), dtime.min)
         errors = self.d.store.count_events(ev.EVENT_ROW_ERROR, since=today_start)
         total = self._total(settings)
-        lines = [f"Wysłano dziś: {sent_today} z {total.daily_cap}."]
         mailers = self._configured_mailers()
+        lines = [f"Wysłano dziś: {sent_today} z {settings.daily_cap * max(1, len(mailers))}."]
         if len(mailers) > 1:
             usage = sending.mailbox_usage(self.d.db, [mailer.sender.address for mailer in mailers], now)
             # numery jak w Konfiguracji, bez adresów: podsumowanie idzie też na zewnętrzne kanały (ntfy, e-mail)
             lines.append("Skrzynki: " + ", ".join(f"nr {number}: {box['sent_today']}" for number, box in enumerate(usage, 1)) + ".")
+        off = self._off_numbers(now)
+        if off:  # bez tego „x z y” wygląda, jakby limit nie został wyczerpany, a skrzynka po prostu nie wysyłała
+            lines.append("Wyłączone po błędach: skrzynka nr " + ", ".join(str(number) for number in off) + ".")
         if errors:
             lines.append(f"Błędy wysyłki dziś: {errors}.")
-        view = automat_queue.forecast(self.d.db, total, now, sent_today, state.armed_until)
+        view = automat_queue.forecast(self.d.db, total, now, self._planned_today(mailers, now, settings.daily_cap), state.armed_until)
         lines.append(f"W kolejce zostało: {view.queue}.")
         if view.companies and view.companies != view.queue:  # kilka adresów na firmę: ile to firm
             lines.append(f"Dotyczy firm: {view.companies}.")
@@ -349,7 +387,7 @@ class AutomatRunner:
             self.d.store.heartbeat(self.run_id, {
                 "v": ar.DAEMON_VERSION, "stan": ar.ACTION_WAIT, "powod": ar.REASON_COMPANY_GAP,
                 "dzis": self.d.db.sent_today_count(now), "limit": self._total(state.settings).daily_cap,
-                "do": until.strftime("%Y-%m-%dT%H:%M:%S")})
+                **self._off_beat(now), "do": until.strftime("%Y-%m-%dT%H:%M:%S")})
         key = now.date().isoformat()
         if not self.d.store.has_event(ev.EVENT_GAP_WAIT, key):
             self.log.emit(ev.EVENT_GAP_WAIT, "Wszystkie firmy z oczekującymi mailami dostały już mail w ostatnich "
@@ -362,6 +400,7 @@ class AutomatRunner:
         label = _label(result.row)
         if result.outcome == "sent":
             self._box_failures.pop(mailer.sender.address.casefold(), None)
+            self._box_error.pop(mailer.sender.address.casefold(), None)
             if state.streak:
                 self.d.store.set_streak(0)
             self.d.store.add_event(ev.LEVEL_INFO, ev.EVENT_SENT, f"Wysłano: {label}.")
@@ -374,6 +413,8 @@ class AutomatRunner:
         if result.outcome != "error":
             return None
         failure = ar.classify_failure(result.message)
+        if failure != ar.FAILURE_RECIPIENT:
+            self._box_error[mailer.sender.address.casefold()] = _short_error(result.message)
         streak = ar.next_streak(state.streak, sent=False, failure=failure)
         self.d.store.set_streak(streak)
         self.d.store.add_event(ev.LEVEL_WARN, ev.EVENT_ROW_ERROR, f"Błąd wysyłki do {label}: {result.message[:300]}")
@@ -398,11 +439,18 @@ class AutomatRunner:
         others = [m for m in self._usable(mailers, now) if m.sender.address.casefold() != address]
         if not others:
             return False
-        self._suspended[address] = now.date()
-        self._box_failures.pop(address, None)
+        fatal = failure == ar.FAILURE_FATAL
+        # po błędzie krytycznym (logowanie, limit dostawcy) skrzynka odpoczywa do północy; po błędzie połączenia tylko
+        # godzinę, a potem dostaje jedną próbę: kolejna porażka od razu wyłącza ją znowu
+        self._suspended[address] = datetime.combine(now.date() + timedelta(days=1), dtime.min) if fatal else now + BOX_COOLDOWN
+        if fatal:
+            self._box_failures.pop(address, None)
+        else:
+            self._box_failures[address] = settings.max_consecutive_errors - 1
         number = {m.sender.address.casefold(): n for n, m in enumerate(mailers, 1)}
+        span = "do końca dnia" if fatal else f"na {int(BOX_COOLDOWN.total_seconds() // 60)} min (potem spróbuję ponownie)"
         self.log.emit(ev.EVENT_MAILBOX_OFF, (  # numery jak w Konfiguracji, bez adresów (powiadomienie idzie na zewnętrzne kanały)
-            f"Skrzynka nr {number[address]} wyłączona do końca dnia po błędach wysyłki (logowanie, limit dostawcy albo "
+            f"Skrzynka nr {number[address]} wyłączona {span} po błędach wysyłki (logowanie, limit dostawcy albo "
             f"łączność). Wysyłka idzie dalej ze skrzynek: {', '.join(str(number[m.sender.address.casefold()]) for m in others)}. "
             "Sprawdź jej hasło i limity u dostawcy poczty."))
         return True

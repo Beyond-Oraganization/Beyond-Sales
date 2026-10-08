@@ -43,6 +43,45 @@ function isMailbox(group) {
   return Boolean(group.mailbox) && group.mailbox > 1;
 }
 
+const MAILBOX_LABELS = {off: 'Wyłączona', error: 'Nie działa', ok: 'Działa', unknown: 'Nie sprawdzona'};
+
+// „2026-10-08T13:00:00” → „13:00” (dziś) albo „09.10 13:00”.
+function shortStamp(stamp) {
+  if (!stamp) return '';
+  const [day, time] = String(stamp).split('T');
+  if (!time) return String(stamp);
+  const now = new Date();
+  const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+  return (day === today ? '' : day.slice(8, 10) + '.' + day.slice(5, 7) + ' ') + time.slice(0, 5);
+}
+
+function mailboxNotes(box) {
+  const notes = [];
+  if (box.state === 'off') notes.push('Automat nie wysyła z niej' + (box.until ? ' do ' + shortStamp(box.until) : '') + ', potem spróbuje ponownie.');
+  if (box.test) notes.push('Test o ' + shortStamp(box.test.at) + (box.test.ok ? ': połączenie i logowanie działają.' : ' nie przeszedł.'));
+  if (box.sent_today) notes.push('Dziś wysłała: ' + box.sent_today + '.');
+  return notes;
+}
+
+// Pasek stanu skrzynki w jej karcie: etykieta (działa / wyłączona …), powód błędu i przycisk testu.
+function mailboxBarHtml(slot) {
+  const box = ((CONFIG && CONFIG.mailboxes) || []).find((b) => b.slot === slot);
+  const button = '<button type="button" class="mbox-test" data-slot="' + slot + '"' + (box ? '' : ' disabled') + '>Sprawdź skrzynkę</button>';
+  if (!box) return '<div class="mbox-bar"><span class="mbox-tag unknown">Niezapisana</span><span class="muted small">Zapisz ustawienia, żeby ją sprawdzić.</span>' + button + '</div>';
+  const error = box.error ? '<div class="mbox-error">' + escapeHtml(box.error) + '</div>' : '';
+  return '<div class="mbox-bar"><span class="mbox-tag ' + escapeHtml(box.state) + '">' + escapeHtml(MAILBOX_LABELS[box.state] || box.state)
+    + '</span><span class="muted small">' + escapeHtml([box.address, ...mailboxNotes(box)].join(' · ')) + '</span>' + button + '</div>' + error;
+}
+
+function refreshMailboxBars() {
+  if (!CONFIG) return;
+  for (const group of CONFIG.groups) {
+    const bar = group.mailbox && document.getElementById('mbox_' + group.mailbox);
+    if (bar) bar.innerHTML = mailboxBarHtml(group.mailbox);
+    if (bar) refreshSummary(group);
+  }
+}
+
 function smtpPrefix(slot) {
   return slot === 1 ? 'SMTP' : 'SMTP' + slot;
 }
@@ -56,10 +95,12 @@ function groupHtml(group, collapsed) {
     : '<h2>' + escapeHtml(group.title) + '</h2>';
   return '<section class="card' + (collapsed ? ' is-collapsed' : '') + '" id="card_' + escapeHtml(group.key) + '"><div class="card-head">'
     + title + remove + '</div><p class="muted group-note">'
-    + escapeHtml(group.description) + '</p><div class="cfg-grid">' + group.fields.map(fieldHtml).join('') + '</div></section>';
+    + escapeHtml(group.description) + '</p>'
+    + (mailbox ? '<div class="mbox" id="mbox_' + group.mailbox + '">' + mailboxBarHtml(group.mailbox) + '</div>' : '')
+    + '<div class="cfg-grid">' + group.fields.map(fieldHtml).join('') + '</div></section>';
 }
 
-// Jedna linia podsumowania zwiniętej karty: adres skrzynki i to, czy odbiera pocztę (IMAP). Tekst ustawiamy przez textContent.
+// Jedna linia podsumowania zwiniętej karty: adres skrzynki, stan (z demona i testów) i to, czy odbiera pocztę (IMAP). Tekst ustawiamy przez textContent.
 function refreshSummary(group) {
   const card = el('card_' + group.key);
   if (!card || !group.mailbox) return;
@@ -67,7 +108,9 @@ function refreshSummary(group) {
   const value = (name) => { const input = el('c_' + name); return input ? input.value : ''; };
   const user = value(smtpPrefix(slot) + '_USER');
   const imap = value((slot === 1 ? 'IMAP' : 'IMAP' + slot) + '_HOST') ? ' · odbiór IMAP' : ' · bez odbioru';
-  card.querySelector('.cfg-summary').textContent = user ? user + imap : 'nowa skrzynka';
+  const box = ((CONFIG && CONFIG.mailboxes) || []).find((b) => b.slot === slot);
+  const state = box && box.state !== 'unknown' ? ' · ' + (MAILBOX_LABELS[box.state] || box.state).toLowerCase() : '';
+  card.querySelector('.cfg-summary').textContent = user ? user + state + imap : 'nowa skrzynka';
 }
 
 function setCollapsed(card, collapsed) {
@@ -259,16 +302,28 @@ async function save() {
   if (data.restart_demon.length) restartBanner(data.restart_demon);
 }
 
-async function testSmtp() {
+async function runTest(slot) {
   const {values, clear} = collect();
   if (Object.keys(values).length || clear.length) { toast('Najpierw zapisz zmiany — sprawdzam zapisane ustawienia.'); return; }
-  el('smtpResult').textContent = 'Łączę…';
-  const {ok, data} = await api('/api/config/test-smtp', {});
-  if (!ok) { el('smtpResult').textContent = data.error || 'Nie udało się sprawdzić.'; return; }
+  const target = slot ? el('mbox_' + slot) : null;
+  if (target) target.innerHTML = '<div class="mbox-bar"><span class="mbox-tag unknown">Łączę…</span></div>';
+  el('smtpResult').textContent = slot ? '' : 'Łączę…';
+  const {ok, data} = await api('/api/config/test-smtp', slot ? {slot} : {});
+  if (!ok) { el('smtpResult').textContent = data.error || 'Nie udało się sprawdzić.'; refreshMailboxBars(); return; }
+  CONFIG.mailboxes = data.mailboxes || CONFIG.mailboxes;
+  refreshMailboxBars();
   const results = data.results || [];
-  el('smtpResult').textContent = results.length > 1
+  el('smtpResult').textContent = slot ? '' : results.length > 1
     ? results.map((r) => (r.ok ? 'OK: ' : 'BŁĄD: ') + r.message).join('\n')
     : (data.ok ? 'OK: ' : 'BŁĄD: ') + data.message;
+  if (slot) toast(data.ok ? 'Skrzynka działa.' : 'Skrzynka nie działa: ' + data.message, data.ok ? 'ok' : 'error');
+}
+
+// Stan z demona (wyłączenia po błędach) odświeżamy co jakiś czas, żeby nie trzeba było przeładowywać strony.
+async function pollMailboxes() {
+  if (document.hidden || !CONFIG) return;
+  const {ok, data} = await apiGet('/api/config/mailboxes');
+  if (ok) { CONFIG.mailboxes = data.mailboxes; refreshMailboxBars(); }
 }
 
 async function testImap() {
@@ -285,7 +340,7 @@ async function testImap() {
 
 el('saveBtn').addEventListener('click', save);
 el('reloadBtn').addEventListener('click', render);
-el('smtpBtn').addEventListener('click', testSmtp);
+el('smtpBtn').addEventListener('click', () => runTest(null));
 el('imapBtn').addEventListener('click', testImap);
 el('addMailboxBtn').addEventListener('click', () => addMailbox());
 el('mailboxSearch').addEventListener('input', filterMailboxes);
@@ -301,4 +356,9 @@ el('bulkMailboxForm').addEventListener('submit', async (event) => {
   }
 });
 el('bulkMailboxCancel').addEventListener('click', () => el('bulkMailboxDialog').close());
+el('groups').addEventListener('click', (event) => {
+  const target = event.target && event.target.closest ? event.target.closest('.mbox-test') : null;
+  if (target) runTest(Number(target.dataset.slot));
+});
+setInterval(pollMailboxes, 15000);
 load();

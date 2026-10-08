@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import re
 
-from perno.services import config_editor, imap_access
+from perno.services import config_editor, imap_access, mailbox_status
+from perno.settings import ConfigError, SmtpSettings, configured_mailboxes
 from perno.web import layout
 from perno.web.context import AppContext
 from perno.web.http import HttpError, Request, Response, json_response
@@ -24,8 +25,17 @@ def render(ctx: AppContext) -> str:
     )
 
 
+def _mailboxes(ctx: AppContext) -> list:
+    return mailbox_status.describe(ctx.db, ctx.automat_store.get(), configured_mailboxes(ctx.config.load()),
+                                   ctx.mailbox_tests, ctx.db.now())
+
+
 def _description(ctx: AppContext) -> dict:
-    return config_editor.describe(ctx.config.load(), file_exists=ctx.config.exists())
+    return {**config_editor.describe(ctx.config.load(), file_exists=ctx.config.exists()), "mailboxes": _mailboxes(ctx)}
+
+
+def api_mailboxes(req: Request, ctx: AppContext) -> Response:
+    return json_response({"mailboxes": _mailboxes(ctx)})
 
 
 def api_get(req: Request, ctx: AppContext) -> Response:
@@ -48,9 +58,24 @@ def api_save(req: Request, ctx: AppContext) -> Response:
     return json_response({**result, **_description(ctx)})
 
 
+def _slot_address(config: dict, slot: object) -> str:
+    """Adres skrzynki z danego miejsca w konfiguracji (400, gdy numer jest zły albo skrzynka niekompletna)."""
+    if isinstance(slot, bool) or not isinstance(slot, int):
+        raise HttpError(400, "Pole slot musi być numerem skrzynki.")
+    try:
+        return SmtpSettings.from_config(config, slot).user
+    except ConfigError as exc:
+        raise HttpError(400, str(exc)) from None
+
+
 def api_test_smtp(req: Request, ctx: AppContext) -> Response:
-    passwords = [value for key, value in ctx.config.load().items() if _PASSWORD_KEY.fullmatch(key) and value]
-    return json_response(config_editor.test_smtp(ctx.mailers, passwords))
+    """Test wszystkich skrzynek albo jednej (`{"slot": n}`); wynik trafia też do stanu skrzynek w Konfiguracji."""
+    config = ctx.config.load()
+    passwords = [value for key, value in config.items() if _PASSWORD_KEY.fullmatch(key) and value]
+    only = _slot_address(config, req.json["slot"]) if "slot" in req.json else None
+    result = config_editor.test_smtp(ctx.mailers, passwords, only)
+    mailbox_status.record_tests(ctx.mailbox_tests, result["results"], ctx.db.now())
+    return json_response({**result, "mailboxes": _mailboxes(ctx)})
 
 
 def api_test_imap(req: Request, ctx: AppContext) -> Response:
@@ -62,6 +87,7 @@ PAGE = Page(
     routes={
         ("GET", "/api/config"): api_get,
         ("GET", "/api/config/skrzynka"): api_mailbox,
+        ("GET", "/api/config/mailboxes"): api_mailboxes,
         ("POST", "/api/config"): api_save,
         ("POST", "/api/config/test-smtp"): api_test_smtp,
         ("POST", "/api/config/test-imap"): api_test_imap,

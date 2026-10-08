@@ -24,6 +24,15 @@
 .cfg-remove{font-size:var(--fs-foot);}
 #smtpResult,#imapResult{white-space:pre-line;}
 #groups .card[hidden],.controls [hidden]{display:none;}
+.mbox{margin:0 0 var(--s-2);}
+.mbox-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-3);}
+.mbox-bar .muted{flex:1 1 220px;}
+.mbox-tag{display:inline-flex;align-items:center;height:20px;padding:0 9px;border-radius:var(--r-pill);font-size:var(--fs-caption);
+  font-weight:600;color:var(--label-2);background:var(--fill);}
+.mbox-tag.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent);}
+.mbox-tag.off,.mbox-tag.error{color:var(--danger);background:color-mix(in srgb,var(--danger) 14%,transparent);}
+.mbox-error{margin-top:var(--s-2);padding:var(--s-2) var(--s-3);border-radius:var(--r-md);font-size:var(--fs-foot);
+  color:var(--danger);background:color-mix(in srgb,var(--danger) 14%,transparent);overflow-wrap:anywhere;}
 
 /* Skrzynki: karta zwija się do jednej linii, a wyszukiwarka chowa te, które nie pasują. */
 .cfg-toggle{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;flex:1;padding:0;border:none;background:none;
@@ -31,7 +40,7 @@
 .cfg-toggle .cfg-title{font-size:var(--fs-title);font-weight:600;letter-spacing:-.01em;}
 .cfg-toggle .cfg-summary{font-size:var(--fs-foot);overflow-wrap:anywhere;}
 .cfg-toggle::after{content:"";}
-.card.is-collapsed .group-note,.card.is-collapsed .cfg-grid{display:none;}
+.card.is-collapsed .group-note,.card.is-collapsed .mbox,.card.is-collapsed .mbox-error,.card.is-collapsed .cfg-grid{display:none;}
 #groups .card.is-filtered{display:none;}
 #mailboxSearch{width:min(360px,100%);}
 #bulkMailboxText{width:100%;font-family:var(--mono);font-size:var(--fs-foot);}

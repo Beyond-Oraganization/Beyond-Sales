@@ -50,7 +50,7 @@ function createPage(respond, extra) {
   };
   const sandbox = {
     document, console, URLSearchParams, JSON, Math, Number, String, Set, Map, Object, Array, Promise,
-    setTimeout: () => 0, clearTimeout() {}, confirm: () => false, alert() {},
+    setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, confirm: () => false, alert() {},
     location: {search: '', pathname: '/'}, history: {replaceState() {}}, localStorage: {getItem: () => null, setItem() {}},
     fetch: async (url) => ({ok: true, status: 200, json: async () => respond(String(url))}),
     ...(extra || {}),

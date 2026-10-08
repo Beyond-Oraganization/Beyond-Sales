@@ -532,6 +532,62 @@ class MailboxFailureTests(MultiMailboxCase):
         self.assertEqual(len(self.events(ev.EVENT_MAILBOX_OFF)), 1)
         self.assertEqual(len(self.smtp_b.sent), 5)
 
+    def test_a_switched_off_mailbox_does_not_use_up_the_cap_of_the_others(self):
+        self.rows(10)
+        self.arm(daily_cap=3)
+        self.runner.start()
+        self.run_ticks(4)  # a, b, a, b
+        self.assertEqual(self.sent_by(), (2, 2))
+        self.runner._suspended = {"b@example.com": self.clock.now + timedelta(hours=5)}
+        self.run_ticks(3)
+        self.assertEqual(self.sent_by(), (3, 2))  # a ma jeszcze 1 z 3, mimo że razem wysłano już 4
+        beat = self.store.active_run()["statystyki"]
+        self.assertEqual((beat["stan"], beat["powod"], beat["wylaczone"]), ("wait", "cap_reached", [2]))
+
+    def test_a_connection_failure_switches_the_mailbox_off_for_an_hour_then_retries_it(self):
+        self.rows(14)
+        self.arm(daily_cap=20)
+        self.runner.start()
+        self.smtp_a.fail_with = TimeoutError("timed out")
+        self.run_ticks(6)
+        self.assertEqual(len(self.events(ev.EVENT_MAILBOX_OFF)), 1)
+        self.assertIn("na 60 min", self.events(ev.EVENT_MAILBOX_OFF)[0]["tresc"])
+        beat = self.store.active_run()["statystyki"]
+        self.assertEqual(beat["wylaczone"], [1])
+        info = beat["wylaczone_info"]
+        self.assertEqual([(box["address"], box["blad"]) for box in info], [("a@example.com", "timed out")])
+        self.assertGreater(info[0]["do"], self.clock.now.strftime("%Y-%m-%dT%H:%M:%S"))
+        self.smtp_a.fail_with = None
+        before = len(self.smtp_a.sent)
+        self.run_ticks(4)
+        self.assertEqual(len(self.smtp_a.sent), before)  # jeszcze odpoczywa
+        self.clock.advance(minutes=60)
+        self.run_ticks(4)
+        self.assertGreater(len(self.smtp_a.sent), before)
+        self.assertEqual(self.store.active_run()["statystyki"]["wylaczone_info"], [])
+
+    def test_a_mailbox_that_still_fails_after_the_break_is_switched_off_again_at_once(self):
+        self.rows(20)
+        self.arm(daily_cap=20)
+        self.runner.start()
+        self.smtp_a.fail_with = TimeoutError("timed out")
+        self.run_ticks(6)
+        self.clock.advance(minutes=60)
+        self.run_ticks(4)
+        self.assertEqual(len(self.events(ev.EVENT_MAILBOX_OFF)), 2)  # jedna próba, nie trzy
+        self.assertFalse(self.store.get_state().paused)
+
+    def test_the_summary_says_which_mailbox_is_off(self):
+        self.rows(6)
+        self.arm(daily_cap=2)
+        self.runner.start()
+        self.run_ticks(2)
+        self.runner._suspended = {"b@example.com": self.clock.now + timedelta(hours=5)}
+        self.run_ticks(4)
+        text = self.events(ev.EVENT_DAILY_SUMMARY)[0]["tresc"]
+        self.assertIn("Wysłano dziś: 3 z 4.", text)
+        self.assertIn("Wyłączone po błędach: skrzynka nr 2.", text)
+
     def test_recipient_errors_never_switch_a_mailbox_off(self):
         self.rows(8)
         self.arm(daily_cap=20)
@@ -554,7 +610,8 @@ class MailboxFailureTests(MultiMailboxCase):
         self.rows(4)
         self.arm(daily_cap=10)
         self.runner.start()
-        self.runner._suspended = {"a@example.com": self.clock.now.date(), "b@example.com": self.clock.now.date()}
+        until = self.clock.now + timedelta(hours=5)
+        self.runner._suspended = {"a@example.com": until, "b@example.com": until}
         self.runner.tick()
         self.assertTrue(self.store.get_state().paused)
         self.assertIn("Wszystkie skrzynki", self.store.get_state().pause_reason)
