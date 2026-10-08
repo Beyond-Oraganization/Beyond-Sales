@@ -414,3 +414,21 @@ class ReplyStore(StoreCore):
         with self._read() as conn:
             return {"total": rr.totals(conn, flt, primary), "groups": {group: rr.grouped(conn, flt, group, primary) for group in groups},
                     "latency": rr.latency_pairs(conn, flt, primary), "usage": rr.mailbox_usage(conn, flt, primary), "first_day": rr.first_sent_day(conn)}
+
+    # ---- dla Claude Code (ai.py odpowiedzi) -------------------------------------------------------------------
+
+    def thread_ids(self, after: str = "", rating: Optional[str] = None) -> list:
+        """Id wątków z odpowiedzią człowieka, rosnąco, od id większego niż `after` (kolejne paczki skrótu). `rating=None` to
+        wątki bez oceny, inaczej wątki z tą oceną."""
+        wanted = odp_watki.c.rating.is_(None) if rating is None else odp_watki.c.rating == rating
+        with self._read() as conn:
+            rows = conn.execute(sa.select(odp_watki.c.id).where(odp_watki.c.human_in_count > 0, wanted, odp_watki.c.id > after)
+                                .order_by(odp_watki.c.id))
+            return [row[0] for row in rows]
+
+    def thread_state(self, thread_id: str) -> Optional[dict]:
+        """Stan wątku do walidacji poleceń AI: czy ma odpowiedź człowieka, kto go ocenił i czy jest prośba o brak kontaktu."""
+        with self._read() as conn:
+            row = conn.execute(sa.select(odp_watki.c.human_in_count, odp_watki.c.rating, odp_watki.c.rating_by, odp_watki.c.optout)
+                               .where(odp_watki.c.id == thread_id)).mappings().first()
+        return dict(row) if row else None

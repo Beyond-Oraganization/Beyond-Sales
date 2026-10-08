@@ -142,7 +142,7 @@ def thread_row(conn, thread_id: str) -> Optional[dict]:
 def origin_mail(conn, thread_id: str) -> Optional[dict]:
     """Mail kampanii, na który odpowiedziano: temat, treść, kiedy i skąd wyszedł, firma."""
     stmt = select_mails(maile.c.id, maile.c.email, maile.c.subject, maile.c.body_text, maile.c.sent_at, maile.c.sent_from, maile.c.status,
-                        maile.c.message_id, column_for("company").label("company"), column_for("website").label("website"),
+                        maile.c.message_id, maile.c.mode, column_for("company").label("company"), column_for("website").label("website"),
                         column_for("country").label("country"), column_for("segment").label("segment"),
                         column_for("company_id").label("company_id"), column_for("mail_count").label("mail_count"),
                         ).where(maile.c.id == thread_id)

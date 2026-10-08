@@ -112,8 +112,11 @@ Otwiera `http://localhost:8765/` (serwer słucha wyłącznie na `127.0.0.1`). Me
   polami technicznymi: identyfikator, tag, liczba prób…) albo ręczny wybór. Komórki zaczynające się od `= + - @` są
   zabezpieczone przed wykonaniem jako formuły.
 
-- **Konfiguracja** — ustawienia z `config.env` w formularzu: poczta (jedna lub kilka skrzynek SMTP, z przyciskiem „Sprawdź połączenie”),
-  powiadomienia automatu i domyślne ustawienia skrapera. Szczegóły w sekcji 5b.
+- **Odpowiedzi** — skrzynka odbiorcza dla odpowiedzi na nasze maile: lista wątków, wątek z edytorem odpowiedzi, ocena, raport.
+  Szczegóły w sekcji 5d.
+
+- **Konfiguracja** — ustawienia z `config.env` w formularzu: poczta (skrzynki z wysyłką SMTP i odbiorem IMAP, z przyciskami
+  „Sprawdź połączenie” i „Przetestuj IMAP”), odpowiedzi, powiadomienia automatu i domyślne ustawienia skrapera. Szczegóły w sekcji 5b.
 
 - **Automat** — wysyłka w tle przez kilka dni: limity, plan, stan demona, prognoza i dziennik. Szczegóły w sekcji 5a.
 
@@ -133,15 +136,16 @@ sprawdź folder „Wysłane”. Ręcznie można zmienić status w dowolnym momen
 | Do wysłania | gotowy mail (jest e-mail i treść) | tak |
 | Wysyłanie… | ustawia tylko program, na czas wysyłki | — |
 | Wysłano | mail poszedł | nie |
-| **Odpowiedział** | firma odpisała | nie |
+| **Odpowiedział** | firma odpisała (ustawia się sam po pierwszej odpowiedzi człowieka, patrz 5d) | nie |
 | **Zainteresowany** | firma jest zainteresowana | nie |
+| **Zwrot** | adres nie istnieje (twardy zwrot z poczty, ustawia się sam, patrz 5d); dotyczy tego adresu, nie całej firmy | nie |
 | Błąd | wysyłka się nie udała (można ponowić) | tak |
 | Brak e-maila / Już klient / Czeka na treść | pominięte | nie |
 | **Nie kontaktować** | firmie nie piszemy | nie |
 
-Statusy „Wysłano”, „Odpowiedział”, „Zainteresowany” i „Nie kontaktować” **zachowują datę wysłania** przy przechodzeniu
+Statusy „Wysłano”, „Odpowiedział”, „Zainteresowany”, „Zwrot” i „Nie kontaktować” **zachowują datę wysłania** przy przechodzeniu
 między sobą (oznaczenie firmy jako „Odpowiedział” nie kasuje informacji, kiedy do niej napisano); każdy inny status ją
-czyści. Ponowne generowanie treści (`--regenerate-pending`, „Odśwież dane”) nie nadpisuje tych czterech statusów.
+czyści. Ponowne generowanie treści (`--regenerate-pending`, „Odśwież dane”) nie nadpisuje tych pięciu statusów.
 Cztery statusy — „Odpowiedział”, „Zainteresowany”, „Nie kontaktować” i „Już klient” — dotyczą **całej firmy**: gdy któryś
 adres ma jeden z nich, pozostałe adresy tej firmy są wstrzymane (patrz „Firma z wieloma adresami”).
 
@@ -524,19 +528,30 @@ wysyłać automatem tylko do wybranych krajów (np. `--countries PL`).
 
 ## 5b. Konfiguracja z przeglądarki (zakładka „Konfiguracja”)
 
-Edytuje `config.env` bez otwierania pliku: Poczta (SMTP), Powiadomienia automatu i Skraper. Zasady:
-- **Sekrety są tylko do zapisu** (hasło SMTP, `NTFY_TOPIC`, `HEALTHCHECK_URL`): panel pokazuje wyłącznie „ustawione” albo
+Edytuje `config.env` bez otwierania pliku: Poczta (SMTP i IMAP), Odpowiedzi, Powiadomienia automatu i Skraper. Zasady:
+- **Sekrety są tylko do zapisu** (hasła SMTP i IMAP, `NTFY_TOPIC`, `HEALTHCHECK_URL`): panel pokazuje wyłącznie „ustawione” albo
   „puste”, nigdy wartość. Puste pole sekretu oznacza „bez zmian”; usunięcie wymaga zaznaczenia „usuń to ustawienie”.
 - Wysyłane i zapisywane są tylko pola, które zmieniłeś. Pusta wartość zwykłego pola usuwa klucz (wraca wartość domyślna).
   Każda wartość jest sprawdzana (zakresy, https, format adresu) i odrzucana z komunikatem, zanim cokolwiek trafi do pliku.
 - Zapis jest atomowy (plik tymczasowy i zamiana), komentarze i kolejność w pliku zostają, poprzednia wersja ląduje w
   `config.env.bak` (poza repozytorium), a plik ma prawa `0600`. Nowe wartości działają od razu (SMTP, skraper); ustawienia
   powiadomień wymagają ponownego uruchomienia demona (panel to podpowiada przyciskiem).
-- **Skrzynki nadawcze.** „Dodaj skrzynkę nadawczą” odsłania kolejny zestaw pól (host, port i SSL są podpowiedziane z
-  pierwszej skrzynki); „Usuń skrzynkę” czyści wszystkie jej klucze. Skrzynka musi mieć host, port, użytkownika i hasło,
-  a adresy użytkowników muszą się różnić — inaczej zapis kończy się komunikatem i plik zostaje bez zmian. „Sprawdź
-  połączenie SMTP” loguje się na każdą skrzynkę osobno. Skrzynkę główną (`SMTP_*`) edytujesz w miejscu, więc bez niej nie ma
-  wysyłki.
+- **Skrzynki (dowolnie wiele).** Każda skrzynka ma jedną kartę z dwiema częściami: wysyłką (`SMTP_*`, `SMTP2_*`, `SMTP3_*` …) i odbiorem
+  (`IMAP_*`, `IMAP2_*` … o tym samym numerze). „Dodaj skrzynkę nadawczą” prosi serwer o kartę następnego numeru (host, port i SSL są
+  podpowiedziane z poprzedniej skrzynki, wystarczy adres i hasło); „Dodaj wiele skrzynek” przyjmuje wklejone linie `adres;hasło`;
+  przy dużej liczbie skrzynek karty są zwinięte do jednego wiersza i mają wyszukiwarkę. „Usuń skrzynkę” czyści wszystkie jej klucze.
+  Skrzynka musi mieć host, port, użytkownika i hasło SMTP, a adresy użytkowników muszą się różnić — inaczej zapis kończy się
+  komunikatem i plik zostaje bez zmian. „Sprawdź połączenie SMTP” loguje się na każdą skrzynkę osobno. Skrzynkę główną (`SMTP_*`)
+  edytujesz w miejscu, więc bez niej nie ma wysyłki.
+- **Odbiór (IMAP) skrzynki.** Wystarczy `IMAPn_HOST`: port (993) i SSL mają wartości domyślne, a login i hasło są domyślnie te same
+  co SMTP tej skrzynki (osobne `IMAPn_USER` / `IMAPn_PASSWORD` tylko, gdy konto jest inne). Skrzynka bez hosta IMAP nie jest odbierana:
+  jej odpowiedzi nie trafią do zakładki Odpowiedzi, a raport ostrzega, że odsetek odpowiedzi jest zaniżony. „Przetestuj IMAP” loguje się
+  na każdą skrzynkę z IMAP (tylko odczyt) i pokazuje wykryte foldery. Przy bazie demo (`PERNO_DB_URL`) prawdziwy IMAP jest zablokowany,
+  dopóki nie ustawisz `PERNO_ALLOW_REAL_IMAP=1` (tak jak `PERNO_ALLOW_REAL_SMTP` dla wysyłki).
+- **Odpowiedzi (wspólne dla wszystkich skrzynek).** `REPLIES_IGNORE` (adresy i domeny wewnętrzne, np. przekazania od kolegi),
+  `REPLIES_FOLDERS` (puste = Odebrane, Wysłane i Spam wykryte po atrybutach folderów), `REPLIES_FETCH_WORKERS` (ile skrzynek naraz,
+  1-16, domyślnie 4), `REPLIES_SAVE_SENT` (kopia wysłanej odpowiedzi do folderu Wysłane, domyślnie tak), `REPLIES_AUTO_FETCH_MIN`
+  (co ile minut otwarta zakładka sama pobiera pocztę, domyślnie 5, 0 = tylko przyciskiem).
 - **Bazy (`DB_*`) tu nie ma**: błędna wartość uniemożliwiłaby następny start, a działający panel nie miałby jak ostrzec.
   Ustawiasz ją raz, ręcznie (sekcja 2).
 - „Sprawdź połączenie SMTP” loguje się na serwer pocztowy (bez wysyłania maila) i pokazuje wynik; przy bazie demo
@@ -562,6 +577,7 @@ python3 ai.py zeskrapuj example.com --nazwa test --max-stron 25    # skan stron 
 python3 ai.py szukaj test "rezerwacja online" --domeny             # fragmenty wokół fraz ze źródłem / trafienia na domenę
 python3 ai.py wyciagnij test --pole nip --pole cena --ma "rezerwacje=rezerwacja|booking" --dowod   # tabela CSV z polami
 python3 ai.py zbiory
+python3 ai.py odpowiedzi pobierz|doctor|stan|brief|ocen|szkic|raport   # odpowiedzi firm: patrz sekcja 5d
 ```
 
 - **Typ firm (segment) jest dowolną etykietą** (małe litery, cyfry, myślniki; „Szkoły jazdy” zapisze się jako `szkoly-jazdy`).
@@ -586,6 +602,88 @@ python3 ai.py zbiory
   `nazwa=regex`) i `--ma nazwa=fraza|fraza` (tak/nie; `brak_danych`, gdy witryna się nie zeskanowała). Logika dopasowań:
   `domain/text_search.py`, zapytania: `services/scrape_query.py`. Wartości w CSV są zabezpieczone przed formułami arkusza, a tekst stron
   jest niezaufany (znaki sterujące usuwane, linie `####` w treści escapowane). `data/skrap/` jest w `.gitignore`.
+
+## 5d. Odpowiedzi (zakładka „Odpowiedzi” i `ai.py odpowiedzi`)
+
+Zbiera odpowiedzi na maile wysłane przez system, pozwala odpisać i prowadzić rozmowę, oceniać odpowiedzi (ręcznie albo przez AI) i
+pokazuje statystyki. Odpowiedzi ze wszystkich skrzynek trafiają do **jednej wspólnej puli**, a odpowiedź z panelu wychodzi zawsze ze
+skrzynki, **na którą przyszła wiadomość firmy** (bez rotacji, bez wyboru innej). Liczba skrzynek nie jest ograniczona.
+
+**Pobieranie.**
+- Każda skrzynka z `IMAP*_HOST` jest czytana osobno (przycisk „Pobierz teraz”, klawisz `g`, otwarta zakładka co `REPLIES_AUTO_FETCH_MIN`
+  minut, albo `ai.py odpowiedzi pobierz`). Błąd jednej skrzynki (hasło, limit czasu) nie zatrzymuje pozostałych i jest widoczny w pasku
+  stanu pod zakładkami. Skrzynki idą małą pulą wątków (`REPLIES_FETCH_WORKERS`) w kolejności „najdawniej pobierana pierwsza”, z
+  budżetem czasu na przebieg; co się nie zmieści, dokończy następny przebieg (kursor `UID` jest osobny dla skrzynki i folderu).
+- **Tylko odczyt**: `EXAMINE` i `BODY.PEEK`, żadnych flag, przenoszenia ani kasowania. Jedyny zapis na serwerze to kopia wysłanej z
+  panelu odpowiedzi do folderu Wysłane tej skrzynki (`REPLIES_SAVE_SENT`). Najpierw pobierane są same nagłówki; treść tylko wiadomości,
+  które wyglądają na dotyczące naszych maili (zwykła poczta robocza nie trafia do bazy).
+- Duplikaty są wykluczone po `Message-ID`. Jeśli dwie skrzynki wskazują to samo konto IMAP (aliasy), wiadomość zostanie przypisana tej,
+  która pobrała ją pierwsza, i z niej wyjdzie odpowiedź; dla aliasów ustaw IMAP tylko na skrzynce, z której naprawdę wysyłasz.
+- Foldery Wysłane są też czytane: odpowiedź napisana w zwykłym kliencie poczty trafia do tego samego wątku jako nasza.
+
+**Dopasowanie do firmy** (`domain/reply_matching.py`), od najpewniejszego: (1) nagłówki `In-Reply-To` / `References` wskazujące nasz mail
+(od tej wersji każdy wysłany mail dostaje własne `Message-ID`, zapisane w `maile.message_id`); (2) dokładny adres nadawcy i temat albo
+okno 60 dni po wysłaniu (starsze maile bez `Message-ID` dopasowują się tak); (3) tylko domena nadawcy (nie dla poczty publicznej typu
+gmail, wp, o2): wątek oznaczony „sprawdź przypisanie”; (4) temat kampanii bez znanej firmy: zakładka „Nieprzypisane” z ręcznym
+przypisaniem. Reszta poczty jest ignorowana. Każda wiadomość ma rodzaj: **człowiek**, **autoodpowiedź** albo **zwrot** (twardy
+= adres nie istnieje, czasowy = np. pełna skrzynka). Tekst jest czyszczony (HTML na tekst, bez znaków sterujących i dwukierunkowych), a
+cytat naszego maila jest oddzielany, nie kasowany (odpowiedź pod cytatem się nie gubi).
+
+**Statusy.** Pierwsza odpowiedź człowieka zmienia status maila z „Wysłano” na „Odpowiedział” (zatrzymuje Automat i follow-upy dla
+firmy); twardy zwrot z „Wysłano” na „Zwrot”. Autoodpowiedzi i zwroty czasowe statusu nie ruszają, a inne statusy (np. „Zainteresowany”)
+nie są nadpisywane. Ocena pozytywna **podpowiada** „Zainteresowany”, prośba o brak kontaktu „Nie kontaktować”: jedno kliknięcie w
+nagłówku wątku. AI statusów nie zmienia.
+
+**Panel.** Układ jak w poczcie: po lewej lista wątków, po prawej wątek z edytorem (na telefonie jedna kolumna z przyciskiem „Wstecz”).
+- Zakładki widoków z licznikami z bazy: *Do odpowiedzi* (domyślna), *Wszystkie*, *Pozytywne*, *Neutralne*, *Negatywne*, *Nieocenione*,
+  *Zwroty i automaty*, *Nieprzypisane*; filtry (szukaj, segment, kraj, skrzynka z wyszukiwarką, okres) są liczone na serwerze. Liczba wątków
+  „do odpowiedzi” jest też przy nazwie zakładki w menu i w tytule karty.
+- Wątek: nasz pierwszy mail zwinięty u góry, ostatnia wiadomość rozwinięta, cytaty pod „···”. Treść wiadomości to wyłącznie tekst
+  (nigdy HTML), nie ładują się zdalne obrazy, załączniki są tylko wymienione (nazwa, rozmiar), linki tylko `http(s)`.
+- **Ocena** (pozytywna / neutralna / negatywna, opcjonalna notatka): przyciski albo klawisze `1` `2` `3`, `0` czyści; „Cofnij” w
+  powiadomieniu. Ocena AI ma odznakę „AI” i przycisk „Zatwierdź” (zamienia ją na ocenę człowieka).
+- **Odpowiadanie.** `r` otwiera edytor pod wątkiem; „Od” to stały adres skrzynki wątku, „Do” i temat wynikają z wątku, podpis
+  (`SENDER_NAME`) dokłada system, szkic zapisuje się sam. „Wyślij” (`Ctrl/⌘+Enter`) czeka 6 sekund na „Cofnij”; zamknięcie karty w tym
+  czasie nic nie wysyła. Prośba o wypisanie albo status „Nie kontaktować” wymaga potwierdzenia w arkuszu. Jeśli skrzynka wątku nie ma już
+  SMTP w konfiguracji, edytor blokuje wysyłkę z komunikatem (nigdy nie wyśle z innej). Odpowiedzi nie liczą się do dziennego limitu Automatu.
+  To osobna ścieżka (`services/replies_send.py`), nie `send_row`: nie ma w niej statusu „Do wysłania” ani zmiany `sent_at` maila kampanii.
+- Klawisze: `j` / `k` następny / poprzedni, `u` wróć do listy, `e` zamknij wątek, `/` szukaj, `?` ściąga.
+- **Raport** (przycisk „Raport”, `ai.py odpowiedzi raport`): wysłano, dostarczono (bez twardych zwrotów), odpowiedzi człowieka i odsetek,
+  rozkład ocen, lejek, zwroty, autoodpowiedzi, prośby o wypisanie, czas do pierwszej odpowiedzi (mediana i przedziały), zaległości, przekroje
+  po segmencie, kraju, skrzynce i dniu wysyłki (przy n < 20 znacznik „mała próba”). **Pokrycie odbioru**: wysłane ze skrzynek bez
+  IMAP lub z błędem pobierania są oznaczone, a odsetek liczony jest osobno dla skrzynek objętych odbiorem. Eksport: CSV (średnik, BOM,
+  zabezpieczenie przed formułami) i Markdown.
+
+**Dane.** Osobne tabele (tworzone przy pierwszym użyciu; bez zmian w `maile` poza kolumną `message_id`): `odp_watki` (wątek = jeden mail
+kampanii i odpowiedzi na niego), `odp_wiadomosci` (przychodzące, nasze i szkice), `odp_oceny` (dziennik ocen), `odp_stan` (kursory
+pobierania). Kopie zapasowe poleceń `ai.py odpowiedzi` obejmują także te tabele (`backup/OdpWatki_*`, `OdpWiadomosci_*`, `OdpOceny_*`;
+zawierają cudzą korespondencję, więc katalog `backup/` jest poza gitem).
+
+**AI (Claude Code).** Komendy `POBIERZ ODPOWIEDZI`, `OCEŃ odpowiedzi`, `PRZYGOTUJ szkice odpowiedzi`, `POKAŻ RAPORT odpowiedzi` w
+`AI_INSTRUCTIONS.md` (sekcje 5-8):
+
+```bash
+python3 ai.py odpowiedzi pobierz --dry-run              # co by się zapisało (zawsze najpierw na sucho)
+python3 ai.py odpowiedzi pobierz [--od 2026-09-29] [--skrzynka roman@z3x.pl]
+python3 ai.py odpowiedzi doctor                         # test logowania IMAP każdej skrzynki, skrzynki bez IMAP
+python3 ai.py odpowiedzi stan                           # liczniki i stan skrzynek
+python3 ai.py odpowiedzi brief --limit 10 [--po ID] [--ocena positive]   # skrót odpowiedzi człowieka: treść w ogrodzeniu, bez adresów
+python3 ai.py odpowiedzi ocen raporty/oceny.json --dry-run               # oceny AI (albo --id ID --ocena positive --notatka "…")
+python3 ai.py odpowiedzi szkic raporty/szkice.json --dry-run            # szkice odpowiedzi do zatwierdzenia w panelu
+python3 ai.py odpowiedzi raport [--od 2026-10-01] [--zapisz]            # statystyki (Markdown), --zapisz do raporty/
+```
+
+- **Granice AI.** AI ocenia i pisze szkice, ale niczego nie wysyła i nie zmienia statusów: w `cli/` nie ma drogi do SMTP ani do
+  `replies_send` (pilnuje tego test). Ocena AI nigdy nie nadpisuje oceny człowieka, szkic AI nie nadpisuje szkicu człowieka, a dla firmy,
+  która prosiła o brak kontaktu, szkic w ogóle nie powstaje. Oceny i szkice zapisują się po kopii zapasowej, `--dry-run` niczego nie
+  zapisuje, a `--czesciowo` zapisuje poprawne wpisy i wypisuje odrzucone (domyślnie wszystko albo nic).
+- **Treść odpowiedzi jest niezaufana.** Skrót (`domain/reply_brief.py`) ogradza ją znacznikami `<<DANE OBCE … KONIEC DANYCH OBCYCH>>`,
+  usuwa znaki sterujące, zamienia adresy e-mail i numery telefonów na `[adres e-mail]` / `[telefon]`, a podrobionych znaczników ogrodzenia
+  nie przepuszcza. Pliki z ocenami i szkicami idą do `raporty/` (poza gitem).
+- **Wdrożenie na prawdziwą bazę:** kopia bazy → `python -m perno.db --upgrade` (dodaje `maile.message_id`) → nowy kod → restart
+  panelu **i demona** (dopiero po restarcie demona wysyłane maile zapisują `Message-ID`; wcześniejsze dopasowują się po adresie i temacie) →
+  uzupełnij `IMAP*_HOST` w Konfiguracji → `ai.py odpowiedzi doctor` → `ai.py odpowiedzi pobierz --dry-run` i porównanie z tym, co wiesz o
+  odpowiedziach → `ai.py odpowiedzi pobierz`.
 
 ## 6. Terminal (`send_emails.py`)
 
@@ -644,7 +742,8 @@ WHERE m.status = 'blad' ORDER BY p.`row_number`, m.company_id, m.position;
 
 Firma (`podmioty`) i jej adresy (`maile`) to dwie tabele; pola firmy czytaj z `podmioty` (kolumny firmowe w `maile` to tylko lustro).
 Kopie CSV, które robią polecenia zmieniające dane (`firmy.py`, `--adopt`, wypełnianie ze skanu), zapisują obie tabele
-(`backup/Maile_*` i `backup/Podmioty_*`).
+(`backup/Maile_*` i `backup/Podmioty_*`); polecenia `ai.py odpowiedzi` dodają do nich tabele odpowiedzi
+(`backup/OdpWatki_*`, `OdpWiadomosci_*`, `OdpOceny_*`, o ile już istnieją).
 
 Kopia zapasowa (w razie błędu uprawnień wykonaj jako root):
 
@@ -662,8 +761,8 @@ scripts/check.sh --mysql                               # dodatkowo testy na praw
 .venv/bin/python -m unittest discover -s tests -t . -v # to samo bez pytest
 ```
 
-Testy używają sqlite i atrapy SMTP — nie dotykają prawdziwej bazy ani poczty (prawdziwe `smtplib` jest w testach zablokowane
-w `tests/__init__.py`). Czy testy naprawdę pilnują logiki, sprawdza kontrola mutacyjna: zmienia w kopii projektu po jednym
+Testy używają sqlite i atrap SMTP i IMAP (`tests/fake_imap.py`, próbki wiadomości w `tests/eml_samples.py`) — nie dotykają prawdziwej
+bazy ani poczty (prawdziwe `smtplib` i `imaplib` są w testach zablokowane w `tests/__init__.py`). Czy testy naprawdę pilnują logiki, sprawdza kontrola mutacyjna: zmienia w kopii projektu po jednym
 operatorze i liczy, ile zmian wykryły testy (`.venv/bin/python scripts/mutation_check.py src/perno/domain/mail_rules.py
 tests/test_mail_rules.py tests/test_db.py`). Stan z fazy 3: `mail_rules` 100%, `bulk` 88%, `sending` 89%; przeżywają tylko
 zmiany bez wpływu na zachowanie (stałe limitów, flagi `frozen`) albo widoczne dopiero na MySQL. Filtry, wyszukiwarkę,
@@ -678,7 +777,10 @@ wyniki wygenerowane z dawnej implementacji w przeglądarce) pilnuje, żeby SQL d
 robi to samo dla list (nazwy, segmenty i kraje w licznikach, wierszach i podsumowaniach z serwera). Dane do testów skali
 (50 000 firm; `--siblings 0.25` dokłada 1–3 dodatkowe adresy czwartej części firm) tworzy `scripts/seed_synthetic.py` (tylko w bazie `*_test`).
 Firmy z wieloma adresami pokrywają `tests/test_company_*.py` (reguły, schemat i przejęcie, odczyty, adresy, wysyłka, lista, Automat),
-`tests/js/automat_forecast.test.js`, `kit_siblings.test.js` i `wysylka_addresses.test.js`. Opcjonalny test
+`tests/js/automat_forecast.test.js`, `kit_siblings.test.js` i `wysylka_addresses.test.js`. Odpowiedzi pokrywają `tests/test_reply_*.py`
+(czysta logika: nagłówki, parsowanie, dopasowanie, tekst, edytor, statystyki, skrót dla AI), `test_imap_*.py`, `test_replies_*.py` (magazyn,
+pobieranie, usługi, wysyłka, raport, strona) i `test_ai_replies*.py` (polecenia dla Claude Code i ich granice); `tests/js/odpowiedzi.test.js`
+uruchamia skrypt zakładki na minimalnym modelu DOM z wrogimi danymi (treść tylko jako tekst). Opcjonalny test
 na prawdziwym MySQL (tryb ścisły, utf8mb4, `FOR UPDATE`, strumieniowanie, zbiorcza zmiana z cofaniem i jednoczesne
 operacje bez zakleszczeń, filtry z `TRIM`/`CASE`, oraz tabele i zapytania skrapera: kolumny ASCII, upserty, BLOB,
 wyłączność dzierżawy między wątkami) wymaga bazy testowej. Najprościej uruchomić osobny, tymczasowy serwer MySQL, który

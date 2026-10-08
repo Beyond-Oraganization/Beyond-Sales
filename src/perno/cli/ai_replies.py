@@ -1,25 +1,35 @@
-"""Polecenia `ai.py odpowiedzi …`: pobieranie odpowiedzi z poczty, kontrola połączeń i stan modułu.
+"""Polecenia `ai.py odpowiedzi …`: pobieranie odpowiedzi z poczty, ocena i szkice dla Claude Code, raport.
 
-Nic tu nie wysyła maili ani nie zmienia treści wiadomości. Pobieranie jest wyłącznie do odczytu, a polecenia, które coś
-zapisują w bazie (`pobierz`), najpierw robią kopię tabel w backup/. Wywoływane z `perno.cli.ai`."""
+Nic tu nie wysyła maili ani nie zmienia statusów firm (odpowiedź wysyła człowiek w panelu; tego importu nie ma w tym pliku,
+pilnuje go test). Pobieranie jest wyłącznie do odczytu, a polecenia zapisujące w bazie (`pobierz`, `ocen`, `szkic`) najpierw
+robią kopię tabel w backup/. Wywoływane z `perno.cli.ai`."""
 
 from __future__ import annotations
 
+import os
+import sys
 from datetime import date, datetime
 from typing import Optional
 
 from perno import settings as cfg
+from perno.cli.entries import read_entries
 from perno.db import Database, DbError
 from perno.db.replies_store import ReplyStore
+from perno.domain.reply_listing import ReplyRequestError
 from perno.mailer.imap_client import ImapError
-from perno.services import firms_import, imap_access, replies_sync
+from perno.services import ai_replies as flow
+from perno.services import firms_import, imap_access, replies_report, replies_sync
 from perno.settings import load_config
 
-ERRORS = (ImapError,)
+ERRORS = (ImapError, ReplyRequestError)
+DEFAULT_LIMIT = 10
+DEFAULT_CHARS = 800
+DEFAULT_BUDGET = 10000
+RATING_CHOICES = ("positive", "neutral", "negative")
 
 
 def add_parsers(sub) -> None:
-    root = sub.add_parser("odpowiedzi", help="Odpowiedzi firm: pobieranie z poczty, stan, (dalej) ocena i raport.")
+    root = sub.add_parser("odpowiedzi", help="Odpowiedzi firm: pobieranie z poczty, ocena, szkice i raport.")
     actions = root.add_subparsers(dest="akcja", required=True)
 
     fetch = actions.add_parser("pobierz", help="Pobierz odpowiedzi ze wszystkich skrzynek z IMAP (tylko odczyt).")
@@ -29,6 +39,38 @@ def add_parsers(sub) -> None:
 
     actions.add_parser("doctor", help="Sprawdź połączenie IMAP każdej skrzynki (bez zmian na serwerze).")
     actions.add_parser("stan", help="Liczniki odpowiedzi, stan skrzynek i ostatniego pobierania.")
+
+    brief = actions.add_parser("brief", help="Skrót nieocenionych odpowiedzi człowieka (treść obca w ogrodzeniu, bez adresów).")
+    brief.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"Ile wątków (domyślnie {DEFAULT_LIMIT}).")
+    brief.add_argument("--po", default="", metavar="ID", help="Następna paczka: wątki z id większym niż to.")
+    brief.add_argument("--id", nargs="*", default=[], help="Tylko te wątki (id maila kampanii), także już ocenione.")
+    brief.add_argument("--ocena", choices=(*RATING_CHOICES, "brak"), default="brak",
+                       help="Które wątki: bez oceny (domyślnie) albo z tą oceną, np. positive do pisania szkiców.")
+    brief.add_argument("--chars", type=int, default=DEFAULT_CHARS, help="Znaków treści na wątek.")
+    brief.add_argument("--budzet", type=int, default=DEFAULT_BUDGET, help="Znaków na całą paczkę.")
+
+    rate = actions.add_parser("ocen", help="Zapisz oceny AI (plik JSON {id, rating, note?, optout?} albo --id i --ocena).")
+    rate.add_argument("json", nargs="?", help="Plik z listą ocen (id i etykiety; nigdy treść odpowiedzi).")
+    rate.add_argument("--id", help="Jeden wątek zamiast pliku.")
+    rate.add_argument("--ocena", choices=RATING_CHOICES, help="Ocena dla --id.")
+    rate.add_argument("--notatka", default="", help="Krótkie uzasadnienie dla --id (do 200 znaków).")
+    rate.add_argument("--wypisanie", action="store_true", help="Oznacz wątek jako prośbę o brak kontaktu (dla --id).")
+    _plan_flags(rate)
+
+    draft = actions.add_parser("szkic", help="Zapisz szkice odpowiedzi do zatwierdzenia w panelu (plik JSON {id, body}). Nic nie wysyła.")
+    draft.add_argument("json", help="Plik z listą szkiców.")
+    _plan_flags(draft)
+
+    report = actions.add_parser("raport", help="Raport statystyk odpowiedzi (Markdown).")
+    report.add_argument("--od", metavar="RRRR-MM-DD", help="Maile wysłane od tego dnia.")
+    report.add_argument("--do", metavar="RRRR-MM-DD", help="Maile wysłane do tego dnia (włącznie).")
+    report.add_argument("--segment", action="append", default=[], help="Tylko ten typ firm (można powtórzyć).")
+    report.add_argument("--zapisz", action="store_true", help="Zapisz też do raporty/odpowiedzi_RRRRMMDD.md (poza gitem).")
+
+
+def _plan_flags(parser) -> None:
+    parser.add_argument("--dry-run", action="store_true", help="Sprawdź i pokaż, co by się zapisało; nic nie zapisuje.")
+    parser.add_argument("--czesciowo", action="store_true", help="Zapisz poprawne wpisy, wypisz odrzucone (domyślnie wszystko albo nic).")
 
 
 def imap_factory():
@@ -131,8 +173,89 @@ def cmd_state(args) -> int:
     return 0
 
 
+def cmd_brief(args) -> int:
+    _, _, store = open_replies(args)
+    rating = None if args.ocena == "brak" else args.ocena
+    batch = flow.build_briefs(store, limit=args.limit, after=args.po, ids=args.id, chars=args.chars, budget=args.budzet, rating=rating)
+    print(f"# wątków {'bez oceny' if rating is None else 'z oceną ' + rating}: {batch.pending}, w tej paczce: {len(batch.texts)}"
+          + (f", następna paczka: --po {batch.next_after}" if batch.next_after else ", to ostatnia paczka"))
+    print("\n\n".join(batch.texts))
+    return 0
+
+
+def _entries(args) -> list:
+    """Wpisy do oceny: z pliku albo jeden z `--id`/`--ocena` (oba naraz albo żadne to błąd użycia)."""
+    if bool(args.json) == bool(args.id):
+        raise ValueError("Podaj plik JSON albo --id z --ocena (nie oba naraz).")
+    if args.json:
+        return read_entries(args.json)
+    entry = {"id": args.id, "rating": args.ocena, "note": args.notatka}
+    return [{**entry, "optout": True}] if args.wypisanie else [entry]
+
+
+def _print_plan(plan: flow.WritePlan, labels: dict) -> None:
+    for item in plan.items:
+        print(f"  OK  {item['id']:<22} {labels.get(item['id'], '')}")
+    for thread_id, message in plan.warnings:
+        print(f"  UWAGA {thread_id}: {message}")
+    for thread_id, message in plan.errors:
+        print(f"  BŁĄD {thread_id}: {message}", file=sys.stderr)
+
+
+def _refused(plan: flow.WritePlan, args) -> bool:
+    if plan.errors and not args.czesciowo:
+        print(f"Przerwano: {len(plan.errors)} błędów, nic nie zapisano (popraw plik albo użyj --czesciowo).", file=sys.stderr)
+        return True
+    return False
+
+
+def cmd_rate(args) -> int:
+    _, db, store = open_replies(args)
+    plan = flow.plan_ratings(store, _entries(args))
+    _print_plan(plan, {item["id"]: f"{item['rating']}{'  [wypisanie]' if item['optout'] else ''}" for item in plan.items})
+    if _refused(plan, args):
+        return 1
+    if args.dry_run:
+        print(f"--dry-run: {len(plan.items)} ocen gotowych do zapisu, nic nie zapisano.")
+        return 0
+    done, backup = flow.write_ratings(db, store, plan, db.now(), cfg.BACKUP_DIR)
+    print(f"Zapisano {done} z {len(plan.items)} ocen (jako oceny AI do przejrzenia w panelu)." + (f" Kopia: {backup}" if backup else ""))
+    return 1 if plan.errors else 0
+
+
+def cmd_draft(args) -> int:
+    config, db, store = open_replies(args)
+    plan = flow.plan_drafts(store, config, read_entries(args.json))
+    _print_plan(plan, {item["id"]: f"{len(item['body'])} znaków" for item in plan.items})
+    if _refused(plan, args):
+        return 1
+    if args.dry_run:
+        print(f"--dry-run: {len(plan.items)} szkiców gotowych do zapisu, nic nie zapisano.")
+        return 0
+    saved, skipped, backup = flow.write_drafts(db, store, config, plan, db.now(), cfg.BACKUP_DIR)
+    for thread_id in skipped:
+        print(f"  UWAGA {thread_id}: jest szkic człowieka albo wysyłka w toku, pominięto.")
+    print(f"Zapisano {saved} z {len(plan.items)} szkiców. Wysyła człowiek z panelu (zakładka Odpowiedzi)." + (f" Kopia: {backup}" if backup else ""))
+    return 1 if plan.errors else 0
+
+
+def cmd_report(args) -> int:
+    config, db, store = open_replies(args)
+    payload = {"from": args.od, "to": args.do, "segments": args.segment}
+    text = replies_report.markdown(replies_report.build_report(store, config, payload, db.now()))
+    print(text)
+    if args.zapisz:
+        path = flow.report_path(cfg.BASE_DIR, db.now())
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        print(f"\nZapisano: {path}")
+    return 0
+
+
 def cmd_replies(args) -> int:
-    return {"pobierz": cmd_fetch, "doctor": cmd_doctor, "stan": cmd_state}[args.akcja](args)
+    return {"pobierz": cmd_fetch, "doctor": cmd_doctor, "stan": cmd_state, "brief": cmd_brief, "ocen": cmd_rate,
+            "szkic": cmd_draft, "raport": cmd_report}[args.akcja](args)
 
 
 COMMANDS = {"odpowiedzi": cmd_replies}
