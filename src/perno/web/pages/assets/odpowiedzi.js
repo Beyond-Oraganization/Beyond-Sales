@@ -18,6 +18,7 @@ const SHORTCUTS = [['j / k', 'następna / poprzednia rozmowa'], ['Enter', 'otwó
 const state = {
   tab: 'todo', q: '', mailboxes: [], segments: [], countries: [], from: '', to: '', page: 1,
   rows: [], total: 0, pages: 1, counts: {}, selected: '', detail: null, overview: null, known: null, advance: true,
+  view: 'mail', repFrom: '', repTo: '', report: null,
 };
 let listVersion = 0;
 let detailVersion = 0;
@@ -105,6 +106,11 @@ function syncUrl(push) {
   if (state.from) query.set('from', state.from);
   if (state.to) query.set('to', state.to);
   if (state.selected) query.set('w', state.selected);
+  if (state.view === 'report') {
+    query.set('widok', 'raport');
+    if (state.repFrom) query.set('rfrom', state.repFrom);
+    if (state.repTo) query.set('rto', state.repTo);
+  }
   const url = location.pathname + (query.toString() ? '?' + query.toString() : '');
   try {
     if (push && history.pushState) history.pushState({w: state.selected}, '', url);
@@ -124,6 +130,9 @@ function restoreFromUrl() {
   state.from = query.get('from') || '';
   state.to = query.get('to') || '';
   state.selected = query.get('w') || '';
+  state.view = query.get('widok') === 'raport' ? 'report' : 'mail';
+  state.repFrom = query.get('rfrom') || '';
+  state.repTo = query.get('rto') || '';
   el('q').value = state.q;
   el('fromDay').value = state.from;
   el('toDay').value = state.to;
@@ -755,6 +764,118 @@ async function waitForFetch(attempt, quiet) {
   }
 }
 
+
+// ---- raport -----------------------------------------------------------------------------------------------------------
+
+const GROUP_TITLES = {segment: 'Segment', country: 'Kraj', mailbox: 'Skrzynka', day: 'Dzień wysyłki'};
+const GROUP_PREVIEW = 15;  // przy wielu skrzynkach i dniach pokazujemy najpierw początek tabeli
+
+function pct(value) {
+  return value === null || value === undefined ? '—' : (value * 100).toFixed(1).replace('.', ',') + '%';
+}
+
+function reportPayload() {
+  return {from: state.repFrom, to: state.repTo, segments: state.segments, countries: state.countries, mailboxes: state.mailboxes};
+}
+
+function setView(view) {
+  state.view = view;
+  el('replies').classList.toggle('is-report', view === 'report');
+  el('viewMail').setAttribute('aria-pressed', view === 'mail' ? 'true' : 'false');
+  el('viewReport').setAttribute('aria-pressed', view === 'report' ? 'true' : 'false');
+  if (view === 'report') { el('split').setAttribute('hidden', ''); el('report').removeAttribute('hidden'); }
+  else { el('report').setAttribute('hidden', ''); el('split').removeAttribute('hidden'); }
+  syncUrl(false);
+  if (view === 'report') loadReport();
+}
+
+async function loadReport() {
+  const {ok, data} = await api('/api/odpowiedzi/raport', reportPayload());
+  if (!ok) { showToast(data.error || 'Nie udało się policzyć raportu.', 'error'); return; }
+  state.report = data;
+  renderReport(data);
+}
+
+function kpi(label, value, note) {
+  return h('div', {class: 'rp-kpi'}, h('span', {class: 'label', text: label}), h('span', {class: 'value', text: String(value)}), note ? h('span', {class: 'note', text: note}) : null);
+}
+
+function barRow(label, value, max, count, tone) {
+  const fill = h('span', {class: 'rp-bar-fill' + (tone ? ' ' + tone : '')});
+  fill.style.setProperty('--w', (max > 0 ? Math.max(value > 0 ? 2 : 0, Math.round((value / max) * 100)) : 0) + '%');
+  return h('div', {class: 'rp-bar-row'}, h('span', {text: label}), h('span', {class: 'rp-bar'}, fill), h('span', {class: 'num', text: count === undefined ? String(value) : count}));
+}
+
+function groupLabel(group, key) {
+  if (group === 'country') { const hit = (APP.countries || []).find((c) => c[0] === key); return hit ? hit[1] + ' (' + key + ')' : key; }
+  return key;
+}
+
+function groupTable(group, rows) {
+  const head = h('tr', {}, ['', 'Wysłano', 'Dostarczono', 'Odpowiedzi', 'Odsetek', '+', '=', '–'].map((text, index) => h('th', {class: index ? 'num' : '', text})));
+  const body = (visible) => visible.map((row) => h('tr', {},
+    h('td', {}, groupLabel(group, row.key), row.small_sample ? h('span', {class: 'rp-small', text: ' mała próba'}) : null),
+    h('td', {class: 'num', text: String(row.sent)}), h('td', {class: 'num', text: String(row.delivered)}), h('td', {class: 'num', text: String(row.replied)}),
+    h('td', {class: 'num', text: pct(row.reply_rate)}), h('td', {class: 'num', text: String(row.positive)}), h('td', {class: 'num', text: String(row.neutral)}),
+    h('td', {class: 'num', text: String(row.negative)})));
+  const table = h('table', {class: 'data-table'}, h('thead', {}, head), h('tbody', {}, body(rows.slice(0, GROUP_PREVIEW))));
+  const wrap = h('div', {class: 'table-wrap'}, table);
+  const card = h('div', {class: 'card'}, h('h2', {text: GROUP_TITLES[group]}), wrap);
+  if (rows.length > GROUP_PREVIEW) {
+    const more = h('button', {type: 'button', class: 'btn plain', text: 'Pokaż wszystkie (' + rows.length + ')'});
+    more.addEventListener('click', () => { table.replaceChildren(h('thead', {}, head), h('tbody', {}, body(rows))); more.remove(); });
+    card.appendChild(more);
+  }
+  return card;
+}
+
+function renderReport(data) {
+  const t = data.total;
+  const bar = h('div', {class: 'rp-report-bar'},
+    h('label', {}, h('span', {text: 'Wysłano od'}), h('input', {type: 'date', id: 'repFrom', value: state.repFrom})),
+    h('label', {}, h('span', {text: 'do'}), h('input', {type: 'date', id: 'repTo', value: state.repTo})),
+    h('button', {type: 'button', class: 'btn', text: 'Przelicz', onclick: () => { state.repFrom = el('repFrom').value; state.repTo = el('repTo').value; syncUrl(false); loadReport(); }}),
+    h('button', {type: 'button', class: 'btn', text: 'Pobierz CSV', onclick: () => downloadReport('csv')}),
+    h('button', {type: 'button', class: 'btn', text: 'Kopiuj podsumowanie', onclick: copySummary}),
+    h('span', {class: 'rp-hint', text: 'Okres: ' + data.period}));
+  const warnings = data.warnings.map((text) => h('div', {class: 'banner warn', text}));
+  const latency = data.latency;
+  const tiles = h('div', {class: 'rp-kpis'},
+    kpi('Wysłano', t.sent, data.replied_companies ? data.replied_companies + ' firm odpowiedziało' : ''), kpi('Dostarczono', t.delivered, t.bounced + ' twardych zwrotów'),
+    kpi('Odpowiedzi', t.replied, t.awaiting + ' czeka na nas'), kpi('Odsetek odpowiedzi', pct(t.reply_rate), t.small_sample ? 'mała próba (< 20)' : ''),
+    kpi('Pozytywne', t.positive, pct(t.positive_rate) + ' ocenionych'), kpi('Mediana czasu', latency.median_hours === null ? '—' : (latency.median_hours < 48 ? latency.median_hours + ' h' : (latency.median_hours / 24).toFixed(1).replace('.', ',') + ' dni'), 'n = ' + latency.n));
+  const funnel = h('div', {class: 'card'}, h('h2', {text: 'Lejek'}), h('div', {class: 'rp-bars'},
+    barRow('Wysłano', t.sent, t.sent), barRow('Dostarczono', t.delivered, t.sent), barRow('Odpowiedzi', t.replied, t.sent), barRow('Pozytywne', t.positive, t.sent, undefined, 'is-positive')));
+  const rated = t.positive + t.neutral + t.negative + t.unrated;
+  const stack = h('div', {class: 'rp-stack', role: 'img', 'aria-label': 'Rozkład ocen'}, [['positive', t.positive], ['neutral', t.neutral], ['negative', t.negative]].map(([tone, count]) => {
+    const part = h('span', {class: 'is-' + tone});
+    part.style.setProperty('--w', (rated ? (count / rated) * 100 : 0) + '%');
+    return part;
+  }));
+  const legend = h('div', {class: 'rp-legend'}, [['positive', 'Pozytywne', t.positive], ['neutral', 'Neutralne', t.neutral], ['negative', 'Negatywne', t.negative]].map(([tone, label, count]) =>
+    h('span', {class: 'is-' + tone}, h('span', {class: 'badge', text: label}), String(count))), h('span', {text: 'Nieocenione: ' + t.unrated}), h('span', {text: 'Prośby o wypisanie: ' + t.optout}));
+  const ratings = h('div', {class: 'card'}, h('h2', {text: 'Oceny odpowiedzi'}), stack, legend);
+  const buckets = Object.entries(latency.buckets);
+  const maxBucket = Math.max(0, ...buckets.map(([, n]) => n));
+  const timing = h('div', {class: 'card'}, h('h2', {text: 'Czas do pierwszej odpowiedzi'}), latency.n
+    ? h('div', {class: 'rp-bars'}, buckets.map(([label, n]) => barRow(label, n, maxBucket))) : h('div', {class: 'rp-hint', text: 'Brak odpowiedzi do zmierzenia.'}));
+  const tables = Object.keys(GROUP_TITLES).filter((group) => (data.groups[group] || []).length).map((group) => groupTable(group, data.groups[group]));
+  setChildren(el('report'), [h('div', {class: 'rp-report-inner'}, bar, warnings, tiles, h('div', {class: 'rp-kpis'}, funnel, ratings, timing), tables)]);
+}
+
+async function downloadReport(format) {
+  const result = await downloadFile('/api/odpowiedzi/raport-plik', Object.assign({format}, reportPayload()), 'raport_odpowiedzi.' + format);
+  showToast(result.ok ? 'Zapisano plik: ' + result.name : (result.error || 'Nie udało się pobrać pliku.'), result.ok ? 'ok' : 'error');
+}
+
+async function copySummary() {
+  const res = await fetch('/api/odpowiedzi/raport-plik', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(Object.assign({format: 'md'}, reportPayload()))});
+  if (!res.ok) { showToast('Nie udało się przygotować podsumowania.', 'error'); return; }
+  const text = await res.text();
+  try { await navigator.clipboard.writeText(text); showToast('Skopiowano podsumowanie.', 'ok'); }
+  catch (error) { showToast('Przeglądarka nie pozwoliła skopiować; użyj „Pobierz CSV”.', 'error'); }
+}
+
 // ---- podpięcie --------------------------------------------------------------------------------------------------------
 
 function togglePopover(button, pop, open) {
@@ -784,25 +905,29 @@ el('q').addEventListener('input', () => {
 });
 el('fetchBtn').addEventListener('click', () => startFetch(false));
 el('helpBtn').addEventListener('click', () => showShortcutHelp(SHORTCUTS));
+el('viewMail').addEventListener('click', () => setView('mail'));
+el('viewReport').addEventListener('click', () => setView('report'));
 
 window.addEventListener('popstate', () => {
   restoreFromUrl();
+  if ((state.view === 'report') !== (el('split').hasAttribute('hidden'))) setView(state.view);
   if (state.selected) { if (/^\d+$/.test(state.selected)) openUnassigned(state.selected); else openThread(state.selected, false); }
   else backToList();
   loadList();
 });
 
+const inMail = (fn) => (event) => { if (state.view === 'mail') fn(event); };
 bindShortcuts({
-  j: () => moveSelection(1), k: () => moveSelection(-1),
-  Enter: () => { if (!state.selected) moveSelection(1); },
-  u: () => backToList(),
-  1: () => rate('positive'), 2: () => rate('neutral'), 3: () => rate('negative'), 0: () => rate(null),
-  e: () => { if (state.detail) stateAction(state.detail.thread.closed ? 'reopen' : 'close'); },
-  r: () => openComposer(true),
+  j: inMail(() => moveSelection(1)), k: inMail(() => moveSelection(-1)),
+  Enter: inMail(() => { if (!state.selected) moveSelection(1); }),
+  u: inMail(() => backToList()),
+  1: inMail(() => rate('positive')), 2: inMail(() => rate('neutral')), 3: inMail(() => rate('negative')), 0: inMail(() => rate(null)),
+  e: inMail(() => { if (state.detail) stateAction(state.detail.thread.closed ? 'reopen' : 'close'); }),
+  r: inMail(() => openComposer(true)),
   'ctrl+Enter': () => { if (composer.text && document.activeElement === composer.text) requestSend(false); },
   'meta+Enter': () => { if (composer.text && document.activeElement === composer.text) requestSend(false); },
   Escape: () => { if (composer.text && document.activeElement === composer.text && composer.text.blur) composer.text.blur(); closeMenus(); },
-  '/': () => el('q').focus(), g: () => startFetch(false), '?': () => showShortcutHelp(SHORTCUTS),
+  '/': inMail(() => el('q').focus()), g: inMail(() => startFetch(false)), '?': () => showShortcutHelp(SHORTCUTS),
 });
 
 // Wysyłka czeka sześć sekund na „Cofnij”: zamknięcie karty w tym czasie nic nie wysyła (szkic zostaje na serwerze).
@@ -813,6 +938,7 @@ pollWhileVisible(refreshOverview, {interval: 60000});
 async function start() {
   restoreFromUrl();
   renderTabs();
+  if (state.view === 'report') setView('report');
   await Promise.all([loadList(), refreshOverview()]);
   if (state.selected) { if (/^\d+$/.test(state.selected)) openUnassigned(state.selected); else openThread(state.selected, false); }
 }

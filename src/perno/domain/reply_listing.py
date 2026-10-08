@@ -109,3 +109,23 @@ def parse_list_request(payload: Mapping) -> ReplyListRequest:
         countries=_choices(payload.get("countries"), "countries"), since=since, until=until)
     return ReplyListRequest(flt, _integer(payload.get("page"), "page", 1, 1, 10**6),
                             _integer(payload.get("size"), "size", DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE))
+
+
+@dataclass(frozen=True)
+class ReportFilter:
+    """Co obejmuje raport: maile kampanii wysłane w danym okresie (dzień wysyłki, włącznie), z zawężeniami (puste = wszystkie)."""
+
+    since: Optional[date] = None
+    until: Optional[date] = None
+    segments: tuple = ()
+    countries: tuple = ()
+    mailboxes: tuple = ()
+
+
+def parse_report_request(payload: Mapping) -> ReportFilter:
+    """Waliduje `{from, to, segments, countries, mailboxes}`; zły typ albo odwrócony okres to błąd żądania."""
+    since, until = _day(payload.get("from"), "from"), _day(payload.get("to"), "to")
+    if since and until and since > until:
+        raise ReplyRequestError("Data początkowa jest późniejsza niż końcowa.")
+    return ReportFilter(since, until, _choices(payload.get("segments"), "segments"), _choices(payload.get("countries"), "countries"),
+                        _choices(payload.get("mailboxes"), "mailboxes", lower=True))

@@ -18,6 +18,7 @@ import sqlalchemy as sa
 from sqlalchemy import exc as sa_exc
 
 from perno.db import replies_queries as rq
+from perno.db import replies_report as rr
 from perno.db.company_sql import column_for, company_key, select_mails
 from perno.db.replies_schema import (
     RUN_ROW_ID,
@@ -405,3 +406,11 @@ class ReplyStore(StoreCore):
             if changed and msg.thread_id:
                 self._touch_thread(conn, msg, now)
             return changed
+
+    # ---- raport -----------------------------------------------------------------------------------------------
+
+    def report_data(self, flt: rl.ReportFilter, primary: str, groups: Iterable[str]) -> dict:
+        """Surowe liczby raportu: całość, zestawienia po wymiarach, pary do czasu reakcji i użycie skrzynek."""
+        with self._read() as conn:
+            return {"total": rr.totals(conn, flt, primary), "groups": {group: rr.grouped(conn, flt, group, primary) for group in groups},
+                    "latency": rr.latency_pairs(conn, flt, primary), "usage": rr.mailbox_usage(conn, flt, primary), "first_day": rr.first_sent_day(conn)}

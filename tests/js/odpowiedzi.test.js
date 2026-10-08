@@ -9,6 +9,7 @@ const IDS = {
   replies: {}, tabs: {}, q: {tag: 'input'}, filterBtn: {tag: 'button'}, filterPop: {attrs: {hidden: ''}}, mailboxFind: {tag: 'input'}, mailboxList: {},
   segmentSel: {tag: 'select'}, countrySel: {tag: 'select'}, fromDay: {tag: 'input'}, toDay: {tag: 'input'}, clearFilters: {tag: 'button'},
   fetchBtn: {tag: 'button'}, fetchInfo: {}, helpBtn: {tag: 'button'}, mailStatus: {attrs: {hidden: ''}}, split: {attrs: {'data-view': 'list'}}, list: {}, detail: {},
+  viewMail: {tag: 'button'}, viewReport: {tag: 'button'}, report: {attrs: {hidden: '', class: 'rp-report'}},
 };
 const EVIL = '<img src=x onerror=window.PWNED=1><script>window.PWNED=1</script>';
 
@@ -568,5 +569,112 @@ test('wrogi adres i temat w nagłówku edytora są tekstem, a treść szkicu jes
   const {app} = await openFirst({views: {'eventy-001': hostile}});
   assert.ok(app.first('.rp-compose-head').textContent.includes(EVIL));
   assert.equal(app.first('.rp-draft').value, EVIL);
+  assert.equal(app.all('img').length + app.all('script').length, 0);
+});
+
+// ---- raport -------------------------------------------------------------------------------------------------------------
+
+const row2 = (key, over) => Object.assign({key, sent: 30, bounced: 3, delivered: 27, replied: 8, positive: 3, neutral: 3, negative: 2, unrated: 0, optout: 1, awaiting: 2,
+  reply_rate: 8 / 27, positive_rate: 3 / 8, small_sample: false}, over || {});
+
+const REPORT = () => ({period: '2026-09-29 – dziś', replied_companies: 7, auto_threads: 2, soft_bounces: 1, awaiting_since: null, generated_at: '2026-10-08T10:00:00',
+  total: row2('razem', {sent: 60, bounced: 6, delivered: 54, replied: 12, positive: 4, neutral: 4, negative: 3, unrated: 1, optout: 2, awaiting: 3, reply_rate: 12 / 54, positive_rate: 4 / 11}),
+  latency: {n: 12, median_hours: 30.5, buckets: {'do 1 dnia': 5, '2–3 dni': 4, '4–7 dni': 2, 'powyżej 7 dni': 1}},
+  coverage: {configured: 3, receiving: 2, blind_mailboxes: ['trzeci@z3x.pl'], blind_mails: 10, complete: false},
+  warnings: ['Odsetek odpowiedzi jest zaniżony: 10 maili wyszło ze skrzynek bez IMAP.'],
+  groups: {segment: [row2('eventy'), row2('driverzy', {small_sample: true, sent: 5})], country: [row2('PL'), row2('DE')], mailbox: [row2('roman@z3x.pl')], day: []}});
+
+async function openReport(options) {
+  const o = options || {};
+  const booted = await boot({search: o.search || '', respond: async (url, body) => {
+    if (url === '/api/odpowiedzi/raport') return typeof o.report === 'function' ? o.report(body) : (o.report || REPORT());
+    if (o.respond) return o.respond(url, body);
+    return undefined;
+  }});
+  if (!o.search) { booted.app.el('viewReport').click(); await booted.app.settle(); }
+  return booted;
+}
+
+test('raport: przełącznik pokazuje raport zamiast listy, woła serwer z okresem i zapisuje widok w adresie', async () => {
+  const {app} = await openReport();
+  assert.ok(app.el('split').hasAttribute('hidden'));
+  assert.ok(!app.el('report').hasAttribute('hidden'));
+  assert.equal(app.el('viewReport').getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(app.callsTo('/api/odpowiedzi/raport')[0].body, {from: '', to: '', segments: [], countries: [], mailboxes: []});
+  assert.ok(app.history.replaced.pop().includes('widok=raport'));
+  app.el('viewMail').click();
+  assert.ok(!app.el('split').hasAttribute('hidden') && app.el('report').hasAttribute('hidden'));
+  assert.ok(!app.history.replaced.pop().includes('widok'));
+});
+
+test('raport: kafelki z liczbami, odsetki z przecinkiem, ostrzeżenia o pokryciu i małej próbie', async () => {
+  const {app} = await openReport();
+  const text = app.el('report').textContent;
+  for (const needle of ['Wysłano60', 'Dostarczono546 twardych zwrotów', 'Odpowiedzi123 czeka na nas', 'Odsetek odpowiedzi22,2%', 'Pozytywne436,4% ocenionych', 'Mediana czasu30.5 h',
+    'Odsetek odpowiedzi jest zaniżony', 'Okres: 2026-09-29 – dziś', 'Nieocenione: 1', 'Prośby o wypisanie: 2', 'Lejek', 'Oceny odpowiedzi', 'Czas do pierwszej odpowiedzi']) {
+    assert.ok(text.includes(needle), needle + ' w: ' + text.slice(0, 400));
+  }
+  assert.ok(app.all('.rp-report .banner.warn').length === 1);
+});
+
+test('raport: tabele po segmencie, kraju z nazwą po polsku i skrzynce; mała próba jest oznaczona, a pusty wymiar pominięty', async () => {
+  const {app} = await openReport();
+  const titles = app.all('.rp-report .card h2').map((n) => n.textContent);
+  assert.deepEqual(titles.filter((t) => ['Segment', 'Kraj', 'Skrzynka', 'Dzień wysyłki'].includes(t)), ['Segment', 'Kraj', 'Skrzynka']);
+  const cells = app.all('.rp-report tbody tr').map((tr) => tr.textContent);
+  assert.ok(cells.some((c) => c.startsWith('Polska (PL)30272') || c.startsWith('Polska (PL)3027')), cells.join(' | '));
+  assert.ok(cells.some((c) => c.startsWith('driverzy mała próba')), cells.join(' | '));
+});
+
+test('raport: długie zestawienie pokazuje początek i „Pokaż wszystkie”', async () => {
+  const many = REPORT();
+  many.groups.mailbox = Array.from({length: 40}, (_, i) => row2('skrzynka' + i + '@z3x.pl'));
+  const {app} = await openReport({report: many});
+  const mailboxTable = app.all('.rp-report .card').find((c) => c.querySelector('h2').textContent === 'Skrzynka');
+  assert.equal(mailboxTable.querySelectorAll('tbody tr').length, 15);
+  const more = mailboxTable.querySelector('button');
+  assert.equal(more.textContent, 'Pokaż wszystkie (40)');
+  more.click();
+  assert.equal(mailboxTable.querySelectorAll('tbody tr').length, 40);
+  assert.ok(!mailboxTable.querySelector('button'));
+});
+
+test('raport: „Przelicz” wysyła okres i filtry, a okres wraca do adresu', async () => {
+  const {app} = await openReport();
+  app.el('repFrom').value = '2026-09-29';
+  app.el('repTo').value = '2026-10-01';
+  app.all('button').find((b) => b.textContent === 'Przelicz').click();
+  await app.settle();
+  assert.deepEqual(app.callsTo('/api/odpowiedzi/raport').pop().body, {from: '2026-09-29', to: '2026-10-01', segments: [], countries: [], mailboxes: []});
+  const url = app.history.replaced.pop();
+  assert.ok(url.includes('rfrom=2026-09-29') && url.includes('rto=2026-10-01'), url);
+});
+
+test('raport: widok i okres wracają z adresu po odświeżeniu strony', async () => {
+  const {app} = await openReport({search: '?widok=raport&rfrom=2026-09-01&rto=2026-09-30&seg=eventy'});
+  assert.ok(!app.el('report').hasAttribute('hidden'));
+  assert.deepEqual(app.callsTo('/api/odpowiedzi/raport')[0].body, {from: '2026-09-01', to: '2026-09-30', segments: ['eventy'], countries: [], mailboxes: []});
+  assert.equal(app.el('repFrom').getAttribute('value'), '2026-09-01');
+});
+
+test('raport: „Pobierz CSV” prosi o plik tym samym filtrem, a skróty listy w raporcie nie działają', async () => {
+  const {app} = await openReport();
+  app.all('button').find((b) => b.textContent === 'Pobierz CSV').click();
+  await app.settle();
+  const call = app.callsTo('/api/odpowiedzi/raport-plik')[0];
+  assert.deepEqual(call.body, {format: 'csv', from: '', to: '', segments: [], countries: [], mailboxes: []});
+  const before = app.callsTo('/api/odpowiedzi/watek').length;
+  app.key('j');
+  await app.settle();
+  assert.equal(app.callsTo('/api/odpowiedzi/watek').length, before);
+});
+
+test('raport: błąd serwera jest komunikatem, a wrogie dane w nazwach grup są tekstem', async () => {
+  const failing = await openReport({report: () => ({__status: 400, body: {error: 'Data początkowa jest późniejsza niż końcowa.'}})});
+  assert.ok(failing.app.texts().includes('Data początkowa jest późniejsza niż końcowa.'));
+  const hostile = REPORT();
+  hostile.groups.segment = [row2(EVIL)];
+  const {app} = await openReport({report: hostile});
+  assert.ok(app.el('report').textContent.includes(EVIL));
   assert.equal(app.all('img').length + app.all('script').length, 0);
 });

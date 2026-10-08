@@ -6,7 +6,7 @@ wiadomości jest niezaufana: trafia do przeglądarki jako tekst i tylko tak jest
 
 from __future__ import annotations
 
-from perno.services import replies, replies_send, replies_sync
+from perno.services import replies, replies_report, replies_send, replies_sync
 from perno.settings import ConfigError
 from perno.web import layout
 from perno.web.context import AppContext
@@ -98,6 +98,22 @@ def api_send(req: Request, ctx: AppContext) -> Response:
     return json_response(replies_send.send_reply(_store(ctx), ctx.config.load(), mailers, _text(req, "id"), options, ctx.db.now()))
 
 
+def api_report(req: Request, ctx: AppContext) -> Response:
+    return json_response(replies_report.build_report(_store(ctx), ctx.config.load(), req.json, ctx.db.now()))
+
+
+def api_report_file(req: Request, ctx: AppContext) -> Response:
+    """Raport jako plik (`format`: csv albo md); filtry jak w widoku."""
+    kind = req.json.get("format")
+    if kind not in ("csv", "md"):
+        raise HttpError(400, "Pole format musi mieć wartość csv albo md.")
+    report = replies_report.build_report(_store(ctx), ctx.config.load(), req.json, ctx.db.now())
+    body = (replies_report.csv_text(report) if kind == "csv" else replies_report.markdown(report)).encode("utf-8")
+    stamp = ctx.db.now().strftime("%Y%m%d")
+    return Response(200, body=body, content_type="text/csv; charset=utf-8" if kind == "csv" else "text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="raport_odpowiedzi_{stamp}.{kind}"'})
+
+
 def api_state(req: Request, ctx: AppContext) -> Response:
     return json_response(replies.set_state(_store(ctx), _text(req, "id"), _text(req, "action"), ctx.db.now()))
 
@@ -141,6 +157,8 @@ PAGE = Page(
         ("POST", "/api/odpowiedzi/szkic"): api_draft,
         ("POST", "/api/odpowiedzi/szkic-usun"): api_draft_discard,
         ("POST", "/api/odpowiedzi/wyslij"): api_send,
+        ("POST", "/api/odpowiedzi/raport"): api_report,
+        ("POST", "/api/odpowiedzi/raport-plik"): api_report_file,
         ("POST", "/api/odpowiedzi/akcja"): api_state,
         ("POST", "/api/odpowiedzi/status"): api_status,
         ("POST", "/api/odpowiedzi/przypisz"): api_assign,

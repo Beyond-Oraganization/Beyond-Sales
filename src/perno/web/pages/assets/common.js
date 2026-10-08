@@ -51,6 +51,26 @@ async function downloadExport(payload){
   return {ok: true, name, rows: Number(res.headers.get('X-Export-Rows') || 0), size: blob.size};
 }
 
+// Plik z dowolnego punktu POST (np. raport): zapisuje go przeglądarka, nazwa z Content-Disposition. Zwraca {ok, name, size} albo {ok: false, error}.
+async function downloadFile(url, payload, fallbackName){
+  const res = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload || {})});
+  if (!res.ok){
+    const data = await readJson(res);
+    return {ok: false, status: res.status, error: data.error || 'Nie udało się przygotować pliku.'};
+  }
+  const blob = await res.blob();
+  const match = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+  const name = match ? match[1] : (fallbackName || 'plik');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+  return {ok: true, name, size: blob.size};
+}
+
 // ---- komunikaty i potwierdzenia (jedne dla wszystkich stron) ------------------------------------------------------
 // showToast(tekst, ton): chwilowe okienko u góry (ton 'ok' | 'error'; błąd zostaje dłużej).
 // showSheet({title, message, confirmLabel, cancelLabel, tone, focusCancel}) → Promise<boolean>: zamiennik alert()/confirm().

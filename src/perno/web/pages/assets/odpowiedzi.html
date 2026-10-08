@@ -1,6 +1,12 @@
 <div class="replies" id="replies">
   <header class="rp-top">
-    <div class="rp-tabs" id="tabs" role="tablist" aria-label="Widoki odpowiedzi"></div>
+    <div class="rp-viewbar">
+      <div class="seg" role="group" aria-label="Widok">
+        <button type="button" id="viewMail" class="seg-btn" aria-pressed="true">Skrzynka</button>
+        <button type="button" id="viewReport" class="seg-btn" aria-pressed="false">Raport</button>
+      </div>
+      <div class="rp-tabs" id="tabs" role="tablist" aria-label="Widoki odpowiedzi"></div>
+    </div>
     <div class="rp-tools">
       <input type="search" id="q" class="rp-search" placeholder="Szukaj: firma, adres, treść…" autocomplete="off" aria-label="Szukaj w odpowiedziach">
       <div class="rp-pop-wrap">
@@ -25,6 +31,7 @@
     </div>
     <div id="mailStatus" class="rp-status" hidden></div>
   </header>
+  <section class="rp-report" id="report" hidden aria-label="Raport odpowiedzi"></section>
   <div class="split" id="split" data-view="list">
     <section class="split-list" id="list" aria-label="Lista rozmów"></section>
     <section class="split-detail" id="detail" aria-label="Rozmowa"></section>

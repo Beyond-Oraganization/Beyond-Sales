@@ -107,7 +107,7 @@ function createApp({ids, respond, search = '', hidden = false}) {
   document.documentElement.appendChild(document.body);
   document.createElement = (tag) => new El(tag, document);
   document.createTextNode = (text) => new TextNode(text);
-  document.getElementById = (id) => document.byId[id] || null;
+  document.getElementById = (id) => document.byId[id] || document.body.querySelector('#' + id);
   document.querySelector = (selector) => document.body.querySelector(selector);
   document.querySelectorAll = (selector) => document.body.querySelectorAll(selector);
   document.addEventListener = (type, fn) => { (document.listeners[type] = document.listeners[type] || []).push(fn); };
@@ -127,7 +127,8 @@ function createApp({ids, respond, search = '', hidden = false}) {
   const location = {search, pathname: '/odpowiedzi'};
   const history = {pushed: [], replaced: [], pushState(state, title, url) { this.pushed.push(url); }, replaceState(state, title, url) { this.replaced.push(url); }};
   const sandbox = {
-    document, console, URLSearchParams, URL, JSON, Math, Number, String, Set, Map, Object, Array, Promise, Date, Boolean, Error, encodeURIComponent, isNaN,
+    document, console, URLSearchParams, JSON,
+    URL: class extends URL { static createObjectURL() { return 'blob:fake'; } static revokeObjectURL() {} }, Math, Number, String, Set, Map, Object, Array, Promise, Date, Boolean, Error, encodeURIComponent, isNaN,
     location, history, localStorage: {getItem: () => null, setItem() {}},
     setTimeout: (fn, ms) => { timers.push({fn, ms}); return timers.length; }, clearTimeout(id) { if (timers[id - 1]) timers[id - 1] = {fn() {}, ms: 0}; },
     fetch: async (url, options) => {
@@ -135,7 +136,9 @@ function createApp({ids, respond, search = '', hidden = false}) {
       calls.push({url: String(url), body, method: (options && options.method) || 'GET'});
       const result = await respond(String(url), body);
       const status = result && result.__status ? result.__status : 200;
-      return {ok: status < 400, status, json: async () => (result && result.__status ? result.body : result), headers: {get: () => 'application/json'}};
+      const payload = result && result.__status ? result.body : result;
+      return {ok: status < 400, status, json: async () => payload, text: async () => (typeof payload === 'string' ? payload : JSON.stringify(payload)),
+        blob: async () => ({size: JSON.stringify(payload).length}), headers: {get: (name) => (/disposition/i.test(name) ? 'attachment; filename="raport_odpowiedzi_20261008.csv"' : 'application/json')}};
     },
     APP: {statusMeta: {odpowiedzial: ['Odpowiedział', '#0e7490'], zainteresowany: ['Zainteresowany', '#be185d'], nie_kontaktowac: ['Nie kontaktować', '#7f1d1d']},
       segmentOrder: ['eventy', 'driverzy'], countries: [['PL', 'Polska', 'PL'], ['DE', 'Niemcy', 'DE']]},
@@ -148,7 +151,7 @@ function createApp({ids, respond, search = '', hidden = false}) {
     eval: (code) => vm.runInContext(code, context),
     async settle() { for (let i = 0; i < 40; i++) await new Promise((resolve) => setImmediate(resolve)); },
     async flushTimers() { const pending = timers.splice(0); for (const t of pending) await t.fn(); await api.settle(); },
-    el: (id) => document.byId[id],
+    el: (id) => document.getElementById(id),
     all: (selector) => document.body.querySelectorAll(selector),
     first: (selector) => document.body.querySelector(selector),
     texts: () => document.body.textContent,

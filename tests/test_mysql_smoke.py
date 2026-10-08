@@ -680,3 +680,24 @@ class MysqlRepliesSmokeTests(unittest.TestCase):
         self.assertEqual(svc.list_replies(self.store, {"tab": "machine"})["total"], 1)
         view = svc.thread_view(self.store, "eventy-001")
         self.assertEqual((view["thread"]["company"], len(view["messages"])), ("Firma ąć 1", 1))
+
+    def test_the_report_queries_run_on_mysql(self):
+        from perno.db.schema import maile
+        from perno.services import replies_report as rep
+
+        with self.database.transaction() as conn:
+            self.database.insert_rows(conn, [sample_row(n, company=f"Firma {n}", country="PL" if n < 3 else "DE", status="odpowiedzial" if n < 3 else "zwrot",
+                                                        sent_at="2026-09-29T13:00:00") for n in (1, 2, 3)])
+            conn.execute(maile.update().where(maile.c.id == "eventy-002").values(sent_from="drugi@z3x.pl"))
+        for n, kind in ((1, "human"), (2, "human"), (3, "bounce")):
+            self.store.save_message(self.message(f"r{n}@x.pl", thread_id=f"eventy-00{n}", company_id=f"eventy-00{n}", kind=kind,
+                                                 date_at=datetime(2026, 9, 30, 9, 0), bounce_type="hard" if kind == "bounce" else ""), datetime(2026, 10, 8, 11, 0))
+        self.store.set_rating("eventy-001", "positive", "human", "", datetime(2026, 10, 8, 12, 0))
+        config = {"SMTP_USER": "roman@z3x.pl", "SMTP_HOST": "s", "SMTP_PORT": "1", "SMTP_PASSWORD": "p"}
+        report = rep.build_report(self.store, config, {"from": "2026-09-01", "to": "2026-10-31", "segments": ["eventy"], "mailboxes": ["roman@z3x.pl", "drugi@z3x.pl"]},
+                                  datetime(2026, 10, 8, 12, 0))
+        self.assertEqual((report["total"]["sent"], report["total"]["bounced"], report["total"]["replied"], report["total"]["positive"]), (3, 1, 2, 1))
+        self.assertEqual({row["key"]: row["sent"] for row in report["groups"]["mailbox"]}, {"roman@z3x.pl": 2, "drugi@z3x.pl": 1})
+        self.assertEqual([row["key"] for row in report["groups"]["day"]], ["2026-09-29"])
+        self.assertEqual((report["latency"]["n"], report["replied_companies"]), (2, 2))
+        self.assertIn("Raport odpowiedzi", rep.markdown(report))

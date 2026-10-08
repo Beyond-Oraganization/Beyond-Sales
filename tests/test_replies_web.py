@@ -204,6 +204,28 @@ class ComposeTests(RepliesWebCase):
         self.assertTrue(self.data(self.post("/api/odpowiedzi/watek", {"id": "eventy-001"}))["thread"]["closed"])
 
 
+class ReportRouteTests(RepliesWebCase):
+    def test_the_report_json_and_its_filters(self):
+        data = self.data(self.post("/api/odpowiedzi/raport", {}))
+        self.assertEqual((data["total"]["sent"], data["total"]["replied"]), (2, 1))
+        self.assertEqual([row["key"] for row in data["groups"]["segment"]], ["eventy"])
+        self.assertEqual(self.data(self.post("/api/odpowiedzi/raport", {"segments": ["driverzy"]}))["total"]["sent"], 0)
+        self.assertEqual(self.post("/api/odpowiedzi/raport", {"from": "wczoraj"}).status, 400)
+        self.assertEqual(self.post("/api/odpowiedzi/raport", {"from": "2026-10-02", "to": "2026-10-01"}).status, 400)
+
+    def test_the_report_files_are_downloads_with_a_name_and_a_type(self):
+        csv_resp = self.post("/api/odpowiedzi/raport-plik", {"format": "csv"})
+        self.assertEqual(csv_resp.status, 200)
+        self.assertTrue(csv_resp.content_type.startswith("text/csv"))
+        self.assertRegex(csv_resp.headers["Content-Disposition"], r'^attachment; filename="raport_odpowiedzi_\d{8}\.csv"$')
+        self.assertTrue(csv_resp.body.decode("utf-8").startswith("\ufeffzestawienie;grupa"))
+        md = self.post("/api/odpowiedzi/raport-plik", {"format": "md"})
+        self.assertTrue(md.content_type.startswith("text/markdown"))
+        self.assertIn("# Raport odpowiedzi", md.body.decode("utf-8"))
+        self.assertEqual(self.post("/api/odpowiedzi/raport-plik", {"format": "xlsx"}).status, 400)
+        self.assertEqual(self.post("/api/odpowiedzi/raport-plik", {}).status, 400)
+
+
 class OverviewAndFetchTests(RepliesWebCase):
     def setUp(self):
         super().setUp()
