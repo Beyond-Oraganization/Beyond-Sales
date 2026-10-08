@@ -139,7 +139,12 @@
 .rp-stack span{display:block;width:var(--w,0%);background:var(--c);}
 .rp-legend{display:flex;flex-wrap:wrap;gap:var(--s-3);margin-top:var(--s-2);font-size:var(--fs-foot);color:var(--label-2);}
 .rp-legend .badge{margin-right:4px;}
-.rp-report .table-wrap{max-height:420px;overflow:auto;}
+.rp-report .table-wrap,.rp-report .table-wrap:has(> .data-table){max-height:420px;overflow:auto;}
+/* Raport przewija się we własnym kontenerze: nagłówek przykleja się do jego góry (nie do paska menu) i nie wychodzi poza zaokrąglone rogi. */
+.rp-report .data-table thead th{position:sticky;top:0;z-index:1;}
+.rp-report .data-table{table-layout:fixed;}
+.rp-report .data-table th:first-child{width:28%;}
+.rp-report .data-table th.num{width:9%;}
 .rp-report td.num,.rp-report th.num{text-align:right;font-variant-numeric:tabular-nums;}
 .rp-report .rp-bar{min-width:80px;}
 .rp-report .rp-small{color:var(--warn);font-size:var(--fs-caption);}
