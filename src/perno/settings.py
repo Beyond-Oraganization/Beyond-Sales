@@ -15,7 +15,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Mapping, Optional
 
-from perno.domain.mailboxes import slots_in_keys, smtp_prefix
+from perno.domain.mailboxes import imap_prefix, slots_in_keys, smtp_prefix
 
 # Korzeń projektu (katalog z config.env, data/, templates/): src/perno/settings.py leży trzy poziomy niżej.
 # Zakłada instalację edytowalną (`uv sync`); przy zwykłej instalacji z wheela ścieżki danych trzeba by podać jawnie.
@@ -234,6 +234,53 @@ class SmtpSettings:
                    config.get(f"{prefix}_USE_SSL", "true").lower() == "true", slot)
 
 
+IMAP_KEY_NAMES = ("HOST", "PORT", "USE_SSL", "USER", "PASSWORD")  # końcówki kluczy IMAP skrzynki (IMAP, IMAP2 …)
+
+
+@dataclass(frozen=True)
+class ImapSettings:
+    """Dane odbioru poczty jednej skrzynki. Skrzynka nazywa się swoim adresem nadawczym (`address` = `SMTPn_USER`), bo to
+    on trafia do `maile.sent_from`; login i hasło IMAP bywają inne, a gdy ich nie podano, są takie jak w SMTP."""
+
+    host: str
+    port: int
+    user: str  # login do serwera IMAP
+    password: str = field(repr=False)  # nigdy w logach ani w komunikatach
+    use_ssl: bool = True
+    slot: int = 1
+    address: str = ""  # adres skrzynki (SMTPn_USER): jej tożsamość w programie
+
+    @classmethod
+    def from_config(cls, config: Mapping[str, str], slot: int = 1) -> "ImapSettings":
+        prefix, smtp = imap_prefix(slot), smtp_prefix(slot)
+        if not config.get(f"{prefix}_HOST"):
+            raise ConfigError(f"W config.env brakuje: {prefix}_HOST.")
+        address = config.get(f"{smtp}_USER", "")
+        if not address:
+            raise ConfigError(f"{prefix}_HOST wymaga {smtp}_USER: skrzynka jest rozpoznawana po adresie nadawcy.")
+        password = config.get(f"{prefix}_PASSWORD") or config.get(f"{smtp}_PASSWORD", "")
+        if not password:
+            raise ConfigError(f"W config.env brakuje hasła: ustaw {prefix}_PASSWORD albo {smtp}_PASSWORD.")
+        use_ssl = config.get(f"{prefix}_USE_SSL", "true").lower() == "true"
+        raw_port = config.get(f"{prefix}_PORT") or ("993" if use_ssl else "143")
+        try:
+            port = int(raw_port)
+        except ValueError:
+            raise ConfigError(f"{prefix}_PORT w config.env nie jest liczbą.") from None
+        return cls(config[f"{prefix}_HOST"], port, config.get(f"{prefix}_USER") or address, password, use_ssl, slot, address)
+
+
+def imap_slot_numbers(config: Mapping[str, str]) -> list:
+    """Numery skrzynek, które mają jakikolwiek wpis IMAP (rosnąco, skrzynka 1 pierwsza)."""
+    return [slot for slot in (1, *slots_in_keys(config))
+            if any(config.get(f"{imap_prefix(slot)}_{name}") for name in IMAP_KEY_NAMES)]
+
+
+def imap_slots(config: Mapping[str, str]) -> list:
+    """Skrzynki z odbiorem poczty. Slot z jakimkolwiek wpisem IMAP musi być kompletny (inaczej `ConfigError`)."""
+    return [ImapSettings.from_config(config, slot) for slot in imap_slot_numbers(config)]
+
+
 def extra_smtp_slots(config: Mapping[str, str]) -> list:
     """Dodatkowe skrzynki (SMTP2_*, SMTP3_* … bez ograniczenia liczby) w kolejności numerów. Slot z jakimkolwiek wpisem
     musi być kompletny (inaczej `ConfigError`), więc połowicznie wpisana skrzynka nie wypadnie po cichu z rotacji."""
@@ -284,6 +331,7 @@ def check_mailboxes(config: Mapping[str, str]) -> None:
     if config.get("SMTP_USER"):
         users[1] = config["SMTP_USER"]
     reject_duplicate_users(users)
+    imap_slots(config)  # niekompletny wpis IMAP to błąd już przy zapisie, nie dopiero przy pierwszym pobieraniu
 
 
 _TOPIC_RE = re.compile(r"[A-Za-z0-9_-]{8,64}")

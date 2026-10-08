@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from functools import cache
 from typing import Mapping, Optional
 
-from perno.domain.mailboxes import MAX_SLOT, key_slot, slots_in_keys, smtp_prefix
+from perno.domain.mailboxes import MAX_SLOT, imap_prefix, key_slot, slots_in_keys, smtp_prefix
 
 KIND_TEXT = "text"
 KIND_SECRET = "secret"  # noqa: S105 — nazwa rodzaju pola, nie hasło
@@ -50,14 +50,20 @@ class ConfigField:
 
 @cache
 def mailbox_fields(slot: int) -> tuple:
-    """Pola jednej skrzynki (numer dowolny, od 1): wysyłanie SMTP."""
-    prefix, group = smtp_prefix(slot), group_key(slot)
+    """Pola jednej skrzynki (numer dowolny, od 1): wysyłanie (SMTP) i odbiór odpowiedzi (IMAP)."""
+    prefix, group, imap = smtp_prefix(slot), group_key(slot), imap_prefix(slot)
     return (
         ConfigField(f"{prefix}_HOST", "Serwer SMTP", group, help="np. smtp.zenbox.pl"),
         ConfigField(f"{prefix}_PORT", "Port SMTP", group, KIND_INT, "465 dla SSL, 587 dla STARTTLS.", low=1, high=65535),
         ConfigField(f"{prefix}_USE_SSL", "Połączenie SSL", group, KIND_BOOL, "Tak = SSL (port 465), nie = STARTTLS.", default="true"),
         ConfigField(f"{prefix}_USER", "Użytkownik (adres nadawcy)", group, help="Zwykle pełny adres skrzynki. Każda skrzynka musi mieć inny."),
         ConfigField(f"{prefix}_PASSWORD", "Hasło", group, KIND_SECRET, "Zostaw puste, żeby nie zmieniać."),
+        ConfigField(f"{imap}_HOST", "Serwer IMAP", group, help="np. imap.zenbox.pl. Puste = ta skrzynka nie odbiera odpowiedzi."),
+        ConfigField(f"{imap}_PORT", "Port IMAP", group, KIND_INT, "993 dla SSL, 143 dla STARTTLS.", default="993", low=1, high=65535),
+        ConfigField(f"{imap}_USE_SSL", "Połączenie SSL (IMAP)", group, KIND_BOOL, "Tak = SSL (port 993), nie = STARTTLS.", default="true"),
+        ConfigField(f"{imap}_USER", "Login IMAP", group, help="Puste = ten sam co użytkownik SMTP."),
+        ConfigField(f"{imap}_PASSWORD", "Hasło IMAP", group, KIND_SECRET,
+                    "Puste = to samo hasło co SMTP. Zostaw puste, żeby nie zmieniać; „usuń” przywraca hasło SMTP."),
     )
 
 
@@ -80,10 +86,10 @@ def mailbox_group(slot: int) -> tuple:
     """Opis grupy skrzynki do formularza: (klucz, tytuł, opis)."""
     if slot == 1:
         note = ("Skrzynka główna. Maile wychodzą po kolei ze wszystkich skrzynek, a dzienny limit z zakładki Automat obowiązuje "
-                "każdą z nich osobno. Hasło jest tylko do zapisu: panel go nie pokazuje.")
+                "każdą z nich osobno. IMAP (opcjonalny) pobiera odpowiedzi do zakładki Odpowiedzi. Hasła są tylko do zapisu: panel ich nie pokazuje.")
     else:
-        note = "Dodatkowa skrzynka nadawcza. Wymaga serwera, portu, adresu i hasła."
-    return (group_key(slot), f"Poczta (SMTP): skrzynka {slot}", note)
+        note = "Dodatkowa skrzynka nadawcza. Wymaga serwera, portu, adresu i hasła SMTP; IMAP jest opcjonalny."
+    return (group_key(slot), f"Poczta: skrzynka {slot} (SMTP i IMAP)", note)
 
 
 STATIC_GROUPS = (

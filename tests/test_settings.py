@@ -8,7 +8,7 @@ import unittest
 from unittest import mock
 
 from perno import settings as cfg
-from perno.settings import ConfigError, ConfigFile, Environment, SmtpSettings
+from perno.settings import ConfigError, ConfigFile, Environment, ImapSettings, SmtpSettings
 
 SMTP = {"SMTP_HOST": "smtp.example.com", "SMTP_PORT": "465", "SMTP_USER": "me@example.com", "SMTP_PASSWORD": "sekret"}
 
@@ -78,6 +78,49 @@ class ConfigFileTests(unittest.TestCase):
 
 
 BOX2 = {"SMTP2_HOST": "smtp2.example.com", "SMTP2_PORT": "587", "SMTP2_USER": "two@example.com", "SMTP2_PASSWORD": "sekret2"}
+
+
+IMAP2 = {"IMAP2_HOST": "imap2.example.com"}
+
+
+class ImapSettingsTests(unittest.TestCase):
+    def test_login_and_password_default_to_the_smtp_ones_and_the_port_to_the_ssl_default(self):
+        box = ImapSettings.from_config({**SMTP, **BOX2, **IMAP2}, 2)
+        self.assertEqual((box.host, box.port, box.user, box.password, box.use_ssl, box.slot, box.address),
+                         ("imap2.example.com", 993, "two@example.com", "sekret2", True, 2, "two@example.com"))
+        plain = ImapSettings.from_config({**SMTP, **BOX2, **IMAP2, "IMAP2_USE_SSL": "false"}, 2)
+        self.assertEqual((plain.port, plain.use_ssl), (143, False))
+
+    def test_own_login_password_and_port_win_over_the_smtp_ones(self):
+        own = {**SMTP, **BOX2, **IMAP2, "IMAP2_USER": "login2", "IMAP2_PASSWORD": "inne", "IMAP2_PORT": "1993"}
+        box = ImapSettings.from_config(own, 2)
+        self.assertEqual((box.user, box.password, box.port, box.address), ("login2", "inne", 1993, "two@example.com"))
+
+    def test_the_first_mailbox_uses_unnumbered_keys(self):
+        box = ImapSettings.from_config({**SMTP, "IMAP_HOST": "imap.example.com"})
+        self.assertEqual((box.slot, box.user, box.address), (1, "me@example.com", "me@example.com"))
+
+    def test_the_password_never_appears_in_the_representation(self):
+        self.assertNotIn("sekret", repr(ImapSettings.from_config({**SMTP, "IMAP_HOST": "imap.example.com"})))
+
+    def test_missing_pieces_are_named(self):
+        with self.assertRaisesRegex(ConfigError, "IMAP2_HOST"):
+            ImapSettings.from_config({**SMTP, **BOX2}, 2)
+        with self.assertRaisesRegex(ConfigError, "SMTP2_USER"):
+            ImapSettings.from_config({**IMAP2}, 2)
+        with self.assertRaisesRegex(ConfigError, "IMAP2_PASSWORD albo SMTP2_PASSWORD"):
+            ImapSettings.from_config({**BOX2, **IMAP2, "SMTP2_PASSWORD": ""}, 2)
+        with self.assertRaisesRegex(ConfigError, "IMAP2_PORT"):
+            ImapSettings.from_config({**BOX2, **IMAP2, "IMAP2_PORT": "x"}, 2)
+
+    def test_only_mailboxes_with_an_imap_entry_receive_and_a_half_filled_one_is_an_error(self):
+        config = {**SMTP, "IMAP_HOST": "imap.example.com", **BOX2, "SMTP30_HOST": "h", "IMAP30_HOST": "i30", "SMTP30_USER": "t@x.pl",
+                  "SMTP30_PORT": "1", "SMTP30_PASSWORD": "p"}
+        self.assertEqual(cfg.imap_slot_numbers(config), [1, 30])
+        self.assertEqual([box.slot for box in cfg.imap_slots(config)], [1, 30])
+        self.assertEqual(cfg.imap_slots({**SMTP, **BOX2}), [])
+        with self.assertRaisesRegex(ConfigError, "IMAP2_HOST"):
+            cfg.imap_slots({**SMTP, **BOX2, "IMAP2_PORT": "993"})
 
 
 class SmtpSettingsTests(unittest.TestCase):

@@ -26,6 +26,25 @@ class MailboxFieldTests(unittest.TestCase):
         self.assertEqual([cf.mailbox_slot(key) for key in ("notify", "scraper", "mailx", "mail1", "mail02", "mail10000")],
                          [None] * 6)
 
+    def test_every_mailbox_also_has_five_imap_fields_with_the_same_numbering(self):
+        for slot in (1, 2, 30):
+            prefix = "IMAP" if slot == 1 else f"IMAP{slot}"
+            keys = [f.key for f in cf.fields_in_group(cf.group_key(slot)) if f.key.startswith(prefix + "_")]
+            self.assertEqual(keys, [f"{prefix}_{name}" for name in ("HOST", "PORT", "USE_SSL", "USER", "PASSWORD")], slot)
+            self.assertEqual(cf.field_for(f"{prefix}_PASSWORD").kind, cf.KIND_SECRET)
+
+    def test_imap_values_follow_the_smtp_rules(self):
+        self.assertEqual(check("IMAP_HOST", "imap.zenbox.pl"), "imap.zenbox.pl")
+        self.assertEqual(check("IMAP7_PORT", " 143 "), "143")
+        self.assertEqual(check("IMAP_USE_SSL", "FALSE"), "false")
+        self.assertEqual((check("IMAP_PORT", "1"), check("IMAP_PORT", "65535")), ("1", "65535"))
+        with self.assertRaises(cf.ConfigValueError):
+            check("IMAP_PORT", "65536")
+        for key, bad in (("IMAP_HOST", "zły host"), ("IMAP_PORT", "0"), ("IMAP_PORT", "70000"), ("IMAP3_USER", "a b"),
+                         ("IMAP_USE_SSL", "tak"), ("IMAP2_PASSWORD", "x" * 501)):
+            with self.subTest(key=key), self.assertRaises(cf.ConfigValueError):
+                check(key, bad)
+
     def test_the_number_of_mailboxes_is_not_capped(self):
         config = {f"SMTP{n}_HOST": "h" for n in (2, 3, 11, 40, 120)}
         keys = [key for key, _, _ in cf.groups_for(config)]
@@ -51,7 +70,7 @@ class MailboxFieldTests(unittest.TestCase):
     def test_groups_describe_the_main_and_the_extra_mailboxes_differently(self):
         self.assertIn("główna", cf.mailbox_group(1)[2])
         self.assertIn("Dodatkowa", cf.mailbox_group(2)[2])
-        self.assertEqual(cf.mailbox_group(7)[:2], ("mail7", "Poczta (SMTP): skrzynka 7"))
+        self.assertEqual(cf.mailbox_group(7)[:2], ("mail7", "Poczta: skrzynka 7 (SMTP i IMAP)"))
 
     def test_fields_cannot_be_modified_after_they_are_defined(self):
         with self.assertRaises(AttributeError):

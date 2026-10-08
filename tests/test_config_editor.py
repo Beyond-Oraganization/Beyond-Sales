@@ -44,7 +44,8 @@ class DescribeTests(unittest.TestCase):
     def test_a_card_for_a_new_mailbox_has_the_same_fields_and_no_values(self):
         card = ed.describe_mailbox({"SMTP2_USER": "b@b.pl"}, 57)
         self.assertEqual((card["key"], card["mailbox"]), ("mail57", 57))
-        self.assertEqual([f["key"] for f in card["fields"]], [f"SMTP57_{n}" for n in ("HOST", "PORT", "USE_SSL", "USER", "PASSWORD")])
+        names = ("HOST", "PORT", "USE_SSL", "USER", "PASSWORD")
+        self.assertEqual([f["key"] for f in card["fields"]], [f"SMTP57_{n}" for n in names] + [f"IMAP57_{n}" for n in names])
         self.assertTrue(all(not f["set"] and f.get("value", "") == "" for f in card["fields"]))
 
     def test_a_card_for_a_slot_out_of_range_is_refused(self):
@@ -77,6 +78,21 @@ class MailboxChangesTests(unittest.TestCase):
         with self.assertRaisesRegex(cfg.ConfigError, "SMTP2_PORT, SMTP2_PASSWORD"):
             ed.apply_changes(self.path, {"SMTP2_HOST": "smtp.b.pl", "SMTP2_USER": "b@b.pl"}, [])
         self.assertEqual(self.read(), before)
+
+    def test_imap_needs_a_host_and_some_password_and_the_smtp_address(self):
+        with self.assertRaisesRegex(cfg.ConfigError, "IMAP2_HOST"):
+            ed.apply_changes(self.path, {**self.BOX2, "IMAP2_PORT": "993"}, [])
+        with self.assertRaisesRegex(cfg.ConfigError, "SMTP3_USER"):
+            ed.apply_changes(self.path, {"IMAP3_HOST": "imap.b.pl"}, [])
+
+    def test_imap_falls_back_to_the_smtp_login_and_can_be_saved_with_its_own(self):
+        result = ed.apply_changes(self.path, {**self.BOX2, "IMAP2_HOST": "imap.b.pl"}, [])
+        self.assertIn("IMAP2_HOST", result["changed"])
+        own = {"IMAP2_USER": "login-b", "IMAP2_PASSWORD": "inne-haslo", "IMAP2_PORT": "143", "IMAP2_USE_SSL": "false"}
+        ed.apply_changes(self.path, own, [])
+        imap = cfg.imap_slots(cfg.load_config(self.path))
+        self.assertEqual([(box.slot, box.host, box.port, box.user, box.use_ssl, box.address) for box in imap],
+                         [(2, "imap.b.pl", 143, "login-b", False, "b@b.pl")])
 
     def test_the_same_address_twice_is_refused(self):
         with self.assertRaisesRegex(cfg.ConfigError, "ten sam adres"):

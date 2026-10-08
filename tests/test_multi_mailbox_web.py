@@ -114,7 +114,7 @@ class ConfigTests(TwoMailboxCase):
     def test_a_card_for_the_next_mailbox_can_be_fetched(self):
         card = self.data(self.call("GET", "/api/config/skrzynka", query={"slot": ["3"]}))
         self.assertEqual((card["key"], card["mailbox"]), ("mail3", 3))
-        self.assertEqual(len(card["fields"]), 5)
+        self.assertEqual(len(card["fields"]), 10)  # pięć pól SMTP i pięć IMAP
         for bad in ("1", "x", "10000", ""):
             with self.subTest(slot=bad):
                 self.assertEqual(self.call("GET", "/api/config/skrzynka", query={"slot": [bad]}).status, 400)
