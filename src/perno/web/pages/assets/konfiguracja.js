@@ -173,8 +173,21 @@ async function testSmtp() {
     : (data.ok ? 'OK: ' : 'BŁĄD: ') + data.message;
 }
 
+async function testImap() {
+  const {values, clear} = collect();
+  if (Object.keys(values).length || clear.length) { toast('Najpierw zapisz zmiany — sprawdzam zapisane ustawienia.'); return; }
+  el('imapResult').textContent = 'Łączę…';
+  const {ok, data} = await api('/api/config/test-imap', {});
+  if (!ok) { el('imapResult').textContent = data.error || 'Nie udało się sprawdzić.'; return; }
+  const results = data.results || [];
+  el('imapResult').textContent = results.length
+    ? results.map((r) => (r.ok ? 'OK: ' : 'BŁĄD: ') + r.address + ': ' + r.message).join('\n')
+    : (data.ok ? 'OK: ' : 'BŁĄD: ') + data.message;
+}
+
 el('saveBtn').addEventListener('click', save);
 el('reloadBtn').addEventListener('click', render);
 el('smtpBtn').addEventListener('click', testSmtp);
+el('imapBtn').addEventListener('click', testImap);
 el('addMailboxBtn').addEventListener('click', addMailbox);
 load();

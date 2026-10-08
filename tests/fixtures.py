@@ -39,10 +39,11 @@ def make_db(clock=None, url: str = "sqlite://") -> dbmod.Database:
 
 
 def make_app(database: dbmod.Database, pages: Optional[Sequence] = None, *, config_path: Optional[str] = None,
-             smtp_factory: Optional[Callable] = None, allowed_hosts: Optional[set] = None) -> App:
+             smtp_factory: Optional[Callable] = None, allowed_hosts: Optional[set] = None,
+             imap_factory: Optional[Callable] = None) -> App:
     """Aplikacja z kontekstem złożonym jak w `cli/server.py`; domyślnie bez pliku konfiguracji (nie czyta config.env)."""
     ctx = AppContext(db=database, pages=PAGES if pages is None else pages,
-                     config=ConfigFile(config_path or NO_CONFIG), smtp_factory=smtp_factory)
+                     config=ConfigFile(config_path or NO_CONFIG), smtp_factory=smtp_factory, imap_factory=imap_factory)
     return App(ctx, allowed_hosts=allowed_hosts)
 
 

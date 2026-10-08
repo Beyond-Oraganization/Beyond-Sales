@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from perno.services import config_editor
+from perno.services import config_editor, imap_access
 from perno.web import layout
 from perno.web.context import AppContext
 from perno.web.http import HttpError, Request, Response, json_response
@@ -53,6 +53,10 @@ def api_test_smtp(req: Request, ctx: AppContext) -> Response:
     return json_response(config_editor.test_smtp(ctx.mailers, passwords))
 
 
+def api_test_imap(req: Request, ctx: AppContext) -> Response:
+    return json_response(imap_access.test_imap(ctx.config.load(), ctx.imap_connector))
+
+
 PAGE = Page(
     key="konfiguracja", label="Konfiguracja", path="/konfiguracja", render=render, order=40,
     routes={
@@ -60,5 +64,6 @@ PAGE = Page(
         ("GET", "/api/config/skrzynka"): api_mailbox,
         ("POST", "/api/config"): api_save,
         ("POST", "/api/config/test-smtp"): api_test_smtp,
+        ("POST", "/api/config/test-imap"): api_test_imap,
     },
 )

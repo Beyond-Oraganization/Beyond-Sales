@@ -13,7 +13,7 @@ from typing import Callable, Optional, Sequence
 from perno.db import Database
 from perno.db.automat_store import AutomatStore
 from perno.scraper.store import Store
-from perno.services import automat_control, sending
+from perno.services import automat_control, imap_access, sending
 from perno.services.automat_log import EventLog
 from perno.services.bulk import UndoLog
 from perno.settings import ConfigFile
@@ -60,6 +60,7 @@ class AppContext:
     config: ConfigFile = field(default_factory=ConfigFile)
     undo_log: UndoLog = field(default_factory=UndoLog)  # jeden dziennik cofania na aplikację (w pamięci serwera)
     smtp_factory: Optional[Callable] = None  # wstrzykiwana atrapa w testach; None = z config.env
+    imap_factory: Optional[Callable] = None  # jw. dla poczty przychodzącej (ImapSettings → sesja IMAP)
     scan_store: Lazy[Store] = field(init=False)
     automat_store: Lazy[AutomatStore] = field(init=False)
     automat_probes: automat_control.Probes = field(default_factory=automat_control.Probes)
@@ -75,6 +76,10 @@ class AppContext:
     def automat_log(self) -> EventLog:
         """Dziennik zdarzeń automatu z kanałami powiadomień z aktualnego config.env."""
         return automat_control.build_event_log(self.automat_store.get(), self.db, self.config.load(), self.smtp_factory)
+
+    def imap_connector(self) -> Callable:
+        """Fabryka sesji IMAP: wstrzyknięta atrapa albo prawdziwa (rzuca `ConfigError` przy bazie demo bez odblokowania)."""
+        return self.imap_factory or imap_access.real_factory()
 
     def mailers(self) -> list:
         """Wszystkie skrzynki do rotacji z aktualnego config.env (rzuca `ConfigError`, gdy któraś jest niekompletna)."""

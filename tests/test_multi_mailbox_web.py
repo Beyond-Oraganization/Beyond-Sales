@@ -128,6 +128,21 @@ class ConfigTests(TwoMailboxCase):
         self.assertIn("ten sam adres", self.data(duplicate)["error"])
         self.assertEqual(self.read_config(), before)
 
+    def test_imap_check_goes_through_the_injected_factory_and_hides_passwords(self):
+        from tests.fake_imap import FakeAccounts, FakeImap, make_eml
+
+        with open(self.config_path, "a", encoding="utf-8") as f:
+            f.write("IMAP_HOST=imap.invalid\nIMAP2_HOST=imap2.invalid\nIMAP2_PASSWORD=tajne-imap\n")
+        sessions = FakeAccounts({"demo@example.com": FakeImap({"INBOX": {1: make_eml()}}),
+                                 "second@example.com": FakeImap({"INBOX": {}})})
+        self.app.ctx.imap_factory = sessions
+        resp = self.call("POST", "/api/config/test-imap", {})
+        data = self.data(resp)
+        self.assertEqual((resp.status, data["ok"]), (200, True))
+        self.assertEqual([r["address"] for r in data["results"]], ["demo@example.com", "second@example.com"])
+        for secret in (SECRET, SECOND["SMTP2_PASSWORD"], "tajne-imap"):
+            self.assertNotIn(secret, resp.body.decode("utf-8"))
+
     def test_connection_check_covers_every_mailbox(self):
         data = self.data(self.call("POST", "/api/config/test-smtp", {}))
         self.assertTrue(data["ok"])

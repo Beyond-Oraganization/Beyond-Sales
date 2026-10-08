@@ -22,5 +22,5 @@
 .card-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3);}
 .card-head h2{margin:0;}
 .cfg-remove{font-size:var(--fs-foot);}
-#smtpResult{white-space:pre-line;}
+#smtpResult,#imapResult{white-space:pre-line;}
 #groups .card[hidden],.controls [hidden]{display:none;}
