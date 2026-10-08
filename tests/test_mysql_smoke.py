@@ -551,3 +551,109 @@ class MysqlSiblingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(TEST_DB, SKIP_REASON)
+class MysqlRepliesSmokeTests(unittest.TestCase):
+    """Tabele i zapytania modułu odpowiedzi na prawdziwym MySQL: unikat skrótu, utf8mb4, długie treści, FOR UPDATE, blokada przebiegu."""
+
+    @classmethod
+    def setUpClass(cls):
+        from perno.db.replies_schema import replies_metadata
+        from perno.db.replies_store import ReplyStore
+
+        cls.database = dbmod.Database(dbmod.make_engine(resolve_test_url()))
+        replies_metadata.drop_all(cls.database.engine)
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
+        cls.database.ensure_schema()
+        cls.store = ReplyStore(cls.database)
+        cls.store.ensure_schema()
+
+    @classmethod
+    def tearDownClass(cls):
+        from perno.db.replies_schema import replies_metadata
+
+        replies_metadata.drop_all(cls.database.engine)
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
+
+    def setUp(self):
+        from perno.db.replies_schema import replies_metadata
+
+        with self.database.transaction() as conn:
+            for table in reversed(replies_metadata.sorted_tables):
+                if table.name != "odp_przebieg":
+                    conn.execute(table.delete())
+            conn.execute(sa.text("UPDATE odp_przebieg SET token = NULL, running_since = NULL"))
+            conn.execute(dbmod.maile.delete())
+            conn.execute(dbmod.companies.delete())
+
+    def message(self, identity="a@x.pl", **overrides):
+        from perno.domain import replies as rp
+
+        values = dict(direction="in", kind="human", mailbox="roman@z3x.pl", identity=identity, message_id=identity, thread_id="eventy-001",
+                      company_id="eventy-001", date_at=datetime(2026, 10, 8, 10, 0), subject="Temat", from_addr="a@b.pl", body_text="Treść",
+                      match_method="address", thread_mailbox="roman@z3x.pl")
+        values.update(overrides)
+        return rp.NewMessage(**values)
+
+    def test_a_message_round_trips_with_emoji_polish_letters_and_a_very_long_body(self):
+        body = "Zażółć gęślą jaźń 😀 " + "x" * 200_000
+        stored = self.store.save_message(self.message(body_text=body, subject="Re: Wiadomość 📧 ąęść"), datetime(2026, 10, 8, 10, 1))
+        self.assertIsNotNone(stored)
+        with self.database.engine.connect() as conn:
+            row = conn.execute(sa.text("SELECT subject, CHAR_LENGTH(body_text), body_text FROM odp_wiadomosci")).first()
+        self.assertEqual((row[0], row[1]), ("Re: Wiadomość 📧 ąęść", len(body)))
+        self.assertTrue(row[2].startswith("Zażółć gęślą jaźń 😀"))
+
+    def test_the_unique_hash_stops_duplicates_even_for_a_message_id_longer_than_an_index_would_allow(self):
+        long_id = "z" * 900 + "@x.pl"
+        self.assertIsNotNone(self.store.save_message(self.message(long_id), datetime(2026, 10, 8, 10, 1)))
+        self.assertIsNone(self.store.save_message(self.message(long_id), datetime(2026, 10, 8, 10, 2)))
+        self.assertEqual(self.store.counts()["messages"], 1)
+        self.assertEqual(self.store.known_threads([long_id]), {long_id: "eventy-001"})
+
+    def test_the_hash_column_is_case_and_accent_exact_and_ascii(self):
+        with self.database.engine.connect() as conn:
+            row = conn.execute(sa.text(
+                "SELECT CHARACTER_SET_NAME, COLLATION_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'odp_wiadomosci' AND COLUMN_NAME = 'message_id_hash'")).first()
+        self.assertEqual((row[0], row[1]), ("ascii", "ascii_bin"))
+
+    def test_the_thread_is_created_and_updated_under_for_update(self):
+        for n in range(3):
+            self.store.save_message(self.message(f"m{n}@x.pl", date_at=datetime(2026, 10, 8, 10, n)), datetime(2026, 10, 8, 11, 0))
+        counts = self.store.counts()
+        self.assertEqual((counts["threads"], counts["awaiting_reply"], counts["unread"]), (1, 1, 1))
+
+    def test_the_run_lock_is_exclusive_between_threads(self):
+        now = datetime(2026, 10, 8, 10, 0)
+        results = []
+        barrier = threading.Barrier(6)
+
+        def attempt(token):
+            barrier.wait()
+            results.append(self.store.acquire_run(token, now))
+
+        threads = [threading.Thread(target=attempt, args=(f"t{n}",)) for n in range(6)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual(sorted(results), [False] * 5 + [True])
+
+    def test_the_cursor_with_a_composite_key_and_the_state_summary(self):
+        from perno.db.replies_store import Cursor
+
+        now = datetime(2026, 10, 8, 10, 0)
+        self.store.save_cursor("roman@z3x.pl", "Wysłane", Cursor(4_000_000_000, 5_000_000_000), now)  # powyżej 32 bitów
+        self.store.record_error("roman@z3x.pl", "błąd łączenia ✗", "network", now)
+        self.assertEqual(self.store.get_cursor("roman@z3x.pl", "Wysłane"), Cursor(4_000_000_000, 5_000_000_000))
+        self.assertEqual(self.store.mailbox_states()[0]["error"], "błąd łączenia ✗")
+
+    def test_sent_mails_and_the_status_transition_work_with_the_company_join(self):
+        with self.database.transaction() as conn:
+            self.database.insert_rows(conn, [sample_row(1, status="wyslano", sent_at="2026-09-29T13:00:00", website="https://mylimo.pl")])
+        self.database.mark_sent("eventy-001", "roman@z3x.pl", "orig1@z3x.pl")
+        rows = self.store.sent_mails()
+        self.assertEqual([(r["id"], r["message_id"], r["website"]) for r in rows], [("eventy-001", "orig1@z3x.pl", "https://mylimo.pl")])
+        self.assertTrue(self.database.transition_status("eventy-001", ["wyslano"], "odpowiedzial"))
+        self.assertFalse(self.database.transition_status("eventy-001", ["wyslano"], "zwrot"))
+        self.assertEqual(self.database.get("eventy-001")["status"], "odpowiedzial")
