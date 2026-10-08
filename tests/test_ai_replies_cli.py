@@ -19,6 +19,7 @@ import sqlalchemy as sa
 
 from perno import settings as cfg
 from perno.cli import ai, ai_replies
+from perno.db import Database
 from perno.db.replies_store import ReplyStore
 from perno.db.schema import maile
 from perno.domain import config_fields
@@ -45,7 +46,17 @@ class CliCase(unittest.TestCase):
         with open(self.config, "w", encoding="utf-8") as handle:
             handle.write(CONFIG)
         self.backups = os.path.join(self.tmp, "backup")
-        for patcher in (mock.patch.dict(os.environ, {"PERNO_DB_URL": self.url}), mock.patch.object(cfg, "BACKUP_DIR", self.backups)):
+        self.opened = []  # bazy otwierane przez polecenia: zamykamy je po teście (bez ResourceWarning)
+        original = Database.from_config.__func__
+
+        def tracked(cls, *args, **kwargs):
+            database = original(cls, *args, **kwargs)
+            self.opened.append(database)
+            return database
+
+        self.addCleanup(lambda: [opened.engine.dispose() for opened in self.opened])
+        for patcher in (mock.patch.dict(os.environ, {"PERNO_DB_URL": self.url}), mock.patch.object(cfg, "BACKUP_DIR", self.backups),
+                        mock.patch.object(Database, "from_config", classmethod(tracked))):
             patcher.start()
             self.addCleanup(patcher.stop)
         put(self.database, sample_row(1, status="wyslano", sent_at="2026-09-29T13:00:00", email="anna@mylimo.pl", subject="Rezerwacje limuzyn, Kraków"))

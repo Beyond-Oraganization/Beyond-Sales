@@ -35,6 +35,7 @@ from perno.scraper.store import LeaseLost, LinkRecord, PageRecord, RunActive, St
 from perno.scraper.urls import url_hash
 from perno.services import bulk
 from perno.services import export as exporter
+from tests.fixtures import put as put_rows
 from tests.fixtures import sample_row
 
 TEST_URL = os.environ.get("PERNO_TEST_DB_URL", "")
@@ -620,6 +621,7 @@ class MysqlRepliesSmokeTests(unittest.TestCase):
         self.assertEqual((row[0], row[1]), ("ascii", "ascii_bin"))
 
     def test_the_thread_is_created_and_updated_under_for_update(self):
+        put_rows(self.database, sample_row(1, status="wyslano", sent_at="2026-09-29T13:00:00"))  # wątek istnieje tylko razem z mailem kampanii
         for n in range(3):
             self.store.save_message(self.message(f"m{n}@x.pl", date_at=datetime(2026, 10, 8, 10, n)), datetime(2026, 10, 8, 11, 0))
         counts = self.store.counts()

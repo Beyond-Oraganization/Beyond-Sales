@@ -636,8 +636,8 @@ nagłówku wątku. AI statusów nie zmienia.
 
 **Panel.** Układ jak w poczcie: po lewej lista wątków, po prawej wątek z edytorem (na telefonie jedna kolumna z przyciskiem „Wstecz”).
 - Zakładki widoków z licznikami z bazy: *Do odpowiedzi* (domyślna), *Wszystkie*, *Pozytywne*, *Neutralne*, *Negatywne*, *Nieocenione*,
-  *Zwroty i automaty*, *Nieprzypisane*; filtry (szukaj, segment, kraj, skrzynka z wyszukiwarką, okres) są liczone na serwerze. Liczba wątków
-  „do odpowiedzi” jest też przy nazwie zakładki w menu i w tytule karty.
+  *Zwroty i automaty*, *Nieprzypisane*; filtry (szukaj, segment, kraj, skrzynka z wyszukiwarką, okres) są liczone na serwerze. Liczba
+  nieprzeczytanych wątków, które czekają na naszą odpowiedź, jest też przy nazwie zakładki w menu i w tytule karty.
 - Wątek: nasz pierwszy mail zwinięty u góry, ostatnia wiadomość rozwinięta, cytaty pod „···”. Treść wiadomości to wyłącznie tekst
   (nigdy HTML), nie ładują się zdalne obrazy, załączniki są tylko wymienione (nazwa, rozmiar), linki tylko `http(s)`.
 - **Ocena** (pozytywna / neutralna / negatywna, opcjonalna notatka): przyciski albo klawisze `1` `2` `3`, `0` czyści; „Cofnij” w
