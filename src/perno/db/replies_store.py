@@ -239,13 +239,12 @@ class ReplyStore(StoreCore):
             def count(stmt) -> int:
                 return int(conn.execute(stmt).scalar() or 0)
 
-            threads = sa.select(sa.func.count()).select_from(odp_watki)
             messages = sa.select(sa.func.count()).select_from(odp_wiadomosci)
             return {
-                "threads": count(threads.where(human)),
-                "awaiting_reply": count(threads.where(human, odp_watki.c.awaiting_reply.is_(True))),
-                "unrated": count(threads.where(human, odp_watki.c.rating.is_(None))),
-                "unread": count(threads.where(human, odp_watki.c.read_at.is_(None))),
+                "threads": rq.count_threads(conn, human),
+                "awaiting_reply": rq.count_threads(conn, human, odp_watki.c.awaiting_reply.is_(True)),
+                "unrated": rq.count_threads(conn, human, odp_watki.c.rating.is_(None)),
+                "unread": rq.count_threads(conn, human, odp_watki.c.read_at.is_(None)),
                 "bounces": count(messages.where(odp_wiadomosci.c.kind == rp.KIND_BOUNCE)),
                 "auto": count(messages.where(odp_wiadomosci.c.kind == rp.KIND_AUTO)),
                 "unassigned": count(messages.where(odp_wiadomosci.c.thread_id.is_(None))),
@@ -420,11 +419,8 @@ class ReplyStore(StoreCore):
     def thread_ids(self, after: str = "", rating: Optional[str] = None) -> list:
         """Id wątków z odpowiedzią człowieka, rosnąco, od id większego niż `after` (kolejne paczki skrótu). `rating=None` to
         wątki bez oceny, inaczej wątki z tą oceną."""
-        wanted = odp_watki.c.rating.is_(None) if rating is None else odp_watki.c.rating == rating
         with self._read() as conn:
-            rows = conn.execute(sa.select(odp_watki.c.id).where(odp_watki.c.human_in_count > 0, wanted, odp_watki.c.id > after)
-                                .order_by(odp_watki.c.id))
-            return [row[0] for row in rows]
+            return rq.thread_ids(conn, after, rating)
 
     def thread_state(self, thread_id: str) -> Optional[dict]:
         """Stan wątku do walidacji poleceń AI: czy ma odpowiedź człowieka, kto go ocenił i czy jest prośba o brak kontaktu."""

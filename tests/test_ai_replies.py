@@ -122,6 +122,19 @@ class BriefTests(AiCase):
         replies.rate(self.store, "eventy-001", "positive", by=rp.BY_HUMAN, now=NOW)
         self.assertEqual(len(flow.build_briefs(self.store, limit=10, ids=["eventy-001"]).texts), 1)
 
+    def test_a_thread_whose_campaign_mail_was_deleted_is_neither_counted_nor_offered(self):
+        self.reply(2, "Dziękujemy za wiadomość.")
+
+        def numbers():
+            counts = self.store.counts()
+            return counts["threads"], counts["unrated"], counts["unread"], counts["awaiting_reply"], self.store.unread_total(), flow.build_briefs(self.store, limit=10).pending
+
+        self.assertEqual(numbers(), (2, 2, 2, 2, 2, 2))
+        with self.db.engine.begin() as conn:
+            conn.execute(sa.delete(maile).where(maile.c.id == "eventy-002"))
+        self.assertEqual(numbers(), (1, 1, 1, 1, 1, 1))
+        self.assertEqual(len(flow.build_briefs(self.store, limit=10).texts), 1)
+
     def test_a_missing_thread_is_skipped_without_a_text(self):
         self.assertEqual(flow.build_briefs(self.store, limit=10, ids=["eventy-404"]).texts, [])
 

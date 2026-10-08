@@ -167,11 +167,21 @@ def rating_log(conn, thread_id: str) -> list:
     return [dict(row) for row in conn.execute(stmt).mappings()]
 
 
+def count_threads(conn, *clauses) -> int:
+    """Ile wątków spełnia warunki: liczone na tym samym złączeniu z mailem co lista (wątek bez maila kampanii nie istnieje)."""
+    return int(conn.execute(_threads_select(sa.func.count()).where(*clauses)).scalar() or 0)
+
+
+def thread_ids(conn, after: str, rating: Optional[str]) -> list:
+    """Id wątków z odpowiedzią człowieka, rosnąco, od id większego niż `after`: bez oceny (`rating=None`) albo z tą oceną."""
+    wanted = odp_watki.c.rating.is_(None) if rating is None else odp_watki.c.rating == rating
+    stmt = _threads_select(odp_watki.c.id).where(HUMAN, wanted, odp_watki.c.id > after).order_by(odp_watki.c.id)
+    return [row[0] for row in conn.execute(stmt)]
+
+
 def unread_total(conn) -> int:
     """Wątki z odpowiedzią człowieka czekające na nas i nieprzeczytane (do licznika w menu)."""
-    stmt = sa.select(sa.func.count()).select_from(odp_watki).where(
-        HUMAN, odp_watki.c.awaiting_reply.is_(True), odp_watki.c.closed_at.is_(None), odp_watki.c.read_at.is_(None))
-    return int(conn.execute(stmt).scalar() or 0)
+    return count_threads(conn, HUMAN, odp_watki.c.awaiting_reply.is_(True), odp_watki.c.closed_at.is_(None), odp_watki.c.read_at.is_(None))
 
 
 def unassigned_message(conn, message_id: int) -> Optional[dict]:

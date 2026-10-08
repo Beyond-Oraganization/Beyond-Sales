@@ -266,6 +266,10 @@ class LimitsAndBoundariesTests(StoreCase):
 
 
 class CountsTests(StoreCase):
+    def setUp(self):
+        super().setUp()
+        put(self.db, *(sample_row(n, status="wyslano", sent_at="2026-09-29T13:00:00") for n in (1, 2, 3)))
+
     def test_counts_reflect_threads_unread_unrated_and_unassigned(self):
         self.store.save_message(message("a@x", thread="eventy-001"), NOW)
         self.store.save_message(message("b@x", thread="eventy-002"), NOW)
