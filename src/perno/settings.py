@@ -40,6 +40,7 @@ INLINE_IMAGE_CACHE_BASE = os.path.join(BASE_DIR, "assets", "inline", "ux_w_lesie
 # Zmienne środowiska (poza config.env). Służą głównie do pracy na bazie demo/testowej i do testów skrapera.
 ENV_DB_URL = "PERNO_DB_URL"  # baza testowa/demo zamiast tej z config.env; blokuje prawdziwą wysyłkę SMTP
 ENV_ALLOW_REAL_SMTP = "PERNO_ALLOW_REAL_SMTP"  # =1 pozwala wysyłać naprawdę mimo ustawionego PERNO_DB_URL
+ENV_ALLOW_REAL_IMAP = "PERNO_ALLOW_REAL_IMAP"  # =1 pozwala łączyć się z prawdziwą pocztą mimo ustawionego PERNO_DB_URL
 ENV_LOG_DIR = "PERNO_LOG_DIR"  # katalog logów skrapera (domyślnie logs/)
 ENV_SCRAPER_ALLOW_PRIVATE = "PERNO_SKRAPER_ALLOW_PRIVATE"  # =1 wyłącza ochronę SSRF (tylko testy z lokalnym „internetem")
 ENV_SCRAPER_HOSTS = "PERNO_SKRAPER_HOSTS"  # a.test=127.0.0.1,b.test=127.0.0.1 — działa tylko z ALLOW_PRIVATE
@@ -63,6 +64,7 @@ class Environment:
     """Migawka zmiennych środowiska programu z chwili wywołania `from_environ`."""
     db_url: str = ""
     allow_real_smtp: bool = False
+    allow_real_imap: bool = False
     log_dir: str = ""
     ssl_cert_file: str = ""
     scraper_allow_private: bool = False
@@ -75,6 +77,7 @@ class Environment:
         return cls(
             db_url=source.get(ENV_DB_URL) or "",
             allow_real_smtp=source.get(ENV_ALLOW_REAL_SMTP) == "1",
+            allow_real_imap=source.get(ENV_ALLOW_REAL_IMAP) == "1",
             log_dir=source.get(ENV_LOG_DIR) or "",
             ssl_cert_file=source.get(ENV_SSL_CERT_FILE) or "",
             scraper_allow_private=allow_private,
@@ -85,6 +88,11 @@ class Environment:
     def real_smtp_allowed(self) -> bool:
         """Baza testowa/demo (PERNO_DB_URL) blokuje prawdziwą wysyłkę, chyba że świadomie ją odblokowano."""
         return not self.db_url or self.allow_real_smtp
+
+    @property
+    def real_imap_allowed(self) -> bool:
+        """Baza demo/testowa nie pobiera prawdziwej poczty (to nie jej skrzynki), chyba że świadomie to odblokowano."""
+        return not self.db_url or self.allow_real_imap
 
 
 def load_config(path: str) -> dict:

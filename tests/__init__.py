@@ -1,10 +1,12 @@
 """Pakiet testów.
 
-Bezpiecznik: żaden test nie może otworzyć prawdziwego połączenia SMTP (ani przez pytest, ani przez
-`python -m unittest discover`). Testy wysyłki używają atrap (`tests.fixtures.FakeSmtp`) albo podmieniają
-`smtplib` przez `mock.patch`, co nadpisuje poniższą blokadę tylko na czas testu.
+Bezpiecznik: żaden test nie może otworzyć prawdziwego połączenia SMTP ani IMAP (ani przez pytest, ani przez
+`python -m unittest discover`). Testy wysyłki używają atrap (`tests.fixtures.FakeSmtp`), testy odbioru poczty atrapy
+sesji (`tests.fake_imap.FakeImap`) albo połączenia (`FakeConnection`); można też podmienić `smtplib` / `imaplib`
+przez `mock.patch`, co nadpisuje poniższą blokadę tylko na czas testu.
 """
 
+import imaplib
 import smtplib
 
 
@@ -14,6 +16,21 @@ def _no_real_smtp(*args, **kwargs):
 
 smtplib.SMTP = _no_real_smtp  # type: ignore[misc,assignment]
 smtplib.SMTP_SSL = _no_real_smtp  # type: ignore[misc,assignment]
+
+
+class _NoRealImap:
+    """Zastępuje klasy połączeń `imaplib`. Zachowuje wyjątki, bo kod łapie `imaplib.IMAP4.error`."""
+
+    error = imaplib.IMAP4.error
+    abort = imaplib.IMAP4.abort
+    readonly = imaplib.IMAP4.readonly
+
+    def __init__(self, *args, **kwargs):
+        raise RuntimeError("test próbował otworzyć prawdziwe połączenie IMAP — użyj atrapy (tests.fake_imap)")
+
+
+imaplib.IMAP4 = _NoRealImap  # type: ignore[misc,assignment]
+imaplib.IMAP4_SSL = _NoRealImap  # type: ignore[misc,assignment]
 
 
 # Drugi bezpiecznik: żaden test nie uruchamia prawdziwego `osascript` (powiadomienie na ekranie użytkownika),

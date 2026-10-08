@@ -26,6 +26,15 @@ class EnvironmentTests(unittest.TestCase):
         self.assertTrue(Environment.from_environ({cfg.ENV_DB_URL: "sqlite://", cfg.ENV_ALLOW_REAL_SMTP: "1"}).real_smtp_allowed)
         self.assertFalse(Environment.from_environ({cfg.ENV_DB_URL: "sqlite://", cfg.ENV_ALLOW_REAL_SMTP: "yes"}).real_smtp_allowed)
 
+    def test_a_demo_database_blocks_real_imap_unless_it_is_unlocked_on_purpose(self):
+        self.assertTrue(Environment.from_environ({}).real_imap_allowed)
+        self.assertFalse(Environment.from_environ({cfg.ENV_DB_URL: "sqlite://"}).real_imap_allowed)
+        self.assertTrue(Environment.from_environ({cfg.ENV_DB_URL: "sqlite://", cfg.ENV_ALLOW_REAL_IMAP: "1"}).real_imap_allowed)
+        self.assertFalse(Environment.from_environ({cfg.ENV_DB_URL: "sqlite://", cfg.ENV_ALLOW_REAL_IMAP: "yes"}).real_imap_allowed)
+        # odblokowanie wysyłki nie odblokowuje odbioru i odwrotnie
+        self.assertFalse(Environment.from_environ({cfg.ENV_DB_URL: "sqlite://", cfg.ENV_ALLOW_REAL_SMTP: "1"}).real_imap_allowed)
+        self.assertFalse(Environment.from_environ({cfg.ENV_DB_URL: "sqlite://", cfg.ENV_ALLOW_REAL_IMAP: "1"}).real_smtp_allowed)
+
     def test_host_map_works_only_together_with_the_private_address_switch(self):
         hosts = "A.test=127.0.0.1, b.test = 10.0.0.2 ,broken,=1.1.1.1,c.test="
         without = Environment.from_environ({cfg.ENV_SCRAPER_HOSTS: hosts})
