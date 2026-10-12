@@ -456,6 +456,21 @@ odstępami. Robi to osobny proces (demon), więc zamknięcie karty, panelu czy t
 **Sprawdź gotowość**, **Próbne powiadomienie** i **Start…**. Przyciski „Uruchom ponownie” i „Usuń demona” obsługują
 resztę. Jedyna rzecz wymagająca terminala to ewentualne wybudzanie Maca przed oknem (`sudo`): panel pokazuje gotowe polecenie.
 
+**Odstęp między mailami to lista przedziałów z prawdopodobieństwami.** Po każdym wysłanym mailu automat losuje przedział
+zgodnie z jego prawdopodobieństwem, a w nim jednostajnie losowy czas oczekiwania na następny mail. Np. 1–2 min w 50%
+przypadków, 5–10 min w 40% i 20–60 min w 10%. Przedziałów może być dowolnie wiele (technicznie do 100), mogą na siebie
+zachodzić, każdy ma od 10 s do 60 min, a prawdopodobieństwa muszą dawać razem 100% (serwer odmawia zapisu z komunikatem, ile
+jest teraz). W zakładce „Automat” (sekcja „Odstęp między mailami”) każdy przedział ma własną jednostkę (s albo min), pod
+listą jest bieżąca suma i przycisk „Wyrównaj do 100%” (skaluje procenty proporcjonalnie). W terminalu:
+`automat.py limits --delay-bands 1m-2m=50,5m-10m=40,20m-60m=10` (czas w sekundach albo z końcówką `s`/`m`). Stare flagi
+`--delay-min`/`--delay-max` zastępują przedziały jednym zakresem wybieranym zawsze (tak samo wczytuje się zapis sprzed tej
+zmiany). Podgląd i okno potwierdzenia Startu podają **średni odstęp** i **ile maili zmieści się w oknie godzin**: automat
+wysyła po jednym mailu naraz (także przy kilku skrzynkach), więc długie przedziały mogą dać mniej maili niż dzienny limit.
+Prognoza dni (tabela „Kolejka i prognoza”) odstępów nie uwzględnia, ostrzeżenie pod nią mówi, gdy limit jest nieosiągalny.
+**Po aktualizacji uruchom demona ponownie** („Uruchom ponownie”): działający demon ze starego kodu nie zna przedziałów i losuje
+czas z całego zakresu od najmniejszego do największego; panel pokazuje wtedy ostrzeżenie (nowy demon zgłasza `delay_bands`
+w znaku życia).
+
 **Jak to działa.**
 - Demon (`python3 automat.py run`) uruchamia **launchd** po każdym zalogowaniu i po awarii (przycisk „Zainstaluj i uruchom”
   albo `install` zakłada LaunchAgenta `pl.perno.automat`; „Usuń demona” / `uninstall` go zdejmuje). Działa stale, ale wysyła
@@ -483,13 +498,15 @@ resztę. Jedyna rzecz wymagająca terminala to ewentualne wybudzanie Maca przed 
 **Limity są zapamiętane** (w bazie, tabela `automat_stan`) do czasu zmiany: dzienny limit, dni, okno godzin, odstępy,
 segment, kraje (domyślnie wszystkie), horyzont planu (domyślnie 5 dni), próg pauzy po błędach (domyślnie 3 z rzędu) i
 odstęp dla firmy w dniach (domyślnie 1; `--company-gap`; zmiana samego odstępu też rozbraja plan i wymaga nowego potwierdzenia;
-starsza wersja programu, która zapisze limity, gubi to pole i wraca domyślne 1).
+starsza wersja programu, która zapisze limity, gubi to pole i wraca domyślne 1; podobnie gubi przedziały odstępu i zostaje jej
+zakres od najmniejszego do największego czasu, który nowa wersja zapisuje obok w `delay_min` i `delay_max`).
 Zmiana limitów przy uzbrojonym planie go **rozbraja**. **Start zawsze pyta o potwierdzenie**: pokazuje zapisane wartości,
 datę ich ostatniej zmiany, liczbę maili w kolejce i ile z nich jedzie do firm spoza Polski; trzeba zaznaczyć „Sprawdziłem
 limity” (w terminalu wpisać „tak”). Po horyzoncie plan sam się kończy — potwierdzasz od nowa.
 
 ```
 python3 automat.py limits --daily-cap 40 --window 9:00-15:00 --days pn-pt --horizon 3 --company-gap 2   # zapis (bez flag: pokazuje)
+python3 automat.py limits --delay-bands 1m-2m=50,5m-10m=40,20m-60m=10   # odstępy: przedział=procent wysyłek, razem 100%
 python3 automat.py doctor        # gotowość: SMTP, powiadomienia, LaunchAgent, demon, zasilanie
 python3 automat.py test-notify   # próbne powiadomienie każdym kanałem
 python3 automat.py install       # demon po zalogowaniu
