@@ -13,17 +13,17 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from typing import Mapping, Optional, Sequence
 
+from perno.domain import delay_bands as delays
 from perno.domain import mail_rules, segments
 from perno.domain import statuses as st
 from perno.domain.rowfilter import FOREIGN_COUNTRY, NO_COUNTRY, RowFilter
 
 WEEKDAY_LABELS = ("pn", "wt", "śr", "cz", "pt", "sb", "nd")
 HARD_MAX_DAILY_CAP = 500
-MIN_DELAY = 10.0  # sekund; poniżej tego odstęp przestaje przypominać człowieka
-MAX_DELAY = 3600.0
 MAX_HORIZON_DAYS = 60
 MAX_COMPANY_GAP_DAYS = 30
 DAEMON_VERSION = 2  # rośnie, gdy demon poznaje nowe reguły (2 = blokada firmy i odstęp); panel odmawia dodawania adresów starszemu
+DAEMON_FEATURES = {"delay_bands": True}  # dopisywane do znaku życia: po tym panel poznaje demona, który losuje przedziały odstępu
 TICK_SECONDS = 30.0  # najdłuższy sen pętli; krótszy niż to, co uznajemy za „zniknięcie” procesu
 GAP_THRESHOLD = 180.0  # przerwa między tyknięciami dłuższa niż to = komputer spał albo proces stał
 _COUNTRY_RE = re.compile(r"[A-Z]{2}")
@@ -40,20 +40,29 @@ class AutomatSettings:
     weekdays: tuple = (0, 1, 2, 3, 4)  # 0 = poniedziałek
     window_start: time = time(9, 0)
     window_end: time = time(16, 0)
-    delay_min: float = 45.0
-    delay_max: float = 120.0
+    delay_bands: tuple = delays.single(45.0, 120.0)  # przedziały odstępu między mailami (od, do, % wysyłek), patrz `delay_bands`
     segment: str = "both"
     countries: tuple = ()  # puste = wszystkie kraje (kody ISO oraz NO_COUNTRY/FOREIGN_COUNTRY jak w filtrze panelu)
     horizon_days: int = 5  # na ile dni kalendarzowych (z dniem startu) uzbrajamy plan; potem trzeba potwierdzić od nowa
     max_consecutive_errors: int = 3
     company_gap_days: int = 1  # najmniejszy odstęp (w dniach kalendarzowych) między mailami do jednej firmy; 0 = bez odstępu
 
+    @property
+    def delay_min(self) -> float:
+        return delays.overall_range(self.delay_bands)[0]
+
+    @property
+    def delay_max(self) -> float:
+        return delays.overall_range(self.delay_bands)[1]
+
     def to_json(self) -> dict:
-        """Postać zapisywana w bazie i zwracana przez API."""
+        """Postać zapisywana w bazie i zwracana przez API. `delay_min` i `delay_max` (skrajne wartości przedziałów) zostają
+        dla starszego kodu, który nie zna przedziałów: demon sprzed aktualizacji losuje wtedy z całego zakresu."""
         return {
             "daily_cap": self.daily_cap, "weekdays": list(self.weekdays),
             "window_start": self.window_start.strftime("%H:%M"), "window_end": self.window_end.strftime("%H:%M"),
-            "delay_min": self.delay_min, "delay_max": self.delay_max, "segment": self.segment,
+            "delay_min": self.delay_min, "delay_max": self.delay_max, "delay_bands": delays.to_json(self.delay_bands),
+            "segment": self.segment,
             "countries": list(self.countries), "horizon_days": self.horizon_days,
             "max_consecutive_errors": self.max_consecutive_errors, "company_gap_days": self.company_gap_days,
         }
@@ -81,15 +90,27 @@ def _integer(raw: object, name: str, low: int, high: int) -> int:
 
 
 def _seconds(raw: object, name: str) -> float:
-    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
-        raise SettingsInvalid(f"Pole {name} musi być liczbą sekund.")
     try:
-        number = float(raw)
-    except ValueError:
-        raise SettingsInvalid(f"Pole {name} musi być liczbą sekund.") from None
-    if not MIN_DELAY <= number <= MAX_DELAY:
-        raise SettingsInvalid(f"Pole {name} poza zakresem ({MIN_DELAY:g}–{MAX_DELAY:g} s).")
-    return number
+        return delays.seconds_in_range(raw, f"Pole {name}")
+    except delays.BandsInvalid as exc:
+        raise SettingsInvalid(str(exc)) from None
+
+
+def _delay_bands(raw: Mapping, base: AutomatSettings) -> dict:
+    """Przedziały odstępu z `delay_bands`; same `delay_min`/`delay_max` (stary zapis i flagi CLI) zastępują je jednym
+    przedziałem wybieranym zawsze, z brakującą stroną wziętą z dotychczasowego zakresu."""
+    if "delay_bands" in raw:
+        try:
+            return {"delay_bands": delays.from_json(raw["delay_bands"])}
+        except delays.BandsInvalid as exc:
+            raise SettingsInvalid(str(exc)) from None
+    if "delay_min" not in raw and "delay_max" not in raw:
+        return {}
+    low = _seconds(raw.get("delay_min", base.delay_min), "odstęp min")
+    high = _seconds(raw.get("delay_max", base.delay_max), "odstęp max")
+    if low > high:
+        raise SettingsInvalid("Odstęp min nie może być większy niż odstęp max.")
+    return {"delay_bands": delays.single(low, high)}
 
 
 def _clock_time(raw: object, name: str) -> time:
@@ -136,10 +157,7 @@ def settings_from_mapping(raw: Mapping, base: AutomatSettings = DEFAULT_SETTINGS
         values["window_start"] = _clock_time(raw["window_start"], "okno od")
     if "window_end" in raw:
         values["window_end"] = _clock_time(raw["window_end"], "okno do")
-    if "delay_min" in raw:
-        values["delay_min"] = _seconds(raw["delay_min"], "odstęp min")
-    if "delay_max" in raw:
-        values["delay_max"] = _seconds(raw["delay_max"], "odstęp max")
+    values.update(_delay_bands(raw, base))
     if "segment" in raw:
         values["segment"] = _segment(raw["segment"])
     if "countries" in raw:
@@ -158,8 +176,6 @@ def settings_from_mapping(raw: Mapping, base: AutomatSettings = DEFAULT_SETTINGS
 def _check_consistency(settings: AutomatSettings) -> None:
     if settings.window_start >= settings.window_end:
         raise SettingsInvalid("Okno wysyłki: godzina „od” musi być wcześniejsza niż „do”.")
-    if settings.delay_min > settings.delay_max:
-        raise SettingsInvalid("Odstęp min nie może być większy niż odstęp max.")
 
 
 def queue_filter(settings: AutomatSettings, exclude_companies: tuple = ()) -> RowFilter:
@@ -258,6 +274,15 @@ def horizon_end(armed_at: datetime, settings: AutomatSettings) -> datetime:
 
 
 # ---- prognoza ---------------------------------------------------------------------------------------------------------
+
+
+def window_mail_capacity(settings: AutomatSettings) -> int:
+    """Ile maili średnio zmieści się w oknie godzin przy ustawionych odstępach. Automat wysyła po jednym mailu naraz (skrzynki
+    tylko się zmieniają), więc nie zależy to od ich liczby. Długie przedziały mogą dać mniej niż dzienny limit; prognoza dni
+    (`estimate_finish`) tego nie uwzględnia."""
+    day = date.min
+    window = (datetime.combine(day, settings.window_end) - datetime.combine(day, settings.window_start)).total_seconds()
+    return int(window // delays.mean_seconds(settings.delay_bands)) + 1  # pierwszy mail wychodzi na początku okna
 
 
 @dataclass(frozen=True)

@@ -7,6 +7,7 @@ from datetime import date, datetime, time
 
 from perno.domain import automat_events as ev
 from perno.domain import automat_rules as ar
+from perno.domain import delay_bands
 
 MON = date(2026, 10, 5)  # poniedziałek
 
@@ -48,7 +49,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(ar.settings_from_mapping({"weekdays": [4, 0, 0, 2]}).weekdays, (0, 2, 4))
 
     def test_boundaries_of_every_numeric_field(self):
-        ok = [{"max_consecutive_errors": 1}, {"max_consecutive_errors": 20}, {"delay_max": ar.MAX_DELAY, "delay_min": 10},
+        ok = [{"max_consecutive_errors": 1}, {"max_consecutive_errors": 20}, {"delay_max": delay_bands.MAX_DELAY, "delay_min": 10},
               {"window_end": "23:59"}, {"delay_min": 60, "delay_max": 60}, {"horizon_days": ar.MAX_HORIZON_DAYS}]
         for raw in ok:
             with self.subTest(raw=raw):
@@ -61,7 +62,68 @@ class SettingsTests(unittest.TestCase):
     def test_limits_are_inclusive(self):
         self.assertEqual(ar.settings_from_mapping({"daily_cap": 1}).daily_cap, 1)
         self.assertEqual(ar.settings_from_mapping({"daily_cap": ar.HARD_MAX_DAILY_CAP}).daily_cap, 500)
-        self.assertEqual(ar.settings_from_mapping({"delay_min": ar.MIN_DELAY}).delay_min, 10.0)
+        self.assertEqual(ar.settings_from_mapping({"delay_min": delay_bands.MIN_DELAY}).delay_min, 10.0)
+
+
+class DelayBandSettingsTests(unittest.TestCase):
+    BANDS = [{"min": 60, "max": 120, "percent": 50}, {"min": 300, "max": 600, "percent": 40}, {"min": 1200, "max": 3600, "percent": 10}]
+
+    def test_default_is_the_old_single_range(self):
+        s = ar.DEFAULT_SETTINGS
+        self.assertEqual(s.delay_bands, delay_bands.single(45.0, 120.0))
+        self.assertEqual((s.delay_min, s.delay_max), (45.0, 120.0))
+
+    def test_bands_roundtrip_and_expose_the_outer_range(self):
+        s = ar.settings_from_mapping({"delay_bands": self.BANDS})
+        self.assertEqual(len(s.delay_bands), 3)
+        self.assertEqual((s.delay_min, s.delay_max), (60, 3600))
+        self.assertEqual(ar.settings_from_mapping(s.to_json()), s)
+
+    def test_json_keeps_delay_min_and_max_for_a_daemon_that_does_not_know_bands(self):
+        data = ar.settings_from_mapping({"delay_bands": self.BANDS}).to_json()
+        self.assertEqual((data["delay_min"], data["delay_max"]), (60, 3600))
+        self.assertEqual(data["delay_bands"], self.BANDS)
+
+    def test_settings_saved_before_bands_load_as_one_band_with_all_the_mails(self):
+        old = {"daily_cap": 30, "delay_min": 30, "delay_max": 90}  # JSON zapisany przez wersję bez przedziałów
+        s = ar.settings_from_mapping(old)
+        self.assertEqual(s.delay_bands, delay_bands.single(30.0, 90.0))
+        self.assertEqual(s.delay_bands[0].percent, 100.0)
+
+    def test_old_keys_replace_the_bands_and_keep_the_missing_side(self):
+        base = ar.settings_from_mapping({"delay_bands": self.BANDS})
+        s = ar.settings_from_mapping({"delay_min": 30}, base=base)
+        self.assertEqual(s.delay_bands, delay_bands.single(30.0, 3600.0))
+        s = ar.settings_from_mapping({"delay_max": 90, "delay_min": 30}, base=base)
+        self.assertEqual(s.delay_bands, delay_bands.single(30.0, 90.0))
+
+    def test_bands_win_over_old_keys_when_both_are_sent(self):
+        s = ar.settings_from_mapping({"delay_bands": self.BANDS, "delay_min": 15, "delay_max": 20})
+        self.assertEqual(len(s.delay_bands), 3)
+
+    def test_other_fields_leave_the_bands_alone(self):
+        base = ar.settings_from_mapping({"delay_bands": self.BANDS})
+        self.assertEqual(ar.settings_from_mapping({"daily_cap": 9}, base=base).delay_bands, base.delay_bands)
+
+    def test_invalid_bands_are_a_settings_error_with_the_message(self):
+        for raw, text in (([], "co najmniej jeden"), ([{"min": 10, "max": 20, "percent": 60}], "razem 100%"),
+                          ([{"min": 5, "max": 20, "percent": 100}], "poza zakresem"), ("1m-2m=100", "co najmniej jeden")):
+            with self.subTest(raw=raw), self.assertRaisesRegex(ar.SettingsInvalid, text):
+                ar.settings_from_mapping({"delay_bands": raw})
+
+    def test_old_range_with_min_above_max_is_still_refused(self):
+        with self.assertRaisesRegex(ar.SettingsInvalid, "Odstęp min nie może być większy"):
+            ar.settings_from_mapping({"delay_min": 100, "delay_max": 50})
+
+    def test_scaling_for_mailboxes_keeps_the_bands(self):
+        s = ar.settings_from_mapping({"delay_bands": self.BANDS})
+        self.assertEqual(ar.scaled(s, 3).delay_bands, s.delay_bands)
+
+    def test_window_capacity_follows_the_mean_delay(self):
+        s = ar.settings_from_mapping({"window_start": "09:00", "window_end": "10:00", "delay_min": 60, "delay_max": 60})
+        self.assertEqual(ar.window_mail_capacity(s), 61)  # co minutę, pierwszy mail o 9:00
+        mixed = ar.settings_from_mapping({"window_start": "09:00", "window_end": "16:00", "delay_bands": self.BANDS})
+        self.assertEqual(ar.window_mail_capacity(mixed), 55)  # średnio 465 s, okno 25 200 s: 54 odstępy i pierwszy mail
 
 
 class CompanyGapSettingTests(unittest.TestCase):
