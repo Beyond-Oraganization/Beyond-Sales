@@ -7,8 +7,9 @@ const REASONS = {
   not_armed: 'plan nieuzbrojony', paused: 'wstrzymany', outside_window: 'poza oknem godzin', not_send_day: 'dzień bez wysyłki',
   cap_reached: 'limit dnia wyczerpany', horizon_over: 'koniec planu', company_gap: 'czeka na odstęp dla firmy',
 };
-const FIELDS = ['daily_cap', 'window_start', 'window_end', 'delay_min', 'delay_max', 'segment', 'horizon_days', 'max_consecutive_errors',
-  'company_gap_days'];
+const FIELDS = ['daily_cap', 'window_start', 'window_end', 'segment', 'horizon_days', 'max_consecutive_errors', 'company_gap_days'];
+const BAND_UNITS = {s: 1, min: 60};  // sekundy w ustawieniach; w formularzu przedział ma własną jednostkę
+let BAND_ROWS = [];  // {row, low, high, unit, percent, remove, factor} dla każdego wiersza edytora przedziałów
 let STATE = null;
 let PREVIEW = null;
 let pollTimer = 0;
@@ -35,9 +36,160 @@ function fillSegmentOptions(current) {
   }
 }
 
+// „45 s”, „2 min”, „1 min 30 s” (jak delay_bands.format_duration po stronie serwera).
+function fmtDuration(seconds) {
+  const whole = Math.round(Number(seconds));
+  if (!(whole >= 0)) return '—';
+  if (whole < 60) return whole + ' s';
+  const rest = whole % 60;
+  return Math.floor(whole / 60) + ' min' + (rest ? ' ' + rest + ' s' : '');
+}
+
+const round3 = (number) => Math.round(number * 1000) / 1000;
+const numberOrNull = (text) => { const number = parseFloat(text); return Number.isFinite(number) ? number : null; };
+
+// Przedziały odstępu z ustawień; starszy zapis (sam zakres min–max) to jeden przedział wybierany zawsze.
+function bandsOf(settings) {
+  if (settings.delay_bands && settings.delay_bands.length) return settings.delay_bands;
+  return [{min: settings.delay_min, max: settings.delay_max, percent: 100}];
+}
+
+function canonicalBands(bands) {
+  return JSON.stringify(bands.map((band) => [band.min, band.max, band.percent]));
+}
+
+function bandControl(tag, label) {
+  const control = document.createElement(tag);
+  control.setAttribute('aria-label', label);
+  if (tag === 'input') { control.type = 'number'; control.min = '0'; control.step = 'any'; }
+  return control;
+}
+
+function bandField(caption, control) {
+  const label = document.createElement('label');
+  const text = document.createElement('span');
+  text.textContent = caption;
+  label.appendChild(text);
+  label.appendChild(control);
+  return label;
+}
+
+function bandUnitSelect() {
+  const select = bandControl('select', 'Jednostka czasu');
+  for (const unit of Object.keys(BAND_UNITS)) {
+    const option = document.createElement('option');
+    option.value = unit;
+    option.textContent = unit;
+    select.appendChild(option);
+  }
+  return select;
+}
+
+function shown(seconds, factor) {
+  return seconds === null || seconds === undefined ? '' : String(round3(seconds / factor));
+}
+
+function addBandRow(band) {
+  const unit = [band.min, band.max].every((seconds) => seconds % 60 === 0) ? 'min' : 's';
+  const record = {row: document.createElement('div'), low: bandControl('input', 'Odstęp od'), high: bandControl('input', 'Odstęp do'),
+    unit: bandUnitSelect(), percent: bandControl('input', 'Prawdopodobieństwo (%)'), remove: document.createElement('button'),
+    factor: BAND_UNITS[unit]};
+  record.row.className = 'band-row';
+  record.low.value = shown(band.min, record.factor);
+  record.high.value = shown(band.max, record.factor);
+  record.unit.value = unit;
+  record.percent.value = band.percent === null || band.percent === undefined ? '' : String(band.percent);
+  record.remove.type = 'button';
+  record.remove.className = 'btn plain danger';
+  record.remove.textContent = 'Usuń';
+  record.remove.setAttribute('aria-label', 'Usuń przedział');
+  record.row.appendChild(bandField('Od', record.low));
+  record.row.appendChild(bandField('Do', record.high));
+  record.row.appendChild(bandField('Jednostka', record.unit));
+  record.row.appendChild(bandField('Prawdopodobieństwo (%)', record.percent));
+  record.row.appendChild(record.remove);
+  for (const input of [record.low, record.high, record.percent]) input.addEventListener('input', renderBandsSum);
+  record.unit.addEventListener('change', () => changeBandUnit(record));
+  record.remove.addEventListener('click', () => removeBandRow(record));
+  BAND_ROWS.push(record);
+  el('bandsList').appendChild(record.row);
+}
+
+// Zmiana jednostki przelicza wpisane liczby, tak żeby przedział został ten sam (1 min → 60 s).
+function changeBandUnit(record) {
+  const factor = BAND_UNITS[record.unit.value] || 1;
+  for (const input of [record.low, record.high]) {
+    const seconds = numberOrNull(input.value);
+    if (seconds !== null) input.value = shown(seconds * record.factor, factor);
+  }
+  record.factor = factor;
+  renderBandsSum();
+}
+
+function removeBandRow(record) {
+  BAND_ROWS = BAND_ROWS.filter((other) => other !== record);
+  record.row.remove();
+  renderBandsSum();
+}
+
+// Przedziały z formularza w sekundach i procentach; puste lub błędne pole to null (serwer odpowie komunikatem).
+function readBands() {
+  return BAND_ROWS.map((record) => {
+    const factor = BAND_UNITS[record.unit.value] || 1;
+    const low = numberOrNull(record.low.value);
+    const high = numberOrNull(record.high.value);
+    return {min: low === null ? null : round3(low * factor), max: high === null ? null : round3(high * factor),
+      percent: numberOrNull(record.percent.value)};
+  });
+}
+
+function bandsTotal(bands) {
+  return Math.round(bands.reduce((sum, band) => sum + (band.percent || 0), 0) * 100) / 100;
+}
+
+function renderBandsSum() {
+  const bands = readBands();
+  const total = bandsTotal(bands);
+  const exact = Math.abs(total - 100) <= 0.01;
+  el('bandsSum').textContent = 'Suma: ' + total + '%' + (exact ? '' : ' — musi wynosić 100%');
+  el('bandsSum').classList.toggle('is-off', !exact);
+  el('evenBandsBtn').hidden = exact || !bands.length || bands.some((band) => !(band.percent > 0));
+  for (const record of BAND_ROWS) record.remove.disabled = BAND_ROWS.length < 2;
+}
+
+// Skaluje prawdopodobieństwa proporcjonalnie do 100%; ostatni przedział dostaje resztę po zaokrągleniach.
+function evenBands() {
+  const bands = readBands();
+  const scale = 100 / bandsTotal(bands);
+  let used = 0;
+  BAND_ROWS.forEach((record, index) => {
+    const last = index === BAND_ROWS.length - 1;
+    const percent = last ? Math.round((100 - used) * 100) / 100 : Math.round(bands[index].percent * scale * 100) / 100;
+    used += percent;
+    record.percent.value = String(percent);
+  });
+  renderBandsSum();
+}
+
+function addBand() {
+  const rest = Math.round((100 - bandsTotal(readBands())) * 100) / 100;
+  addBandRow({min: 60, max: 120, percent: rest > 0 ? rest : null});
+  renderBandsSum();
+}
+
+// Odświeżanie stanu co kilka sekund nie może przebudowywać wierszy, które już pokazują te same przedziały (zgubiłoby fokus).
+function fillBands(bands) {
+  if (BAND_ROWS.length && canonicalBands(readBands()) === canonicalBands(bands)) return;
+  el('bandsList').textContent = '';
+  BAND_ROWS = [];
+  for (const band of bands) addBandRow(band);
+  renderBandsSum();
+}
+
 function fillForm(settings) {
   fillSegmentOptions(settings.segment);
   for (const key of FIELDS) el('f_' + key).value = settings[key];
+  fillBands(bandsOf(settings));
   el('f_countries').value = (settings.countries || []).join(',');
   for (let day = 0; day < 7; day++) el('d' + day).checked = (settings.weekdays || []).includes(day);
 }
@@ -45,6 +197,7 @@ function fillForm(settings) {
 function readForm() {
   const raw = {};
   for (const key of FIELDS) raw[key] = el('f_' + key).value;
+  raw.delay_bands = readBands();
   raw.countries = el('f_countries').value.split(',').map((code) => code.trim()).filter(Boolean)
     .map((code) => (code.startsWith('_') ? code : code.toUpperCase()));
   raw.weekdays = [];
@@ -55,6 +208,7 @@ function readForm() {
 function normalized(settings) {
   const out = {};
   for (const key of FIELDS) out[key] = String(settings[key]);
+  out.delay_bands = canonicalBands(bandsOf(settings));
   out.countries = (settings.countries || []).map(String).join(',');
   out.weekdays = (settings.weekdays || []).map(Number).join(',');
   return JSON.stringify(out);
@@ -118,6 +272,10 @@ function renderBanners() {
   const notes = [];
   if (s.armed && !s.daemon.running) notes.push('warn|Plan jest uzbrojony, ale demon nie działa — nic się nie wyśle. Kliknij „Zainstaluj i uruchom” poniżej.');
   else if (!s.launchd.loaded && !s.daemon.running) notes.push('warn|Demon nie jest zainstalowany (nie wystartuje po włączeniu komputera). Kliknij „Zainstaluj i uruchom” poniżej.');
+  if (s.daemon.running && bandsOf(s.settings).length > 1 && !(s.daemon.stats || {}).delay_bands) {
+    notes.push('warn|Demon działa na starszej wersji i nie zna przedziałów odstępu: losuje czas z całego zakresu ' + fmtDuration(s.settings.delay_min)
+      + ' – ' + fmtDuration(s.settings.delay_max) + '. Kliknij „Uruchom ponownie” poniżej.');
+  }
   if (s.paused) notes.push('warn|Wysyłka wstrzymana: ' + (s.pause_reason || ''));
   if (s.power && s.power.on_battery) notes.push('warn|Mac jest na baterii' + (s.power.percent == null ? '' : ' (' + s.power.percent + '%)') + ' — zamknięcie klapy uśpi wysyłkę. Podłącz zasilacz i zostaw klapę otwartą.');
   if (!s.channels.includes('ntfy')) notes.push('warn|Brak powiadomień na telefon (NTFY_TOPIC w zakładce Konfiguracja) — alerty zobaczysz tylko na Macu.');
@@ -146,6 +304,16 @@ function queueNotes(p) {
   return notes.map((note) => '<p class="muted small">' + note + '</p>').join('');
 }
 
+// Długie przedziały mogą dać w oknie mniej maili niż dzienny limit; prognoza dni tego nie uwzględnia, więc mówimy to wprost.
+function pacingNote(p) {
+  if (p.delay_mean == null) return '';
+  const capacity = STATE ? STATE.capacity : null;
+  const short = capacity != null && p.window_mails < capacity;
+  return '<p class="muted small">Średni odstęp między mailami: <b>' + escapeHtml(fmtDuration(p.delay_mean)) + '</b>, więc w oknie godzin zmieści się ok. <b>'
+    + escapeHtml(p.window_mails) + '</b> maili dziennie.'
+    + (short ? ' <span class="lvl-warn">To mniej niż dzienny limit (' + escapeHtml(capacity) + ') — limit nie zostanie wyczerpany.</span>' : '') + '</p>';
+}
+
 function renderForecast() {
   const p = PREVIEW;
   if (!p) return;
@@ -154,6 +322,7 @@ function renderForecast() {
   el('forecastBox').innerHTML = '<p>W kolejce: <b>' + escapeHtml(p.queue) + '</b> maili „Do wysłania”' + queueScope(p) + ', w tym <b>' + escapeHtml(p.foreign)
     + '</b> do firm spoza Polski' + (p.foreign ? ' (maile są dziś generowane po polsku)' : '') + ', ' + escapeHtml(p.no_country) + ' bez kraju.</p>'
     + queueNotes(p)
+    + pacingNote(p)
     + '<div class="chips">' + chips + '</div>'
     + (p.last_day ? '<p>Przy tym tempie koniec około <b>' + escapeHtml(p.last_day) + '</b> (' + escapeHtml(p.send_days) + ' dni wysyłki).'
       + (p.limited_by_gap ? ' <span class="lvl-warn">Odstęp dla firmy (' + escapeHtml(p.gap_days) + ' dn.) wydłuża plan.</span>' : '')
@@ -181,20 +350,28 @@ async function saveLimits() {
   if (ok) { STATE = null; await loadStatus(); await loadPreview(); }
 }
 
+// „45 s – 2 min” dla jednego zakresu, „1 min – 2 min (50%), 5 min – 10 min (40%), …” dla kilku przedziałów.
+function bandsText(settings) {
+  const bands = bandsOf(settings);
+  return bands.map((band) => fmtDuration(band.min) + ' – ' + fmtDuration(band.max) + (bands.length > 1 ? ' (' + band.percent + '%)' : '')).join(', ');
+}
+
 function confirmSummary() {
   const s = STATE.settings;
   const days = (s.weekdays || []).map((d) => DAY_LABELS[d]).join(', ');
   const lines = [
     'dzienny limit: ' + s.daily_cap + ((STATE.mailboxes || []).length > 1
       ? ' na każdą z ' + STATE.mailboxes.length + ' skrzynek (razem ' + STATE.capacity + ')' : ''), 'dni: ' + days, 'okno: ' + s.window_start + '–' + s.window_end,
-    'odstęp między mailami: ' + s.delay_min + '–' + s.delay_max + ' s', 'segment: ' + s.segment,
+    'odstęp między mailami: ' + bandsText(s), 'segment: ' + s.segment,
     'kraje: ' + ((s.countries || []).join(', ') || 'wszystkie'), 'horyzont planu: ' + s.horizon_days + ' dni',
     'odstęp dla firmy: ' + (Number(s.company_gap_days) > 0 ? s.company_gap_days + ' dn. między mailami do jednej firmy' : 'brak'),
     'limity ostatnio zmienione: ' + (STATE.stamp ? fmtTime(STATE.stamp) : 'NIGDY (domyślne)'),
   ];
+  const pacing = PREVIEW && PREVIEW.delay_mean != null ? ['średni odstęp: ' + fmtDuration(PREVIEW.delay_mean)
+    + ', w oknie zmieści się ok. ' + PREVIEW.window_mails + ' maili dziennie'] : [];
   const queue = PREVIEW ? ['w kolejce: ' + PREVIEW.queue + ' maili' + (PREVIEW.companies && PREVIEW.companies !== PREVIEW.queue ? ' (' + PREVIEW.companies + ' firm)' : '')
     + ', w tym ' + PREVIEW.foreign + ' do firm spoza Polski'] : [];
-  return '<ul class="sum-list">' + lines.concat(queue).map((line) => '<li>' + escapeHtml(line) + '</li>').join('') + '</ul>';
+  return '<ul class="sum-list">' + lines.concat(pacing, queue).map((line) => '<li>' + escapeHtml(line) + '</li>').join('') + '</ul>';
 }
 
 async function openConfirm() {
@@ -256,6 +433,8 @@ function poll() {
 }
 
 el('saveBtn').addEventListener('click', saveLimits);
+el('addBandBtn').addEventListener('click', addBand);
+el('evenBandsBtn').addEventListener('click', evenBands);
 el('startBtn').addEventListener('click', openConfirm);
 el('pauseBtn').addEventListener('click', () => simple('/api/automat/pause', 'Wstrzymano.'));
 el('resumeBtn').addEventListener('click', () => simple('/api/automat/resume', 'Wznowiono.'));

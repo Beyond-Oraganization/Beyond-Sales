@@ -10,6 +10,18 @@
 .status-card b{display:flex;align-items:center;margin-top:2px;font-size:20px;font-weight:600;letter-spacing:-.01em;color:var(--label);}
 .status-card b .dot{margin-right:8px;}
 
+/* odstęp między mailami: lista przedziałów (od, do, jednostka, prawdopodobieństwo) */
+.bands{margin-top:var(--s-4);padding-top:var(--s-4);border-top:1px solid var(--separator);}
+.bands-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s-3);margin-bottom:var(--s-1);}
+.bands-head h3{font-size:var(--fs-body);font-weight:600;}
+.bands-sum{font-weight:600;color:var(--ok);}
+.bands-sum.is-off{color:var(--warn);}
+.bands-list{margin:var(--s-2) 0;}
+.band-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--s-2) var(--s-3);margin:var(--s-2) 0;}
+.band-row label{display:flex;flex-direction:column;gap:var(--s-1);font-size:var(--fs-foot);font-weight:600;color:var(--label-2);}
+.band-row input,.band-row select{width:96px;font-weight:400;color:var(--label);}
+.band-row select{width:84px;}
+
 /* dni tygodnia jako przełączniki */
 .days{display:flex;flex-wrap:wrap;gap:var(--s-2);margin-top:var(--s-3);}
 .days label{display:inline-flex;align-items:center;justify-content:center;min-width:46px;height:30px;padding:0 14px;border-radius:var(--r-pill);

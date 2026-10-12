@@ -7,6 +7,7 @@ const {read, EVIL, createPage, attributeNames, settle, vm} = require('./support/
 
 const STATE = {
   settings: {daily_cap: 50, weekdays: [0, 1], window_start: '09:00', window_end: '16:00', delay_min: 45, delay_max: 120,
+    delay_bands: [{min: EVIL.script, max: EVIL.img, percent: EVIL.attr}, {min: EVIL.attr, max: EVIL.script, percent: EVIL.img}],
     segment: 'both', countries: [EVIL.attr], horizon_days: 5, max_consecutive_errors: 3, company_gap_days: EVIL.attr},
   settings_ok: true, stamp: EVIL.script, armed: true, armed_at: EVIL.img, armed_until: EVIL.script, paused: true,
   pause_reason: EVIL.script, streak: 1,
@@ -19,6 +20,7 @@ const PREVIEW = {
   queue: 3, foreign: 1, no_country: 0, countries: [[EVIL.script, 2], ['_none', 1]], sent_today: 0, send_days: 1,
   last_day: EVIL.img, fits_in_horizon: false, until: EVIL.attr, plan: [[EVIL.script, 3]],
   companies: EVIL.script, held: EVIL.img, deferred_today: EVIL.attr, gap_days: EVIL.script, limited_by_gap: true,
+  delay_mean: EVIL.script, window_mails: EVIL.img,
 };
 
 function respond(url) {

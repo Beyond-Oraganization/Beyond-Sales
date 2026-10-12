@@ -31,8 +31,6 @@
       <label>Dzienny limit maili na skrzynkę <input type="number" id="f_daily_cap" min="1" max="500"></label>
       <label>Okno od <input type="time" id="f_window_start"></label>
       <label>Okno do <input type="time" id="f_window_end"></label>
-      <label>Odstęp min (s) <input type="number" id="f_delay_min" min="10" max="3600"></label>
-      <label>Odstęp max (s) <input type="number" id="f_delay_max" min="10" max="3600"></label>
       <label>Segment <select id="f_segment"><option value="both">wszystkie</option></select></label>
       <label>Horyzont planu (dni) <input type="number" id="f_horizon_days" min="1" max="60"></label>
       <label>Pauza po błędach z rzędu <input type="number" id="f_max_consecutive_errors" min="1" max="20"></label>
@@ -46,6 +44,19 @@
       <label><input type="checkbox" id="d2"> śr</label><label><input type="checkbox" id="d3"> cz</label>
       <label><input type="checkbox" id="d4"> pt</label><label><input type="checkbox" id="d5"> sb</label>
       <label><input type="checkbox" id="d6"> nd</label>
+    </div>
+    <div class="bands" id="bandsBox">
+      <div class="bands-head">
+        <h3>Odstęp między mailami</h3>
+        <span class="bands-sum small" id="bandsSum"></span>
+      </div>
+      <p class="muted small">Po każdym mailu automat losuje przedział zgodnie z jego prawdopodobieństwem, a w nim losowy czas oczekiwania na następny mail.
+        Np. 1–2 min w 50% przypadków, 5–10 min w 40%, 20–60 min w 10%. Prawdopodobieństwa muszą dawać razem 100%, czas może mieć od 10 s do 60 min.</p>
+      <div id="bandsList" class="bands-list"></div>
+      <div class="controls">
+        <button type="button" id="addBandBtn">Dodaj przedział</button>
+        <button type="button" id="evenBandsBtn" class="btn plain" hidden>Wyrównaj do 100%</button>
+      </div>
     </div>
     <div class="controls spaced">
       <button id="saveBtn" class="primary">Zapisz limity</button>
