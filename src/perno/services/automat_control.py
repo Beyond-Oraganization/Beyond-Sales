@@ -19,6 +19,7 @@ from perno.db import Database
 from perno.db.automat_store import AutomatState, AutomatStore
 from perno.domain import automat_events as ev
 from perno.domain import automat_rules as ar
+from perno.domain import delay_bands as delays
 from perno.domain.rowfilter import FOREIGN_COUNTRY, HOME_COUNTRY, NO_COUNTRY, country_selected
 from perno.notify import Notification, Notifier
 from perno.notify.factory import build_notifier
@@ -267,6 +268,7 @@ def preview(db: Database, store: AutomatStore, now: datetime, mailboxes: int = 1
         "last_day": estimate.last_day.isoformat() if estimate.last_day else None,
         "fits_in_horizon": estimate.fits_in_horizon, "until": stamp_of(until),
         "plan": [[day.isoformat(), count] for day, count in estimate.plan],
+        "delay_mean": delays.mean_seconds(settings.delay_bands), "window_mails": ar.window_mail_capacity(settings),
     }
 
 

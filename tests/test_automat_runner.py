@@ -104,6 +104,16 @@ class TickTests(RunnerCase):
         self.runner.tick()
         self.assertEqual(self.store.active_run()["statystyki"]["v"], ar.DAEMON_VERSION)
 
+    def test_the_daemon_says_it_knows_delay_bands_in_every_kind_of_beat(self):
+        self.rows(1)
+        self.runner.start()
+        self.assertTrue(self.store.active_run()["statystyki"]["delay_bands"])  # starszy demon tego pola nie ma
+        self.runner.tick()  # nieuzbrojony: puls z housekeeping
+        self.assertTrue(self.store.active_run()["statystyki"]["delay_bands"])
+        self.arm(daily_cap=5)
+        self.runner.tick()  # uzbrojony: puls z housekeeping po wysyłce
+        self.assertTrue(self.store.active_run()["statystyki"]["delay_bands"])
+
     def test_not_armed_sends_nothing(self):
         self.rows(2)
         self.runner.start()
@@ -118,6 +128,30 @@ class TickTests(RunnerCase):
         wait = self.runner.tick()
         self.assertEqual((len(self.smtp.sent), self.status_of(1), self.status_of(2), wait), (1, "wyslano", "do_wyslania", 45.0))
         self.assertEqual(self.events("sent")[0]["tresc"], "Wysłano: Firma 1 (eventy-001).")
+
+    def test_the_wait_after_a_mail_comes_from_a_band_chosen_by_probability(self):
+        self.rows(6)
+        self.arm(daily_cap=6, delay_bands=[{"min": 60, "max": 120, "percent": 50}, {"min": 300, "max": 600, "percent": 40},
+                                           {"min": 1200, "max": 3600, "percent": 10}])
+        self.runner.d.jitter = lambda low, high: (low + high) / 2
+        self.runner.start()
+        waits = []
+        for roll in (0.0, 0.49, 0.5, 0.89, 0.9, 0.99):
+            self.runner.d.roll = lambda roll=roll: roll
+            waits.append(self.runner.tick())
+            self.clock.advance(seconds=waits[-1])
+        self.assertEqual(waits, [90, 90, 450, 450, 2400, 2400])
+        self.assertEqual(len(self.smtp.sent), 6)
+
+    def test_a_skipped_row_does_not_use_up_a_random_wait(self):
+        self.rows(1)
+        self.arm(daily_cap=5, delay_bands=[{"min": 60, "max": 120, "percent": 100}])
+        rolls = []
+        self.runner.d.roll = lambda: rolls.append(1) or 0.0
+        self.runner.start()
+        with mock.patch("perno.services.sending.send_row", return_value=sending.SendResult("skipped", {})):
+            self.assertEqual(self.runner.tick(), 1.0)
+        self.assertEqual(rolls, [])
 
     def test_cap_reached_waits_for_next_day_and_sends_one_summary(self):
         self.rows(5)

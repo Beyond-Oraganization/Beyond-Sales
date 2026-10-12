@@ -22,6 +22,7 @@ from perno.db import DB_ERRORS, Database
 from perno.db.automat_store import AutomatState, AutomatStore
 from perno.domain import automat_events as ev
 from perno.domain import automat_rules as ar
+from perno.domain import delay_bands as delays
 from perno.domain import statuses as st
 from perno.domain.listing import DEFAULT_SORT
 from perno.notify import Notification, Notifier, NotifyError
@@ -50,7 +51,8 @@ class RunnerDeps:
     guard: Optional[SleepGuard] = None
     power: Callable[[], PowerState] = read_power_state
     sleep: Callable[[float], None] = time.sleep
-    jitter: Callable[[float, float], float] = random.uniform
+    jitter: Callable[[float, float], float] = random.uniform  # czas w wybranym przedziale odstępu
+    roll: Callable[[], float] = random.random  # [0, 1): wybór przedziału odstępu według prawdopodobieństw
 
 
 def _short_error(message: str) -> str:
@@ -88,7 +90,7 @@ class AutomatRunner:
         self.d.store.recover_dead_runs()
         stuck = self.d.db.recover_stale_claims()
         self.run_id = self.d.store.start_run(self.pid)
-        self.d.store.heartbeat(self.run_id, {"v": ar.DAEMON_VERSION})  # panel widzi od razu, że demon zna reguły firm
+        self.d.store.heartbeat(self.run_id, {"v": ar.DAEMON_VERSION, **ar.DAEMON_FEATURES})  # panel widzi od razu, że demon zna nowe reguły
         self._last_beat = self.d.db.now()
         state = self.d.store.get_state()
         self.log.emit(ev.EVENT_DAEMON_START, f"Demon automatu wystartował (pid {self.pid}).", notify=state.armed)
@@ -247,7 +249,7 @@ class AutomatRunner:
         working = state.armed and not state.paused and ar.in_window(now, state.settings)
         if self.run_id is not None:
             self.d.store.heartbeat(self.run_id, {
-                "v": ar.DAEMON_VERSION, "stan": decision.action, "powod": decision.reason, "dzis": sent_today,
+                "v": ar.DAEMON_VERSION, **ar.DAEMON_FEATURES, "stan": decision.action, "powod": decision.reason, "dzis": sent_today,
                 "limit": self._total(state.settings).daily_cap, "skrzynki": self._mailbox_count,
                 **self._off_beat(now), "do": decision.until.strftime("%Y-%m-%dT%H:%M:%S") if decision.until else None})
         if self.d.guard is not None:
@@ -368,7 +370,7 @@ class AutomatRunner:
             return IDLE_SECONDS
         if result.outcome == "skipped":
             return SKIPPED_ROW_SECONDS
-        return float(self.d.jitter(settings.delay_min, settings.delay_max))
+        return float(delays.pick(settings.delay_bands, self.d.roll(), self.d.jitter))
 
     def _no_mailbox(self, mailers: list, now: datetime) -> float:
         """Żadna skrzynka nie może teraz wysłać: wszystkie wyłączone po błędach (pauza, bo trzeba to naprawić) albo
@@ -385,7 +387,7 @@ class AutomatRunner:
         until = ar.next_send_time(tomorrow, state.settings)
         if self.run_id is not None:
             self.d.store.heartbeat(self.run_id, {
-                "v": ar.DAEMON_VERSION, "stan": ar.ACTION_WAIT, "powod": ar.REASON_COMPANY_GAP,
+                "v": ar.DAEMON_VERSION, **ar.DAEMON_FEATURES, "stan": ar.ACTION_WAIT, "powod": ar.REASON_COMPANY_GAP,
                 "dzis": self.d.db.sent_today_count(now), "limit": self._total(state.settings).daily_cap,
                 **self._off_beat(now), "do": until.strftime("%Y-%m-%dT%H:%M:%S")})
         key = now.date().isoformat()

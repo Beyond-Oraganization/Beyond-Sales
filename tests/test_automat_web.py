@@ -77,6 +77,25 @@ class LimitsTests(AutomatWebCase):
         self.assertEqual(self.call("POST", "/api/automat/limits", {"company_gap_days": 99}).status, 400)
         self.assertNotEqual(data["stamp"], "")
 
+    def test_delay_bands_are_saved_and_come_back(self):
+        bands = [{"min": 60, "max": 120, "percent": 50}, {"min": 300, "max": 600, "percent": 40}, {"min": 1200, "max": 3600, "percent": 10}]
+        self.assertEqual(self.call("POST", "/api/automat/limits", {"delay_bands": bands}).status, 200)
+        settings = self.data(self.call("GET", "/api/automat/status"))["settings"]
+        self.assertEqual(settings["delay_bands"], bands)
+        self.assertEqual((settings["delay_min"], settings["delay_max"]), (60, 3600))
+
+    def test_bad_delay_bands_are_a_400_with_a_message(self):
+        resp = self.call("POST", "/api/automat/limits", {"delay_bands": [{"min": 60, "max": 120, "percent": 70}]})
+        self.assertEqual(resp.status, 400)
+        self.assertIn("razem 100%", self.data(resp)["error"])
+        self.assertEqual(self.call("POST", "/api/automat/limits", {"delay_bands": "1m-2m=100"}).status, 400)
+
+    def test_preview_tells_how_many_mails_fit_in_the_window(self):
+        self.call("POST", "/api/automat/limits", {"delay_bands": [{"min": 1200, "max": 3600, "percent": 100}]})
+        data = self.data(self.call("GET", "/api/automat/preview"))
+        self.assertEqual(data["delay_mean"], 2400)
+        self.assertEqual(data["window_mails"], 11)  # okno 9–16 to 25 200 s, jeden mail na początku i co 40 min
+
     def test_invalid_limits_are_a_400_with_a_message(self):
         resp = self.call("POST", "/api/automat/limits", {"daily_cap": 0})
         self.assertEqual(resp.status, 400)

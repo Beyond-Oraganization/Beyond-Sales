@@ -69,6 +69,7 @@ class CompanyGapSimulationTests(GapCase):
         stats = self.store.active_run()["statystyki"]
         self.assertEqual((stats["stan"], stats["powod"], stats["v"]), ("wait", ar.REASON_COMPANY_GAP, ar.DAEMON_VERSION))
         self.assertEqual(stats["do"], "2026-10-06T09:00:00")
+        self.assertTrue(stats["delay_bands"])  # także puls oczekiwania na odstęp zna przedziały odstępu między mailami
 
     def test_a_reply_from_one_address_stops_the_others_and_ends_the_plan_with_an_empty_queue(self):
         self.arm(daily_cap=10, horizon_days=7, company_gap_days=1)

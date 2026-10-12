@@ -8,6 +8,7 @@ from datetime import datetime
 from perno.db.automat_store import AutomatStore
 from perno.domain import automat_events as ev
 from perno.domain import automat_rules as ar
+from perno.domain import delay_bands
 from perno.notify import Notifier
 from perno.services import automat_control as ctl
 from perno.services import sending
@@ -59,6 +60,25 @@ class SettingsTests(ControlCase):
         with self.assertRaises(ar.SettingsInvalid):
             self.save(daily_cap=0)
         self.assertEqual(self.store.get_state().settings.daily_cap, 20)
+
+    def test_delay_bands_are_stored_and_come_back_in_the_response(self):
+        bands = [{"min": 60, "max": 120, "percent": 50}, {"min": 300, "max": 600, "percent": 50}]
+        result = self.save(delay_bands=bands)
+        self.assertEqual(result["settings"]["delay_bands"], bands)
+        self.assertEqual(len(self.store.get_state().settings.delay_bands), 2)
+
+    def test_changing_only_the_bands_while_armed_disarms(self):
+        put(self.db, sample_row(1))
+        self.save(daily_cap=5)
+        self.arm()
+        result = self.save(delay_bands=[{"min": 60, "max": 120, "percent": 100}])
+        self.assertTrue(result["disarmed"])
+
+    def test_bad_bands_change_nothing(self):
+        self.save(delay_bands=[{"min": 60, "max": 120, "percent": 100}])
+        with self.assertRaisesRegex(ar.SettingsInvalid, "razem 100%"):
+            self.save(delay_bands=[{"min": 60, "max": 120, "percent": 90}])
+        self.assertEqual(self.store.get_state().settings.delay_bands, delay_bands.single(60.0, 120.0))
 
     def test_saving_while_armed_disarms_and_says_so(self):
         put(self.db, sample_row(1))
@@ -187,6 +207,14 @@ class PreviewTests(ControlCase):
     def test_empty_queue(self):
         data = ctl.preview(self.db, self.store, self.clock.now)
         self.assertEqual((data["queue"], data["send_days"], data["last_day"], data["plan"]), (0, 0, None, []))
+
+    def test_reports_the_mean_delay_and_how_many_mails_fit_in_the_window(self):
+        self.save(window_start="09:00", window_end="16:00")
+        data = ctl.preview(self.db, self.store, self.clock.now)
+        self.assertEqual((data["delay_mean"], data["window_mails"]), (82.5, 306))
+        self.save(delay_bands=[{"min": 60, "max": 120, "percent": 50}, {"min": 1200, "max": 3600, "percent": 50}])
+        data = ctl.preview(self.db, self.store, self.clock.now)
+        self.assertEqual((data["delay_mean"], data["window_mails"]), (1245.0, 21))
 
 
 class StatusTests(ControlCase):
