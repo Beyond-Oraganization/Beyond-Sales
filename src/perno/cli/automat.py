@@ -27,6 +27,7 @@ from perno import settings as cfg
 from perno.db import Database, DbError
 from perno.db.automat_store import AutomatStore, DaemonActive
 from perno.domain import automat_rules as ar
+from perno.domain import delay_bands as delays
 from perno.domain import segments
 from perno.logging_setup import configure_logging
 from perno.notify import Notification
@@ -77,6 +78,13 @@ def settings_from_flags(args: argparse.Namespace) -> dict:
                       ("company_gap", "company_gap_days")):
         if getattr(args, flag) is not None:
             raw[key] = getattr(args, flag)
+    if args.delay_bands is not None:
+        if "delay_min" in raw or "delay_max" in raw:
+            raise ar.SettingsInvalid("Podaj albo --delay-bands, albo --delay-min i --delay-max (jedno zastępuje drugie).")
+        try:
+            raw["delay_bands"] = delays.to_json(delays.parse_text(args.delay_bands))
+        except delays.BandsInvalid as exc:
+            raise ar.SettingsInvalid(str(exc)) from None
     if args.window:
         start, _, end = args.window.partition("-")
         raw.update(window_start=start, window_end=end)
@@ -88,12 +96,20 @@ def settings_from_flags(args: argparse.Namespace) -> dict:
     return raw
 
 
+def describe_delays(bands: tuple) -> list:
+    """Odstęp między mailami: jeden zakres w jednej linii, kilka przedziałów jako lista z prawdopodobieństwami."""
+    if len(bands) == 1:
+        return [f"  odstęp między mailami: {bands[0].low:g}–{bands[0].high:g} s"]
+    return ["  odstęp między mailami (przedział losowany z prawdopodobieństwem):",
+            *(f"    {delays.format_band(band)}" for band in bands)]
+
+
 def describe_settings(s: ar.AutomatSettings) -> list:
     """Limity do pokazania człowiekowi (przed potwierdzeniem Startu i w `status`)."""
     days = ", ".join(ar.WEEKDAY_LABELS[d] for d in s.weekdays)
     return [f"  dzienny limit:     {s.daily_cap} (na każdą skrzynkę)", f"  dni wysyłki:       {days}",
             f"  okno godzin:       {s.window_start:%H:%M}–{s.window_end:%H:%M}",
-            f"  odstęp między mailami: {s.delay_min:g}–{s.delay_max:g} s",
+            *describe_delays(s.delay_bands),
             f"  segment:           {s.segment}", f"  kraje:             {', '.join(s.countries) or 'wszystkie'}",
             f"  horyzont planu:    {s.horizon_days} dni (potem trzeba potwierdzić od nowa)",
             f"  pauza po błędach z rzędu: {s.max_consecutive_errors}",
@@ -259,8 +275,11 @@ def build_parser() -> argparse.ArgumentParser:
     limits.add_argument("--daily-cap", type=int)
     limits.add_argument("--window", metavar="GG:MM-GG:MM")
     limits.add_argument("--days", metavar="pn,wt,... lub pn-pt")
-    limits.add_argument("--delay-min", type=float)
-    limits.add_argument("--delay-max", type=float)
+    limits.add_argument("--delay-min", type=float, help="najmniejszy odstęp między mailami (s); zastępuje przedziały jednym zakresem")
+    limits.add_argument("--delay-max", type=float, help="największy odstęp między mailami (s); zastępuje przedziały jednym zakresem")
+    limits.add_argument("--delay-bands", metavar="OD-DO=%,…",
+                        help="przedziały odstępu z prawdopodobieństwem, razem 100%%, np. 1m-2m=50,5m-10m=40,20m-60m=10 "
+                             "(czas w sekundach albo z końcówką s / m)")
     limits.add_argument("--segment", type=lambda text: "both" if text == "both" else segments.normalize(text),
                         help="both albo nazwa segmentu (np. eventy, kancelarie).")
     limits.add_argument("--countries", help="kody ISO po przecinku (np. PL,DE); „_foreign” = spoza Polski; puste = wszystkie")

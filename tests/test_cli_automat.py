@@ -80,6 +80,32 @@ class LimitsTests(CliCase):
         self.assertIn("brak (kilka adresów jednej firmy tego samego dnia)", out)
         self.assertEqual(self.ctx.store.get_state().settings.company_gap_days, 0)
 
+    def test_delay_bands_flag_is_saved_and_listed(self):
+        _, out = run_cmd(cli.cmd_limits, self.ctx, ["limits", "--delay-bands", "1m-2m=50,5m-10m=40,20m-60m=10"])
+        self.assertEqual(len(self.ctx.store.get_state().settings.delay_bands), 3)
+        for line in ("1 min – 2 min: 50%", "5 min – 10 min: 40%", "20 min – 60 min: 10%"):
+            self.assertIn(line, out)
+        _, again = run_cmd(cli.cmd_limits, self.ctx, ["limits"])
+        self.assertIn("20 min – 60 min: 10%", again)
+
+    def test_a_single_range_is_still_shown_on_one_line(self):
+        _, out = run_cmd(cli.cmd_limits, self.ctx, ["limits"])
+        self.assertIn("odstęp między mailami: 45–120 s", out)
+        _, out = run_cmd(cli.cmd_limits, self.ctx, ["limits", "--delay-bands", "30-90=100"])
+        self.assertIn("odstęp między mailami: 30–90 s", out)
+
+    def test_old_delay_flags_replace_the_bands_with_one_range(self):
+        run_cmd(cli.cmd_limits, self.ctx, ["limits", "--delay-bands", "1m-2m=50,5m-10m=50"])
+        _, out = run_cmd(cli.cmd_limits, self.ctx, ["limits", "--delay-min", "20", "--delay-max", "40"])
+        self.assertIn("odstęp między mailami: 20–40 s", out)
+        self.assertEqual(len(self.ctx.store.get_state().settings.delay_bands), 1)
+
+    def test_bad_bands_text_and_mixing_with_old_flags_are_refused(self):
+        for argv in (["--delay-bands", "1m-2m=60"], ["--delay-bands", "nonsense"], ["--delay-bands", "1m-2m=100", "--delay-min", "20"]):
+            with self.subTest(argv=argv), self.assertRaises(ar.SettingsInvalid):
+                run_cmd(cli.cmd_limits, self.ctx, ["limits", *argv])
+        self.assertEqual(self.ctx.store.get_state().settings, ar.DEFAULT_SETTINGS)
+
     def test_a_bad_gap_is_refused(self):
         with self.assertRaises(ar.SettingsInvalid):
             run_cmd(cli.cmd_limits, self.ctx, ["limits", "--company-gap", "99"])
