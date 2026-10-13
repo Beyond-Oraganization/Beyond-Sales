@@ -27,59 +27,10 @@ const composer = {open: {}, timer: null, pending: null, text: null, status: null
 
 // ---- pomocnicze ---------------------------------------------------------------------------------------------------
 
-// Węzeł DOM bez innerHTML: `props.text` to tekst, `class`/`aria-*`/`data-*` to atrybuty, `on*` to nasłuchy, reszta dzieci (tekst albo węzły).
-function h(tag, props, ...children) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(props || {})) {
-    if (value === null || value === undefined || value === false) continue;
-    if (key === 'class') node.className = value;
-    else if (key === 'text') node.textContent = String(value);
-    else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2), value);
-    else node.setAttribute(key, value === true ? '' : String(value));
-  }
-  for (const child of children.flat()) {
-    if (child === null || child === undefined || child === false) continue;
-    node.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
-  }
-  return node;
-}
-
-function setChildren(node, children) {
-  node.replaceChildren(...children.filter(Boolean));
-}
-
-const MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
-const pad = (n) => String(n).padStart(2, '0');
-
-// „12:04” dla dzisiejszych, „5 paź” dla tegorocznych, „5 paź 2025” dla starszych; pełny czas w title.
-function shortDate(iso) {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  const now = new Date();
-  if (date.toDateString() === now.toDateString()) return pad(date.getHours()) + ':' + pad(date.getMinutes());
-  return date.getDate() + ' ' + MONTHS[date.getMonth()] + (date.getFullYear() === now.getFullYear() ? '' : ' ' + date.getFullYear());
-}
-
-function longDate(iso) {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.getDate() + ' ' + MONTHS[date.getMonth()] + ' ' + date.getFullYear() + ', ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
-}
-
 function pluralNew(n) {
   if (n === 1) return '1 nowa odpowiedź';
   const last = n % 10;
   return n + (last >= 2 && last <= 4 && (n % 100 < 10 || n % 100 >= 20) ? ' nowe odpowiedzi' : ' nowych odpowiedzi');
-}
-
-// Tylko http(s): adres strony z bazy może pochodzić ze skanu cudzych stron.
-function safeUrl(raw) {
-  try {
-    const url = new URL(String(raw || '').includes('://') ? String(raw) : 'https://' + String(raw || ''));
-    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname.includes('.') ? url.href : '';
-  } catch (error) { return ''; }
 }
 
 function statusBadge(code) {
