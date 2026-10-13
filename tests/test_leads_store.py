@@ -121,7 +121,7 @@ class ListTests(LeadCase):
         super().setUp()
         self.reply(1, rp.RATING_POSITIVE, when=T0)
         self.reply(2, rp.RATING_NEUTRAL, when=T0 + timedelta(hours=5), who="Bartek Sbe", addr="b@sbe.pl")
-        self.reply(3, rp.RATING_POSITIVE, when=T0 + timedelta(hours=9), who="Celina Kancelaria", addr="c@kancelaria.pl", thread="kancelarie-003")
+        self.reply(3, rp.RATING_POSITIVE, when=T0 + timedelta(hours=9), who="Celina Kowal", addr="c@kancelaria.pl", thread="kancelarie-003")
         self.reply(4, rp.RATING_NEGATIVE)
         self.leads.sync(LATER)
         self.leads.update_fields("eventy-001", {"about": "Wynajem limuzyn", "phone": "+48 600 100 200"}, by=lr.BY_AI, now=LATER)

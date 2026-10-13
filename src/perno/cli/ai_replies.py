@@ -7,12 +7,12 @@ robią kopię tabel w backup/. Wywoływane z `perno.cli.ai`."""
 from __future__ import annotations
 
 import os
-import sys
 from datetime import date, datetime
 from typing import Optional
 
 from perno import settings as cfg
 from perno.cli.entries import read_entries
+from perno.cli.plan_output import plan_flags, print_plan, refused
 from perno.db import Database, DbError
 from perno.db.replies_store import ReplyStore
 from perno.domain.reply_listing import ReplyRequestError
@@ -55,22 +55,17 @@ def add_parsers(sub) -> None:
     rate.add_argument("--ocena", choices=RATING_CHOICES, help="Ocena dla --id.")
     rate.add_argument("--notatka", default="", help="Krótkie uzasadnienie dla --id (do 200 znaków).")
     rate.add_argument("--wypisanie", action="store_true", help="Oznacz wątek jako prośbę o brak kontaktu (dla --id).")
-    _plan_flags(rate)
+    plan_flags(rate)
 
     draft = actions.add_parser("szkic", help="Zapisz szkice odpowiedzi do zatwierdzenia w panelu (plik JSON {id, body}). Nic nie wysyła.")
     draft.add_argument("json", help="Plik z listą szkiców.")
-    _plan_flags(draft)
+    plan_flags(draft)
 
     report = actions.add_parser("raport", help="Raport statystyk odpowiedzi (Markdown).")
     report.add_argument("--od", metavar="RRRR-MM-DD", help="Maile wysłane od tego dnia.")
     report.add_argument("--do", metavar="RRRR-MM-DD", help="Maile wysłane do tego dnia (włącznie).")
     report.add_argument("--segment", action="append", default=[], help="Tylko ten typ firm (można powtórzyć).")
     report.add_argument("--zapisz", action="store_true", help="Zapisz też do raporty/odpowiedzi_RRRRMMDD.md (poza gitem).")
-
-
-def _plan_flags(parser) -> None:
-    parser.add_argument("--dry-run", action="store_true", help="Sprawdź i pokaż, co by się zapisało; nic nie zapisuje.")
-    parser.add_argument("--czesciowo", action="store_true", help="Zapisz poprawne wpisy, wypisz odrzucone (domyślnie wszystko albo nic).")
 
 
 def imap_factory():
@@ -193,27 +188,11 @@ def _entries(args) -> list:
     return [{**entry, "optout": True}] if args.wypisanie else [entry]
 
 
-def _print_plan(plan: flow.WritePlan, labels: dict) -> None:
-    for item in plan.items:
-        print(f"  OK  {item['id']:<22} {labels.get(item['id'], '')}")
-    for thread_id, message in plan.warnings:
-        print(f"  UWAGA {thread_id}: {message}")
-    for thread_id, message in plan.errors:
-        print(f"  BŁĄD {thread_id}: {message}", file=sys.stderr)
-
-
-def _refused(plan: flow.WritePlan, args) -> bool:
-    if plan.errors and not args.czesciowo:
-        print(f"Przerwano: {len(plan.errors)} błędów, nic nie zapisano (popraw plik albo użyj --czesciowo).", file=sys.stderr)
-        return True
-    return False
-
-
 def cmd_rate(args) -> int:
     _, db, store = open_replies(args)
     plan = flow.plan_ratings(store, _entries(args))
-    _print_plan(plan, {item["id"]: f"{item['rating']}{'  [wypisanie]' if item['optout'] else ''}" for item in plan.items})
-    if _refused(plan, args):
+    print_plan(plan, {item["id"]: f"{item['rating']}{'  [wypisanie]' if item['optout'] else ''}" for item in plan.items})
+    if refused(plan, args):
         return 1
     if args.dry_run:
         print(f"--dry-run: {len(plan.items)} ocen gotowych do zapisu, nic nie zapisano.")
@@ -226,8 +205,8 @@ def cmd_rate(args) -> int:
 def cmd_draft(args) -> int:
     config, db, store = open_replies(args)
     plan = flow.plan_drafts(store, config, read_entries(args.json))
-    _print_plan(plan, {item["id"]: f"{len(item['body'])} znaków" for item in plan.items})
-    if _refused(plan, args):
+    print_plan(plan, {item["id"]: f"{len(item['body'])} znaków" for item in plan.items})
+    if refused(plan, args):
         return 1
     if args.dry_run:
         print(f"--dry-run: {len(plan.items)} szkiców gotowych do zapisu, nic nie zapisano.")

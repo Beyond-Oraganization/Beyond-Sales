@@ -99,14 +99,15 @@ def build_briefs(store: ReplyStore, *, limit: int, after: str = "", ids: Sequenc
 
 # ---- oceny --------------------------------------------------------------------------------------------------------------
 
-def _entry_id(entry: Any) -> str:
+def entry_id(entry: Any) -> str:
+    """Id wpisu z pliku AI (pusty tekst, gdy wpis nie jest obiektem z polem id)."""
     return str(entry.get("id") or "") if isinstance(entry, dict) else ""
 
 
-def _shape_problem(entry: Any, allowed: set, seen: set) -> str:
+def shape_problem(entry: Any, allowed: set, seen: set) -> str:
     """Co jest nie tak z kształtem wpisu (obiekt z id, id nie powtórzone, tylko znane pola); '' = w porządku. Powtórzone id to
     błąd także wtedy, gdy pierwszy wpis z tym id był niepoprawny."""
-    thread_id = _entry_id(entry)
+    thread_id = entry_id(entry)
     if not thread_id:
         return "wpis musi być obiektem z polem id"
     duplicate = thread_id in seen
@@ -122,9 +123,9 @@ def plan_ratings(store: ReplyStore, entries: Sequence[Any]) -> WritePlan:
     plan = WritePlan()
     seen: set = set()
     for entry in entries:
-        thread_id = _entry_id(entry)
+        thread_id = entry_id(entry)
         label = thread_id or "?"
-        problem = _shape_problem(entry, RATING_FIELDS, seen)
+        problem = shape_problem(entry, RATING_FIELDS, seen)
         verdict = ("error", problem) if problem else _rating_problem(store, thread_id, entry)
         if verdict is None:
             plan.items.append({"id": thread_id, "rating": entry["rating"], "note": reply_rules.check_note(entry.get("note", "")), "optout": entry.get("optout") is True})
@@ -178,8 +179,8 @@ def plan_drafts(store: ReplyStore, config: Mapping, entries: Sequence[Any]) -> W
     plan = WritePlan()
     seen: set = set()
     for entry in entries:
-        thread_id = _entry_id(entry)
-        problem = _shape_problem(entry, DRAFT_FIELDS, seen) or _draft_problem(store, config, thread_id, entry.get("body"))
+        thread_id = entry_id(entry)
+        problem = shape_problem(entry, DRAFT_FIELDS, seen) or _draft_problem(store, config, thread_id, entry.get("body"))
         if problem:
             plan.errors.append((thread_id or "?", problem))
         else:
@@ -231,4 +232,5 @@ def report_path(base_dir: str, now: datetime) -> str:
     return os.path.join(base_dir, "raporty", f"odpowiedzi_{now:%Y%m%d}.md")
 
 
-__all__ = ["BriefBatch", "WritePlan", "brief_for", "build_briefs", "plan_drafts", "plan_ratings", "report_path", "write_drafts", "write_ratings"]
+__all__ = ["BriefBatch", "WritePlan", "brief_for", "build_briefs", "entry_id", "plan_drafts", "plan_ratings", "report_path", "shape_problem", "write_drafts",
+           "write_ratings"]

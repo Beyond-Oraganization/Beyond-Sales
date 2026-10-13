@@ -114,6 +114,15 @@ class ReadModels(StoreCore):
                 .order_by(strony.c.glebokosc, strony.c.id).limit(max(1, limit))
             ).all()]
 
+    def firm_for_mails(self, mail_ids: list) -> Optional[int]:
+        """Id firmy skrapera, do której należy któryś z podanych maili kampanii (None, gdy firma nie jest w skanerze)."""
+        if not mail_ids:
+            return None
+        with self._read() as conn:
+            row = conn.execute(sa.select(firmy_maile.c.firma_id).where(firmy_maile.c.maile_id.in_(mail_ids))
+                               .order_by(firmy_maile.c.firma_id).limit(1)).first()
+        return int(row[0]) if row else None
+
     def scraped_emails(self, firma_id: int) -> list:
         """E-maile znalezione na stronach firmy: w domenie firmy pierwsze, potem wg liczby stron, na których wystąpiły."""
         with self._read() as conn:

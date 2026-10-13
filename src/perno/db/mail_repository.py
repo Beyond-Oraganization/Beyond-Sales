@@ -279,14 +279,14 @@ class MailRepository(ListingQueries, CompanyMails):
 
     @contextmanager
     def dump_table(self, table: sa.Table = maile):
-        """`(nazwy kolumn, wiersze)` całej tabeli (`maile` albo `podmioty`) w kolejności id — także z kolumnami, których
+        """`(nazwy kolumn, wiersze)` całej tabeli (`maile`, `podmioty` albo tabela odpowiedzi) w kolejności klucza głównego — także z kolumnami, których
         definicja w kodzie jeszcze nie zna (baza sprzed uaktualnienia schematu). Kolumny mają typy z definicji tabeli,
         nieznane idą jako tekst."""
         by_name = {column.name: column for column in table.columns}
         with self.engine.connect() as conn:
             present = [column["name"] for column in sa.inspect(conn).get_columns(table.name)]
             selected = [by_name[name] if name in by_name else sa.column(name) for name in present]
-            result = conn.execute(sa.select(*selected).select_from(table).order_by(by_name["id"]))
+            result = conn.execute(sa.select(*selected).select_from(table).order_by(*table.primary_key.columns))
             yield list(result.keys()), result
 
     # ---- zapis --------------------------------------------------------

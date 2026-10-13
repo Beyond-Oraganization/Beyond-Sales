@@ -112,6 +112,9 @@ class CompletenessTests(unittest.TestCase):
         self.assertTrue(lr.looks_like_person("Anna Nowak", "MyLimo"))
         for bad in ("", "anna@mylimo.pl", "Biuro24", "mylimo", "  MyLimo ", "x" * 81):
             self.assertFalse(lr.looks_like_person(bad, "MyLimo"), bad)
+        self.assertFalse(lr.looks_like_person("BusCharter", "BusCharter Śląsk"), "nazwa będąca częścią nazwy firmy to marka")
+        self.assertFalse(lr.looks_like_person("MyLimo Wynajem Limuzyn Sp. z o.o.", "MyLimo"), "nazwa rozszerzająca nazwę firmy to marka")
+        self.assertTrue(lr.looks_like_person("Piotr Taxi", "Taxi Kraków Express"))
 
 
 class ListingRequestTests(unittest.TestCase):

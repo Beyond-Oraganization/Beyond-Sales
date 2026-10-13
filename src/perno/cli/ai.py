@@ -25,6 +25,11 @@ Odpowiedzi firm (pobieranie z poczty tylko do odczytu; AI ocenia i pisze szkice,
   python3 ai.py odpowiedzi szkic szkice.json [--dry-run] [--czesciowo]                # szkice odpowiedzi do zatwierdzenia w panelu
   python3 ai.py odpowiedzi raport [--od DATA] [--do DATA] [--segment TYP] [--zapisz]  # statystyki odpowiedzi (Markdown)
 
+Leady (firmy z odpowiedzią pozytywną albo neutralną; AI uzupełnia kontakt, telefon, e-mail i opis, pola człowieka są nietykalne):
+  python3 ai.py leady stan                                                            # liczniki: aktywne, kompletne, do uzupełnienia, wycofane
+  python3 ai.py leady brief [--limit 10] [--po ID] [--id ID...] [--wszystkie]         # skrót leadów do uzupełnienia (odpowiedzi z podpisem, treść w ogrodzeniu)
+  python3 ai.py leady zapisz leady.json [--dry-run] [--czesciowo]                     # zapisz pola (albo --id ID --kontakt ... --telefon ... --email ... --opis ...)
+
 Nic tu nie wysyła maili: zapisane wiersze mają status „Do wysłania”, a wysyłkę zatwierdza człowiek (panel / Automat).
 Każde polecenie zmieniające bazę najpierw zapisuje jej kopię w backup/.
 """
@@ -36,7 +41,7 @@ import sys
 from typing import Optional
 
 from perno import settings as cfg
-from perno.cli import ai_replies, ai_scrape
+from perno.cli import ai_leads, ai_replies, ai_scrape
 from perno.cli import scrape as scrape_cli
 from perno.cli.entries import read_entries
 from perno.cli.firms import segment_arg
@@ -98,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("akcja", choices=("stop", "wznow"))
     ai_scrape.add_parsers(sub)
     ai_replies.add_parsers(sub)
+    ai_leads.add_parsers(sub)
     return parser
 
 
@@ -217,7 +223,7 @@ def cmd_scan(args) -> int:
 
 
 COMMANDS = {"szablony": cmd_templates, "znane": cmd_known, "dodaj": cmd_add, "status": cmd_status, "brief": cmd_brief,
-            "zapisz": cmd_save, "pomin": cmd_skip, "skan": cmd_scan, **ai_scrape.COMMANDS, **ai_replies.COMMANDS}
+            "zapisz": cmd_save, "pomin": cmd_skip, "skan": cmd_scan, **ai_scrape.COMMANDS, **ai_replies.COMMANDS, **ai_leads.COMMANDS}
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -225,7 +231,7 @@ def main(argv: Optional[list] = None) -> int:
     try:
         return COMMANDS[args.command](args)
     except (DbError, ConfigError, SettingsError, firms_import.FirmsError, scan_control.ScanRequestError, RunActive,
-            template_catalog.UnknownTemplate, OSError, ValueError, *ai_scrape.ERRORS, *ai_replies.ERRORS) as exc:
+            template_catalog.UnknownTemplate, OSError, ValueError, *ai_scrape.ERRORS, *ai_replies.ERRORS, *ai_leads.ERRORS) as exc:
         print(f"BŁĄD: {exc}", file=sys.stderr)
         return 1
 

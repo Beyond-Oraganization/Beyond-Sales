@@ -167,8 +167,10 @@ def completeness(values: Mapping) -> int:
 
 
 def looks_like_person(display_name: str, company: str) -> bool:
-    """Czy nazwa nadawcy z nagłówka nadaje się na kontakt: niepusta, bez adresu i cyfr, krótka i inna niż nazwa firmy."""
+    """Czy nazwa nadawcy z nagłówka nadaje się na kontakt: niepusta, bez adresu i cyfr, krótka i niebędąca nazwą firmy (ani jej częścią,
+    ani jej rozszerzeniem: „BusCharter” przy firmie „BusCharter Śląsk” to marka, nie osoba)."""
     name = " ".join((display_name or "").split())
     if not name or len(name) > 80 or "@" in name or any(ch.isdigit() for ch in name):
         return False
-    return name.casefold() != " ".join((company or "").split()).casefold()
+    brand = " ".join((company or "").split()).casefold()
+    return bool(name.casefold()) and not (brand and (name.casefold() in brand or brand in name.casefold()))
