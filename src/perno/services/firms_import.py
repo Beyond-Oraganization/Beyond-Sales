@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 from perno.db import Database, DbError, InvalidValue, format_value, from_api
 from perno.db import companies as companies_table
 from perno.db import maile as maile_table
-from perno.db.replies_schema import odp_oceny, odp_watki, odp_wiadomosci
+from perno.db.replies_schema import odp_leady, odp_oceny, odp_watki, odp_wiadomosci
 from perno.domain import countries, segments
 from perno.domain import statuses as st
 from perno.scraper.urls import host_key
@@ -51,7 +51,7 @@ def domain_key(url: object) -> Optional[str]:
 
 # ---- kopia zapasowa ------------------------------------------------------------------
 
-REPLY_BACKUPS = (("OdpWatki", odp_watki), ("OdpWiadomosci", odp_wiadomosci), ("OdpOceny", odp_oceny))
+REPLY_BACKUPS = (("OdpWatki", odp_watki), ("OdpWiadomosci", odp_wiadomosci), ("OdpOceny", odp_oceny), ("OdpLeady", odp_leady))
 
 def _unused_path(directory: str, prefix: str, stamp: str, label: str) -> str:
     path = os.path.join(directory, f"{prefix}_{stamp}_przed-{label}.csv")

@@ -60,7 +60,8 @@ class ReplyListRequest:
     size: int = DEFAULT_PAGE_SIZE
 
 
-def _choices(value: Any, name: str, *, lower: bool = False) -> tuple:
+def choices(value: Any, name: str, *, lower: bool = False) -> tuple:
+    """Lista nazw z żądania (segmenty, kraje…): bez powtórzeń, o złym typie błąd żądania. Używa jej też lista leadów."""
     if value is None:
         return ()
     if not isinstance(value, list) or len(value) > MAX_CHOICES or not all(isinstance(item, str) and item for item in value):
@@ -79,7 +80,8 @@ def _day(value: Any, name: str) -> Optional[date]:
         raise ReplyRequestError(f"Pole {name} nie jest poprawną datą.") from None
 
 
-def _integer(value: Any, name: str, default: int, low: int, high: int) -> int:
+def integer(value: Any, name: str, default: int, low: int, high: int) -> int:
+    """Liczba całkowita z żądania w granicach `low`-`high` (`bool` to nie liczba); brak pola daje `default`."""
     if value is None:
         return default
     if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
@@ -105,10 +107,10 @@ def parse_list_request(payload: Mapping) -> ReplyListRequest:
         raise ReplyRequestError("Data początkowa jest późniejsza niż końcowa.")
     flt = ReplyFilter(
         tab=tab if tab in TABS else DEFAULT_TAB, words=split_words(payload.get("q")),
-        mailboxes=_choices(payload.get("mailboxes"), "mailboxes", lower=True), segments=_choices(payload.get("segments"), "segments"),
-        countries=_choices(payload.get("countries"), "countries"), since=since, until=until)
-    return ReplyListRequest(flt, _integer(payload.get("page"), "page", 1, 1, 10**6),
-                            _integer(payload.get("size"), "size", DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE))
+        mailboxes=choices(payload.get("mailboxes"), "mailboxes", lower=True), segments=choices(payload.get("segments"), "segments"),
+        countries=choices(payload.get("countries"), "countries"), since=since, until=until)
+    return ReplyListRequest(flt, integer(payload.get("page"), "page", 1, 1, 10**6),
+                            integer(payload.get("size"), "size", DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE))
 
 
 @dataclass(frozen=True)
@@ -127,5 +129,5 @@ def parse_report_request(payload: Mapping) -> ReportFilter:
     since, until = _day(payload.get("from"), "from"), _day(payload.get("to"), "to")
     if since and until and since > until:
         raise ReplyRequestError("Data początkowa jest późniejsza niż końcowa.")
-    return ReportFilter(since, until, _choices(payload.get("segments"), "segments"), _choices(payload.get("countries"), "countries"),
-                        _choices(payload.get("mailboxes"), "mailboxes", lower=True))
+    return ReportFilter(since, until, choices(payload.get("segments"), "segments"), choices(payload.get("countries"), "countries"),
+                        choices(payload.get("mailboxes"), "mailboxes", lower=True))

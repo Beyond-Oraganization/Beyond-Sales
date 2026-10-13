@@ -9,6 +9,8 @@ z README nie obejmują REFERENCES).
 * `odp_oceny` — dziennik ocen wątku (kto, kiedy, jaka): audyt i cofanie.
 * `odp_stan` — kursor pobierania na (skrzynka, folder).
 * `odp_przebieg` — jeden wiersz (id = 1): blokada przebiegu pobierania i podsumowanie ostatniego.
+* `odp_leady` — lead = firma, która odpowiedziała pozytywnie lub neutralnie: kontakt, e-mail, czym się zajmuje, etap, notatka
+  i pochodzenie każdego pola (AI albo człowiek). Klucz to id firmy, nie wątku: firma może mieć kilka wątków.
 """
 
 from __future__ import annotations
@@ -128,4 +130,24 @@ odp_przebieg = sa.Table(
     **_OPTS,
 )
 
-TABLE_NAMES = tuple(t.name for t in (odp_watki, odp_wiadomosci, odp_oceny, odp_stan, odp_przebieg))
+odp_leady = sa.Table(
+    "odp_leady", replies_metadata,
+    sa.Column("company_id", sa.String(32), primary_key=True),  # klucz firmy (`company_sql.company_key`), nie id wątku
+    sa.Column("name", sa.String(255)),
+    sa.Column("website", sa.String(500)),
+    sa.Column("contact", sa.String(255)),  # osoba kontaktowa: imię, nazwisko, stanowisko
+    sa.Column("phone", sa.String(64)),
+    sa.Column("email", sa.String(320)),
+    sa.Column("about", sa.Text),  # czym firma się zajmuje (limit pilnuje `domain/lead_rules`)
+    sa.Column("note", sa.Text),  # notatka człowieka
+    sa.Column("stage", sa.String(16), nullable=False, server_default="new"),  # new | talking | meeting | won | lost
+    sa.Column("src", sa.String(300)),  # JSON {"pole": "ai" | "human"}; brak klucza = pole z bazy albo z zasiewu
+    sa.Column("created_at", sa.DateTime),
+    sa.Column("updated_at", sa.DateTime),
+    sa.Column("updated_by", sa.String(8)),  # human | ai
+    sa.Index("ix_odp_leady_stage", "stage"),
+    sa.Index("ix_odp_leady_updated", "updated_at"),
+    **_OPTS,
+)
+
+TABLE_NAMES = tuple(t.name for t in (odp_watki, odp_wiadomosci, odp_oceny, odp_stan, odp_przebieg, odp_leady))
