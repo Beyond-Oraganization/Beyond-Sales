@@ -16,3 +16,4 @@ class Page:
     order: int = 100
     in_nav: bool = True
     badge: Optional[Callable] = None  # (ctx) -> int: licznik przy nazwie w menu (np. nowe odpowiedzi); 0 = bez licznika
+    badge_label: str = "nowych"  # opis licznika dla czytników ekranu: „3 nowych”, „2 do uzupełnienia”

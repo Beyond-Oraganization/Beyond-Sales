@@ -1,0 +1,28 @@
+<div class="leads" id="leads">
+  <header class="ld-top">
+    <div class="ld-head">
+      <div>
+        <h1>Leady</h1>
+        <p class="ld-sub" id="summary" role="status"></p>
+      </div>
+      <div class="ld-actions">
+        <button type="button" id="exportBtn" class="btn">Eksport CSV</button>
+        <button type="button" id="helpBtn" class="btn plain" title="Skróty klawiszy (?)" aria-label="Skróty klawiszy">?</button>
+      </div>
+    </div>
+    <div class="ld-bar">
+      <div class="ld-tabs" id="tabs" role="tablist" aria-label="Widoki leadów"></div>
+      <div class="ld-tools">
+        <input type="search" id="q" class="ld-search" placeholder="Szukaj: firma, kontakt, e-mail, opis…" autocomplete="off" aria-label="Szukaj w leadach">
+        <select id="stageSel" aria-label="Etap"><option value="">Wszystkie etapy</option></select>
+        <select id="segmentSel" aria-label="Segment"><option value="">Wszystkie segmenty</option></select>
+        <select id="sortSel" aria-label="Sortowanie"></select>
+      </div>
+    </div>
+  </header>
+  <main class="ld-body">
+    <section id="list" class="ld-list" aria-label="Lista leadów"></section>
+  </main>
+  <div class="ld-scrim" id="scrim" hidden></div>
+  <aside class="ld-drawer" id="drawer" hidden aria-label="Szczegóły leada"></aside>
+</div>

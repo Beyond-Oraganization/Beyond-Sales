@@ -12,6 +12,7 @@ from typing import Callable, Optional, Sequence
 
 from perno.db import Database
 from perno.db.automat_store import AutomatStore
+from perno.db.leads_store import LeadStore
 from perno.db.replies_store import ReplyStore
 from perno.scraper.store import Store
 from perno.services import automat_control, imap_access, sending
@@ -62,6 +63,13 @@ def open_replies_store(db: Database) -> ReplyStore:
     return store
 
 
+def open_leads_store(db: Database) -> LeadStore:
+    """Magazyn leadów na bazie panelu; jeden na aplikację, tabele zakładane od razu (te same co przy odpowiedziach)."""
+    store = LeadStore(db)
+    store.ensure_schema()
+    return store
+
+
 @dataclass
 class AppContext:
     db: Database
@@ -73,6 +81,7 @@ class AppContext:
     scan_store: Lazy[Store] = field(init=False)
     automat_store: Lazy[AutomatStore] = field(init=False)
     replies_store: Lazy[ReplyStore] = field(init=False)
+    leads_store: Lazy[LeadStore] = field(init=False)
     reply_runner: FetchRunner = field(default_factory=FetchRunner)  # pobieranie odpowiedzi w tle (jedno naraz)
     automat_probes: automat_control.Probes = field(default_factory=automat_control.Probes)
     mailbox_tests: dict = field(default_factory=dict)  # adres (małymi literami) → wynik ostatniego testu połączenia z panelu
@@ -81,6 +90,7 @@ class AppContext:
         self.scan_store = Lazy(lambda: open_scan_store(self.db))
         self.automat_store = Lazy(lambda: open_automat_store(self.db))
         self.replies_store = Lazy(lambda: open_replies_store(self.db))
+        self.leads_store = Lazy(lambda: open_leads_store(self.db))
 
     def notify_channels(self) -> list:
         """Kanały powiadomień z kompletnym ustawieniem w config.env (macos, ntfy, email)."""

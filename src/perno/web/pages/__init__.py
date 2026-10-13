@@ -6,6 +6,6 @@ Nowa strona: utwórz moduł `src/perno/web/pages/<nazwa>.py` z obiektem `PAGE = 
 
 from __future__ import annotations
 
-from perno.web.pages import automat, config, export, mailing, odpowiedzi, scraper
+from perno.web.pages import automat, config, export, leady, mailing, odpowiedzi, scraper
 
-PAGES = [mailing.PAGE, odpowiedzi.PAGE, automat.PAGE, export.PAGE, scraper.PAGE, config.PAGE]
+PAGES = [mailing.PAGE, odpowiedzi.PAGE, leady.PAGE, automat.PAGE, export.PAGE, scraper.PAGE, config.PAGE]

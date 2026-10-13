@@ -19,6 +19,7 @@ from perno.scraper.store import DomainTaken, FirmaBusy, InvalidFirma, NotFound, 
 from perno.services.automat_control import ArmRefused, DaemonRequestError, StaleConfirmation
 from perno.services.bulk import AckRequired
 from perno.services.company_mails import DaemonOutdated
+from perno.services.leads import LeadNotFound
 from perno.services.replies import ThreadNotFound
 from perno.services.replies_send import AckRequired as ReplyAckRequired
 from perno.services.replies_send import SendFailed, SendRefused
@@ -30,7 +31,7 @@ from perno.web.http import HttpError, Response, error_response
 
 # (typy wyjątków, kod HTTP): komunikatem jest tekst wyjątku
 STATUS_BY_ERROR: tuple = (
-    ((RowNotFound, NotFound, ThreadNotFound), 404),
+    ((RowNotFound, NotFound, ThreadNotFound, LeadNotFound), 404),
     ((EmptyDatabase, RunActive, FirmaBusy, DomainTaken, StaleConfirmation, DaemonOutdated), 409),
     ((InvalidValue, ConfigError, InvalidFirma, SettingsError, NotSendable, ScanRequestError,
       SettingsInvalid, ArmRefused, ConfigValueError, DaemonRequestError, LaunchdError, ReplyRequestError, RuleError, ComposeError, SendRefused), 400),

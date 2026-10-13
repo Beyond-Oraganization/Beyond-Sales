@@ -42,7 +42,7 @@ def _badge(page, ctx) -> int:
 def _nav_link(page, ctx, active_key: str) -> tuple:
     """(HTML odnośnika, licznik): z licznikiem przy nazwie, gdy jest większy od zera."""
     count = _badge(page, ctx)
-    badge = f'<span class="topnav-badge" role="status" aria-label="{count} nowych">{count}</span>' if count else ""
+    badge = f'<span class="topnav-badge" role="status" aria-label="{count} {html.escape(page.badge_label)}">{count}</span>' if count else ""
     current = ' aria-current="page"' if page.key == active_key else ""
     return f'<a class="topnav-link" href="{html.escape(page.path)}"{current}>{html.escape(page.label)}{badge}</a>', count
 
