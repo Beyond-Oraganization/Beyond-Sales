@@ -115,6 +115,9 @@ Otwiera `http://localhost:8765/` (serwer słucha wyłącznie na `127.0.0.1`). Me
 - **Odpowiedzi** — skrzynka odbiorcza dla odpowiedzi na nasze maile: lista wątków, wątek z edytorem odpowiedzi, ocena, raport.
   Szczegóły w sekcji 5d.
 
+- **Leady** — firmy, których odpowiedź oceniono jako pozytywną albo neutralną: nazwa, strona, kontakt, e-mail, telefon i czym się zajmują,
+  z etapem i notatką. Pola uzupełnia głównie AI, a Ty poprawiasz je w panelu. Szczegóły w sekcji 5e.
+
 - **Konfiguracja** — ustawienia z `config.env` w formularzu: poczta (skrzynki z wysyłką SMTP i odbiorem IMAP, z testem i stanem każdej skrzynki
   oraz przyciskiem „Sprawdź połączenie IMAP”), odpowiedzi, powiadomienia automatu i domyślne ustawienia skrapera. Szczegóły w sekcji 5b.
 
@@ -602,6 +605,7 @@ python3 ai.py szukaj test "rezerwacja online" --domeny             # fragmenty w
 python3 ai.py wyciagnij test --pole nip --pole cena --ma "rezerwacje=rezerwacja|booking" --dowod   # tabela CSV z polami
 python3 ai.py zbiory
 python3 ai.py odpowiedzi pobierz|doctor|stan|brief|ocen|szkic|raport   # odpowiedzi firm: patrz sekcja 5d
+python3 ai.py leady stan|brief|zapisz                                   # leady (kontakt, e-mail, opis): patrz sekcja 5e
 ```
 
 - **Typ firm (segment) jest dowolną etykietą** (małe litery, cyfry, myślniki; „Szkoły jazdy” zapisze się jako `szkoly-jazdy`).
@@ -709,6 +713,69 @@ python3 ai.py odpowiedzi raport [--od 2026-10-01] [--zapisz]            # statys
   uzupełnij `IMAP*_HOST` w Konfiguracji → `ai.py odpowiedzi doctor` → `ai.py odpowiedzi pobierz --dry-run` i porównanie z tym, co wiesz o
   odpowiedziach → `ai.py odpowiedzi pobierz`.
 
+## 5e. Leady (zakładka „Leady” i `ai.py leady`)
+
+**Lead** to firma, której odpowiedź (wątek z wiadomością człowieka) ma w zakładce Odpowiedzi ocenę **pozytywną albo neutralną**; także
+ocenę AI, jeszcze nieprzejrzaną (wiersz ma wtedy odznakę „AI” przy ocenie). Lead jest **jeden na firmę**, nawet gdy odpisano z kilku adresów
+(najlepsza ocena wątków firmy). Gdy ocenę zmienisz później na negatywną, lead nie znika: trafia do widoku **Wycofane** razem z danymi, a po
+powrocie oceny wraca na listę. Lead dostaje: **nazwę, stronę, kontakt** (osoba: imię, nazwisko, stanowisko), **e-mail, czym się zajmuje**,
+opcjonalny **telefon**, **etap** (Nowy, W rozmowie, Umówione, Wygrany, Odpadł; to nie jest status firmy z Wysyłki) i **notatkę**.
+
+**Zasiew.** Leady zakłada się same (`LeadStore.sync`) przy otwarciu zakładki, przy `ai.py leady brief|stan`; nic nie trzeba dodawać ręcznie.
+Nazwa i strona idą z danych firmy, **e-mail z adresu nadawcy ostatniej odpowiedzi** (w razie braku z adresu w kolejce), **kontakt z nazwy
+nadawcy**, jeśli wygląda na osobę (nie adres, nie nazwa firmy, bez cyfr). Opis działalności zostaje pusty: wpisuje go AI albo Ty (opis z bazy
+jest obok jako podpowiedź z przyciskiem „Użyj”). **Edycje leada nie zmieniają danych firmy** (nazwa firmy trafia do szablonów maili) ani
+niczego w kolejce wysyłki.
+
+**Pochodzenie pól (AI albo człowiek)** zapisuje kolumna `src`. Wpis AI ma w panelu znacznik „AI” i przycisk „Zatwierdź” (zamienia go na wpis
+człowieka bez zmiany wartości); AI nigdy nie nadpisuje pola, które wpisał albo zatwierdził człowiek (sprawdza to magazyn w transakcji,
+jak przy ocenach). Wyczyszczenie pola oddaje je z powrotem do uzupełnienia przez AI. Lead jest **kompletny**, gdy ma pięć pól: nazwę, stronę,
+kontakt, e-mail i opis (telefon jest dodatkiem).
+
+**Panel.**
+- Nagłówek: podsumowanie (liczba leadów, kompletnych, do zatwierdzenia), widoki z licznikami z bazy — *Wszystkie*, *Do uzupełnienia*,
+  *Do zatwierdzenia* (wpisy AI), *Wycofane* — oraz szukanie (firma, kontakt, e-mail, telefon, strona, opis, notatka), etap, segment,
+  sortowanie (Najnowsze, Firma A-Z, Ocena, Najmniej kompletne) i **Eksport CSV** (średnik, BOM, zabezpieczenie przed formułami; te same
+  filtry co na ekranie). Filtrowanie, sortowanie i liczniki liczy serwer; stan widoku jest w adresie strony.
+- Tabela: firma (nazwa, domena, ocena, ostrzeżenia „Prosił o brak kontaktu” i „Nie kontaktować”), kontakt z telefonem, e-mail z przyciskiem
+  „Kopiuj”, czym się zajmuje, **kompletność** (pięć kropek, od AI w kolorze akcentu) i etap. Brakujące pole to cichy napis „uzupełnij”. Na
+  wąskim ekranie tabela zamienia się w karty.
+- Panel szczegółów wysuwa się z prawej (`Esc` zamyka; na szerokim ekranie przesuwa tabelę zamiast ją zasłaniać): etap jednym kliknięciem,
+  pola z **zapisem po opuszczeniu** (bez zmiany nic nie wysyła; „Cofnij” w powiadomieniu przywraca wartość i jej pochodzenie), szybkie
+  akcje (strona, napisz, zadzwoń, kopiuj e-mail), opis z bazy oraz „Skąd ten lead”: wątki z oceną i początkiem odpowiedzi oraz odnośnik
+  „Otwórz wątek” do zakładki Odpowiedzi. Treść pól pochodzi od osób trzecich i trafia do strony wyłącznie jako tekst; odnośniki tylko
+  `http(s)`, `mailto:` z poprawnym adresem i `tel:` z samych cyfr.
+- Klawisze: `j` / `k` następny / poprzedni lead, `Enter` otwiera, `/` szukaj, `?` ściąga. Przy nazwie zakładki w menu jest licznik leadów,
+  którym czegoś brakuje (zapytanie tylko do odczytu).
+
+**Dane.** Jedna tabela `odp_leady` (klucz: id firmy; dodawana leniwie razem z tabelami odpowiedzi, bez zmian w `maile`); kopie zapasowe
+poleceń `ai.py leady zapisz` obejmują ją (`backup/OdpLeady_*`). Kod: `domain/lead_rules.py`, `lead_listing.py`, `lead_brief.py`;
+`db/leads_queries.py` (SQL), `db/leads_store.py`; `services/leads.py` (panel), `services/ai_leads.py` (Claude Code); strona
+`web/pages/leady.py` i `assets/leady.*`.
+
+**AI (Claude Code).** Komendy `UZUPEŁNIJ leady` i `POKAŻ LEADY` w `AI_INSTRUCTIONS.md` (sekcje 9 i 10):
+
+```bash
+python3 ai.py leady stan                                       # liczniki: aktywne, kompletne, do uzupełnienia, wpisy AI, wycofane
+python3 ai.py leady brief --limit 10 [--po ID] [--id ID…] [--wszystkie]   # skrót leadów do uzupełnienia
+python3 ai.py leady zapisz raporty/leady.json --dry-run        # pola contact, phone, email, about (albo --id ID --kontakt … --email … --opis …)
+```
+
+- **Dane kontaktowe są w skrócie widoczne** (świadomy wyjątek od zasady z `odpowiedzi brief`, gdzie e-maile i telefony są ukryte): lead
+  ma przechowywać kontakt, więc AI musi go widzieć. Skrót pokazuje dwie ostatnie odpowiedzi firmy z **początkiem i końcem (podpis)**, bez
+  cytatu naszego maila, opis z bazy, stronę główną, początki podstron i kontakty ze skanu, wszystko w ogrodzeniu `<<DANE OBCE … KONIEC
+  DANYCH OBCYCH>>` (znaki sterujące usunięte, ogrodzenia nie da się podrobić). Polecenia **nie wypisują wpisanych wartości** (tylko id i nazwy
+  pól), a plik z wpisami idzie do `raporty/` (poza gitem), nie do `data/`.
+- **Kontrola źródła.** Wpisany e-mail i telefon muszą występować w wiadomościach firmy (bez cytatu), w jej adresach z kolejki albo w kontaktach
+  ze skanu strony; inaczej plan odrzuca wpis (ochrona przed literówką i zmyśleniem), a człowiek może wpisać taki adres ręcznie w panelu.
+  Kontakt i opis nie mogą zawierać adresu ani numeru (mają osobne pola).
+- **Granice AI.** AI wpisuje tylko `contact`, `phone`, `email`, `about`; nie rusza etapu, notatki, nazwy, strony, danych firmy, statusów ani
+  kolejki maili i niczego nie wysyła (pilnuje tego test: moduły `ai_leads` nie importują drogi do SMTP, `replies_send` ani zapisu firm). Pola
+  człowieka są pomijane z `UWAGA`, `null` i pusty tekst znaczą „bez zmiany”, `--dry-run` nic nie zapisuje (nawet kopii), a `--czesciowo`
+  zapisuje poprawne wpisy i wypisuje odrzucone.
+- **Wdrożenie:** tabela `odp_leady` powstaje sama przy pierwszym uruchomieniu panelu albo polecenia; zrób kopię bazy i zrestartuj panel
+  (panel czyta pliki zakładki z dysku, a kod Pythona z pamięci, więc nowa zakładka pojawia się dopiero po restarcie).
+
 ## 6. Terminal (`send_emails.py`)
 
 ```bash
@@ -766,8 +833,8 @@ WHERE m.status = 'blad' ORDER BY p.`row_number`, m.company_id, m.position;
 
 Firma (`podmioty`) i jej adresy (`maile`) to dwie tabele; pola firmy czytaj z `podmioty` (kolumny firmowe w `maile` to tylko lustro).
 Kopie CSV, które robią polecenia zmieniające dane (`firmy.py`, `--adopt`, wypełnianie ze skanu), zapisują obie tabele
-(`backup/Maile_*` i `backup/Podmioty_*`); polecenia `ai.py odpowiedzi` dodają do nich tabele odpowiedzi
-(`backup/OdpWatki_*`, `OdpWiadomosci_*`, `OdpOceny_*`, o ile już istnieją).
+(`backup/Maile_*` i `backup/Podmioty_*`); polecenia `ai.py odpowiedzi` i `ai.py leady zapisz` dodają do nich tabele odpowiedzi
+(`backup/OdpWatki_*`, `OdpWiadomosci_*`, `OdpOceny_*`, `OdpLeady_*`, o ile już istnieją).
 
 Kopia zapasowa (w razie błędu uprawnień wykonaj jako root):
 
@@ -804,7 +871,10 @@ Firmy z wieloma adresami pokrywają `tests/test_company_*.py` (reguły, schemat 
 `tests/js/automat_forecast.test.js`, `kit_siblings.test.js` i `wysylka_addresses.test.js`. Odpowiedzi pokrywają `tests/test_reply_*.py`
 (czysta logika: nagłówki, parsowanie, dopasowanie, tekst, edytor, statystyki, skrót dla AI), `test_imap_*.py`, `test_replies_*.py` (magazyn,
 pobieranie, usługi, wysyłka, raport, strona) i `test_ai_replies*.py` (polecenia dla Claude Code i ich granice); `tests/js/odpowiedzi.test.js`
-uruchamia skrypt zakładki na minimalnym modelu DOM z wrogimi danymi (treść tylko jako tekst). Opcjonalny test
+uruchamia skrypt zakładki na minimalnym modelu DOM z wrogimi danymi (treść tylko jako tekst). Leady pokrywają `tests/test_lead_rules.py`
+(reguły i walidacja), `test_leads_store.py` (kto jest leadem, zasiew, karty, edycja z pochodzeniem pól, cofanie), `test_leads_web.py`
+(trasy, eksport, licznik w menu), `test_ai_leads.py` (skrót, kontrola źródła kontaktów, zapis, granice AI i dokumentacja) oraz
+`tests/js/leady.test.js` (widok na modelu DOM z wrogimi danymi, zapis po opuszczeniu pola, „Zatwierdź” i „Cofnij”). Opcjonalny test
 na prawdziwym MySQL (tryb ścisły, utf8mb4, `FOR UPDATE`, strumieniowanie, zbiorcza zmiana z cofaniem i jednoczesne
 operacje bez zakleszczeń, filtry z `TRIM`/`CASE`, oraz tabele i zapytania skrapera: kolumny ASCII, upserty, BLOB,
 wyłączność dzierżawy między wątkami) wymaga bazy testowej. Najprościej uruchomić osobny, tymczasowy serwer MySQL, który
