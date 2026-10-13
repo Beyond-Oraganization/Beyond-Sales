@@ -164,6 +164,42 @@ class BriefTests(LeadFlowCase):
         self.assertEqual(batch.pending, 3)
 
 
+    def test_the_sender_line_degrades_gracefully(self):
+        self.assertEqual(flow._sender({"from_name": "Anna", "from_addr": "a@x.pl"}), "Anna <a@x.pl>")
+        self.assertEqual(flow._sender({"from_name": "Anna", "from_addr": ""}), "Anna")
+        self.assertEqual(flow._sender({"from_name": None, "from_addr": "a@x.pl"}), "a@x.pl")
+        self.assertEqual(flow._sender({"from_name": "", "from_addr": None}), "nieznany nadawca")
+
+    def test_signals_name_an_ai_rating_an_optout_and_a_do_not_contact_status_and_a_human_rating_has_none(self):
+        self.replies.set_rating("eventy-002", rp.RATING_NEUTRAL, rp.BY_AI, "", T0, force=True)  # jak po „Cofnij” oceny człowieka
+        self.replies.update_thread("eventy-002", optout=True)
+        self.db.apply_edit("eventy-002", {"status": "nie_kontaktowac"})
+        ai_head = self.brief("eventy-002").partition(FENCE_OPEN)[0]
+        self.assertIn("ocena: neutral (AI)", ai_head)
+        for signal in ("możliwa prośba o brak kontaktu", "status firmy: Nie kontaktować", "ocena odpowiedzi od AI (do przejrzenia)"):
+            self.assertIn(signal, ai_head)
+        human_head = self.brief("eventy-001").partition(FENCE_OPEN)[0]
+        self.assertNotIn("(AI)", human_head.split("pola:")[0])
+        self.assertNotIn("sygnały:", human_head)
+
+    def test_the_scan_adds_at_most_three_pages_addresses_and_phones(self):
+        self.link_scan(emails=[f"k{n}@mylimo.pl" for n in range(5)], phones=[f"+4822123456{n}" for n in range(5)],
+                       pages=[("https://mylimo.pl/", "Start", "", "x")] + [(f"https://mylimo.pl/p{n}", f"P{n}", "", f"Treść podstrony {n} o limuzynach") for n in range(5)])
+        body = self.brief().partition(FENCE_OPEN)[2]
+        self.assertEqual(body.count("\n- /"), 0)
+        self.assertEqual(len(re.findall(r"^- https://mylimo\.pl/p\d", body, flags=re.M)), 3)
+        email_line = next(line for line in body.splitlines() if line.startswith("e-mail ze strony:"))
+        phone_line = next(line for line in body.splitlines() if line.startswith("telefon ze strony:"))
+        self.assertEqual((email_line.count("@"), phone_line.count("+48")), (3, 3))
+
+    def test_the_budget_stops_a_batch_exactly_where_the_next_brief_no_longer_fits(self):
+        first = flow.brief_for(self.leads, self.scan, "eventy-001").format(900)
+        second = flow.brief_for(self.leads, self.scan, "eventy-002").format(900)
+        fits = flow.build_briefs(self.leads, self.scan, flow.BriefOptions(budget=len(first) + len(second)), NOW)
+        short = flow.build_briefs(self.leads, self.scan, flow.BriefOptions(budget=len(first) + len(second) - 1), NOW)
+        self.assertEqual((len(fits.texts), len(short.texts), short.next_after), (2, 1, "eventy-001"))
+
+
 class PlanTests(LeadFlowCase):
     def test_a_good_entry_is_planned_with_only_the_changed_fields(self):
         plan = self.plan({"id": "eventy-001", "contact": "Anna Nowak, dyrektor handlowa", "phone": "+48 600 100 200", "email": "Anna.Nowak@MyLimo.pl",
@@ -273,6 +309,12 @@ class WriteTests(LeadFlowCase):
         self.assertEqual((done, skipped), (1, [("eventy-001", "about")]))
         self.assertEqual((self.lead()["about"], self.lead()["contact"]), ("Opis człowieka", "Anna AI"))
 
+    def test_a_lead_whose_every_field_was_taken_by_a_human_meanwhile_is_not_counted_as_written(self):
+        plan = self.plan({"id": "eventy-001", "about": "Opis AI"})
+        self.leads.update_fields("eventy-001", {"about": "Opis człowieka"}, by=lr.BY_HUMAN, now=NOW)
+        done, skipped, _ = flow.write_leads(self.db, self.leads, plan, NOW, self.backups.name)
+        self.assertEqual((done, skipped), (0, [("eventy-001", "about")]))
+
     def test_an_empty_plan_writes_nothing_and_makes_no_backup(self):
         plan, (done, skipped, backup) = self.write({"id": "eventy-001", "email": "zmyslony@x.pl"})
         self.assertEqual((done, skipped, backup, os.listdir(self.backups.name)), (0, [], "", []))
@@ -287,6 +329,29 @@ class WriteTests(LeadFlowCase):
     def test_stats_sync_first_and_carry_no_personal_data(self):
         stats = flow.stats(self.leads, NOW)
         self.assertEqual(stats, {"all": 2, "missing": 2, "ai": 0, "withdrawn": 0, "unsynced": 0, "pending": 2})
+
+
+class LeadBriefUnitTests(unittest.TestCase):
+    def test_a_text_within_the_limit_is_untouched_and_a_longer_one_keeps_head_and_tail_in_exactly_the_limit(self):
+        self.assertEqual(lb.head_and_tail("x" * 100, 100), "x" * 100)
+        text = "".join(chr(97 + i % 26) for i in range(2000))
+        out = lb.head_and_tail(text, 1000)
+        self.assertEqual((out.index(" [...] "), out[:260] == text[:260], out.endswith(text[-3:])), (260, True, True))
+        self.assertEqual(len(lb.head_and_tail(text, 300)), 300)
+        self.assertEqual(len(lb.head_and_tail(text, 10)), 5 + 7 + 1, "przy bardzo małym limicie zostaje choć jeden znak końca")
+
+    def test_phones_match_by_digits_from_seven_up_and_never_below(self):
+        self.assertTrue(lb.phones_match("123-4567", "1234567"))
+        self.assertFalse(lb.phones_match("123456", "123456"))
+        self.assertTrue(lb.phones_match("+48 600 100 200", "600100200"))
+        self.assertFalse(lb.phones_match("600 100 200", "600 100 201"))
+
+    def test_known_contacts_tolerate_missing_fields_and_collect_every_source(self):
+        found = lb.known_contacts([{"from_addr": None, "body_text": None}, {"from_addr": " A@X.pl ", "body_text": "Pisz b@y.pl, tel. 600 100 200"}],
+                                  ["Biuro@Z.pl", ""], ["scan@w.pl"], ["+48221234567", ""])
+        self.assertEqual(found.emails, {"a@x.pl", "b@y.pl", "biuro@z.pl", "scan@w.pl"})
+        self.assertTrue(found.has_phone("22 123 45 67") and found.has_phone("600100200"))
+        self.assertFalse(found.has_email("c@x.pl"))
 
 
 class CliCase(unittest.TestCase):

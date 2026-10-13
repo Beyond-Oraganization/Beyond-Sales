@@ -23,6 +23,14 @@ class CleanTextTests(unittest.TestCase):
         with self.assertRaisesRegex(RuleError, "najwyżej 400"):
             lr.clean_text(lr.ABOUT, "x" * 401)
 
+    def test_every_field_has_its_exact_limit(self):
+        for field, limit in lr.LIMITS.items():
+            with self.subTest(field=field):
+                self.assertEqual(len(lr.clean_text(field, "x" * limit)), limit)
+                with self.assertRaisesRegex(RuleError, f"najwyżej {limit} znaków"):
+                    lr.clean_text(field, "x" * (limit + 1))
+        self.assertEqual(lr.LIMITS, {"name": 255, "website": 500, "contact": 255, "phone": 64, "email": 320, "about": 400, "note": 2000})
+
     def test_a_non_text_value_is_refused(self):
         for bad in (5, ["a"], {"a": 1}, True):
             with self.assertRaisesRegex(RuleError, "musi być tekstem"):
@@ -41,6 +49,9 @@ class ShapeTests(unittest.TestCase):
         self.assertEqual(lr.check_phone("+48 600 100 200"), "+48 600 100 200")
         self.assertEqual(lr.check_phone("(012) 345-67-89"), "(012) 345-67-89")
         self.assertEqual(lr.check_phone(""), "")
+        self.assertEqual(lr.check_phone("1234567"), "1234567", "siedem cyfr wystarcza")
+        with self.assertRaises(RuleError):
+            lr.check_phone("123456")
         for bad in ("12345", "tel. 600100200", "600100200x5", "+++"):
             with self.assertRaises(RuleError, msg=bad):
                 lr.check_phone(bad)
@@ -97,6 +108,9 @@ class ProvenanceTests(unittest.TestCase):
         self.assertEqual(merged, {"email": "human"})
         self.assertEqual(lr.merge_src({}, {"contact": "Anna"}, lr.BY_AI), {"contact": "ai"})
 
+    def test_src_is_stored_as_compact_sorted_json(self):
+        self.assertEqual(lr.dump_src({"contact": "human", "about": "ai"}), '{"about":"ai","contact":"human"}')
+
     def test_pending_lists_ai_fields_in_the_canonical_order(self):
         self.assertEqual(lr.pending_fields({"about": "ai", "email": "human", "contact": "ai"}), ["contact", "about"])
 
@@ -112,6 +126,8 @@ class CompletenessTests(unittest.TestCase):
         self.assertTrue(lr.looks_like_person("Anna Nowak", "MyLimo"))
         for bad in ("", "anna@mylimo.pl", "Biuro24", "mylimo", "  MyLimo ", "x" * 81):
             self.assertFalse(lr.looks_like_person(bad, "MyLimo"), bad)
+        self.assertTrue(lr.looks_like_person("a" * 80, "MyLimo"))
+        self.assertFalse(lr.looks_like_person("a" * 81, "MyLimo"))
         self.assertFalse(lr.looks_like_person("BusCharter", "BusCharter Śląsk"), "nazwa będąca częścią nazwy firmy to marka")
         self.assertFalse(lr.looks_like_person("MyLimo Wynajem Limuzyn Sp. z o.o.", "MyLimo"), "nazwa rozszerzająca nazwę firmy to marka")
         self.assertTrue(lr.looks_like_person("Piotr Taxi", "Taxi Kraków Express"))

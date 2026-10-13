@@ -703,3 +703,119 @@ class MysqlRepliesSmokeTests(unittest.TestCase):
         self.assertEqual([row["key"] for row in report["groups"]["day"]], ["2026-09-29"])
         self.assertEqual((report["latency"]["n"], report["replied_companies"]), (2, 2))
         self.assertIn("Raport odpowiedzi", rep.markdown(report))
+
+
+@unittest.skipUnless(TEST_DB, SKIP_REASON)
+class MysqlLeadsSmokeTests(unittest.TestCase):
+    """Leady na prawdziwym MySQL: zasiew z grupowaniem wątków po firmie, karty, sortowanie i wyszukiwanie (znaki LIKE), utf8mb4,
+    blokada wiersza przy równoczesnym zapisie AI i człowieka oraz kopia tabeli posortowana po kluczu głównym."""
+
+    @classmethod
+    def setUpClass(cls):
+        from perno.db.leads_store import LeadStore
+        from perno.db.replies_schema import replies_metadata
+        from perno.db.replies_store import ReplyStore
+
+        cls.database = dbmod.Database(dbmod.make_engine(resolve_test_url()))
+        replies_metadata.drop_all(cls.database.engine)
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
+        cls.database.ensure_schema()
+        cls.replies = ReplyStore(cls.database)
+        cls.replies.ensure_schema()
+        cls.leads = LeadStore(cls.database)
+        cls.leads.ensure_schema()
+
+    @classmethod
+    def tearDownClass(cls):
+        from perno.db.replies_schema import replies_metadata
+
+        replies_metadata.drop_all(cls.database.engine)
+        dbmod.metadata.drop_all(cls.database.engine, tables=[dbmod.maile, dbmod.companies], checkfirst=True)
+
+    def setUp(self):
+        from perno.db.replies_schema import replies_metadata
+
+        with self.database.transaction() as conn:
+            for table in reversed(replies_metadata.sorted_tables):
+                if table.name != "odp_przebieg":
+                    conn.execute(table.delete())
+            conn.execute(dbmod.maile.delete())
+            conn.execute(dbmod.companies.delete())
+        with self.database.transaction() as conn:
+            self.database.insert_rows(conn, [sample_row(n, company=f"Firma ąć {n}", website=f"https://firma{n}.pl", country="PL", status="odpowiedzial",
+                                                        sent_at="2026-09-29T13:00:00") for n in (1, 2, 3, 4)])
+
+    def reply(self, n, rating, thread=None, when=datetime(2026, 10, 8, 10, 0), who="Anna Nowak"):
+        from perno.domain import replies as rp
+
+        thread = thread or f"eventy-00{n}"
+        self.replies.save_message(rp.NewMessage(direction="in", kind="human", mailbox="roman@z3x.pl", identity=f"{thread}@x", message_id=f"{thread}@x",
+                                                thread_id=thread, company_id=f"eventy-00{n}", date_at=when, subject="Re", from_addr=f"a{n}@firma{n}.pl",
+                                                from_name=who, body_text="Poproszę ofertę", snippet="Poproszę ofertę", match_method="address",
+                                                thread_mailbox="roman@z3x.pl"), when)
+        self.replies.set_rating(thread, rating, "human", "", when)
+
+    def test_leads_are_grouped_by_company_and_cards_sorting_and_search_run_on_mysql(self):
+        from perno.domain import lead_listing as ll
+
+        now = datetime(2026, 10, 9, 10, 0)
+        self.database.add_mail("eventy-001", "drugi@firma1.pl")
+        self.reply(1, "neutral")
+        self.reply(1, "positive", thread="eventy-001~2", when=datetime(2026, 10, 8, 12, 0), who="Jan Szef")
+        self.reply(2, "neutral", when=datetime(2026, 10, 8, 11, 0), who="Bartek")
+        self.reply(3, "negative")
+        self.assertEqual(self.leads.pending_total(), 2)
+        self.assertEqual(self.leads.sync(now), 2)
+        self.assertEqual(self.leads.sync(now), 0)
+        first = self.leads.get("eventy-001")
+        self.assertEqual((first["rating"], first["thread_id"], first["email"], first["contact"]), ("positive", "eventy-001~2", "a1@firma1.pl", "Jan Szef"))
+        self.leads.update_fields("eventy-002", {"about": "Zażółć gęślą jaźń 😀 100% _pewne_"}, by="human", now=now)
+
+        def ids(**kw):
+            return [row["id"] for row in self.leads.list_page(ll.LeadFilter(**kw), 1, 10)[0]]
+
+        self.assertEqual(self.leads.tab_counts(ll.LeadFilter()), {"all": 2, "missing": 1, "ai": 0, "withdrawn": 0})
+        self.assertEqual((ids(), ids(sort=ll.SORT_NAME), ids(sort=ll.SORT_RATING), ids(sort=ll.SORT_COMPLETE)),
+                         (["eventy-001", "eventy-002"], ["eventy-001", "eventy-002"], ["eventy-001", "eventy-002"], ["eventy-001", "eventy-002"]))
+        self.assertEqual((ids(tab=ll.TAB_MISSING), ids(words=("100%",)), ids(words=("_pewne_",)), ids(words=("%%",)), ids(words=("ZAŻÓŁĆ",))),
+                         (["eventy-001"], ["eventy-002"], ["eventy-002"], [], ["eventy-002"]))
+        self.assertEqual(self.leads.get("eventy-002")["about"], "Zażółć gęślą jaźń 😀 100% _pewne_")
+        self.replies.set_rating("eventy-001", "negative", "human", "", now)
+        self.replies.set_rating("eventy-001~2", "negative", "human", "", now)
+        self.assertEqual((ids(tab=ll.TAB_WITHDRAWN), self.leads.get("eventy-001")["active"]), (["eventy-001"], False))
+
+    def test_a_human_and_the_ai_writing_the_same_field_at_once_never_end_with_the_ai_value(self):
+        self.reply(1, "positive")
+        now = datetime(2026, 10, 9, 10, 0)
+        self.leads.sync(now)
+        for round_no in range(8):
+            self.leads.update_fields("eventy-001", {"about": ""}, by="human", now=now)
+            barrier = threading.Barrier(2)
+
+            def write(by, value, gate=barrier):
+                gate.wait()
+                self.leads.update_fields("eventy-001", {"about": value}, by=by, now=now)
+
+            threads = [threading.Thread(target=write, args=("human", "Człowiek")), threading.Thread(target=write, args=("ai", "AI"))]
+            [t.start() for t in threads]
+            [t.join() for t in threads]
+            lead = self.leads.get("eventy-001")
+            self.assertEqual((lead["about"], lead["src"]), ("Człowiek", {"about": "human"}), round_no)
+
+    def test_the_lead_table_is_dumped_in_primary_key_order_for_the_backup(self):
+        import tempfile
+
+        from perno.services import firms_import
+
+        self.reply(1, "positive")
+        self.reply(2, "positive")
+        now = datetime(2026, 10, 9, 10, 0)
+        self.leads.sync(now)
+        with tempfile.TemporaryDirectory() as directory:
+            firms_import.backup_table(self.database, directory, "test", replies=True)
+            import os
+
+            name = next(item for item in os.listdir(directory) if item.startswith("OdpLeady_"))
+            with open(os.path.join(directory, name), encoding="utf-8") as handle:
+                lines = handle.read().splitlines()
+        self.assertEqual([line.split(",")[0] for line in lines[1:]], ["eventy-001", "eventy-002"])
