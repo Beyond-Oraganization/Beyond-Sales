@@ -14,6 +14,7 @@ dependencies = [
     "Pillow>=10,<13",
     "beautifulsoup4>=4.12,<5",
     "lxml>=5,<7",  # szybszy parser HTML, używany od fazy 4.4 planu przebudowy
+    "markdown-it-py>=3,<5",  # instrukcje i dokumentacja (README, AI_INSTRUCTIONS) jako podstrony panelu
 ]
 
 [project.scripts]

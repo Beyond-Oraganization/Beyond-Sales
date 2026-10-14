@@ -1165,6 +1165,7 @@ source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "lxml" },
+    { name = "markdown-it-py" },
     { name = "openpyxl" },
     { name = "pillow" },
     { name = "pymysql", extra = ["rsa"] },
@@ -1187,6 +1188,7 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12,<5" },
     { name = "lxml", specifier = ">=5,<7" },
+    { name = "markdown-it-py", specifier = ">=3,<5" },
     { name = "openpyxl", specifier = ">=3.1,<4" },
     { name = "pillow", specifier = ">=10,<13" },
     { name = "pymysql", extras = ["rsa"], specifier = ">=1.1,<2" },
