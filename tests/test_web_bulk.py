@@ -166,7 +166,7 @@ class LightListTests(BulkWebCase):
 
 class PanelPageTests(BulkWebCase):
     def test_new_statuses_reach_the_page_for_the_status_pickers(self):
-        html = self.call("GET", "/").body.decode("utf-8")
+        html = self.call("GET", "/wysylka").body.decode("utf-8")
         for code, label in (("odpowiedzial", "Odpowiedział"), ("zainteresowany", "Zainteresowany"),
                             ("nie_kontaktowac", "Nie kontaktować")):
             self.assertIn(code, html)

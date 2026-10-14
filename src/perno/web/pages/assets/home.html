@@ -1,0 +1,48 @@
+<div class="hm">
+  <section class="hm-hero">
+    <h1 class="hm-title">$brand</h1>
+    <p class="hm-lead">Znajdź firmy, napisz do nich, wysyłaj w ustawionym tempie i wracaj do tych, którzy odpowiedzieli. Wszystko w jednym miejscu, na Twoim komputerze.</p>
+    <div class="hm-cta">
+      <a class="btn primary hm-btn" href="/wysylka">Otwórz wysyłkę</a>
+      <a class="btn plain hm-btn" href="$instructions_path">Instrukcje dla AI</a>
+    </div>
+  </section>
+
+  <section class="hm-section" aria-labelledby="hmFlow">
+    <div class="hm-head">
+      <h2 id="hmFlow">Od firmy do rozmowy</h2>
+      <p>Pięć kroków. Liczby pokazują, co teraz na Ciebie czeka.</p>
+    </div>
+    <ol class="hm-steps">$steps</ol>
+  </section>
+
+  <section class="hm-section" aria-labelledby="hmAi">
+    <div class="hm-head">
+      <h2 id="hmAi">Polecenia dla AI</h2>
+      <p>Dołącz instrukcje do rozmowy z Claude Code i wpisz polecenie. Kliknięcie kopiuje je do schowka, a numer sekcji prowadzi do opisu.</p>
+    </div>
+    <p class="hm-attach">Plik do dołączenia:
+      <button type="button" class="hm-chip" data-copy="$reference" data-copied="Skopiowano odwołanie do pliku." title="Kopiuj"><code>$reference</code></button>
+    </p>
+    <ul class="hm-cmds">$commands</ul>
+  </section>
+
+  <section class="hm-section" aria-labelledby="hmDocs">
+    <div class="hm-head">
+      <h2 id="hmDocs">Instrukcje i dokumentacja</h2>
+      <p>Pliki projektu czytasz tutaj, w panelu. Poprawka w pliku jest widoczna po odświeżeniu strony.</p>
+    </div>
+    <ul class="hm-docs">$docs</ul>
+  </section>
+
+  <section class="hm-section" aria-labelledby="hmRules">
+    <div class="hm-head">
+      <h2 id="hmRules">Na czym to stoi</h2>
+    </div>
+    <ul class="hm-rules">
+      <li><h3>Wysyłkę zatwierdza człowiek</h3><p>AI przygotowuje treść i szkice odpowiedzi, ale niczego nie wysyła. Automat rusza dopiero po potwierdzeniu limitów.</p></li>
+      <li><h3>Precyzja ponad ilość</h3><p>Firma, która nie pasuje, odpada. W mailu są tylko fakty, które widać na stronie firmy.</p></li>
+      <li><h3>Uprzejmy skraper</h3><p>Czyta robots.txt, zachowuje co najmniej sekundę odstępu na domenę i zatrzymuje się po odmowie serwera.</p></li>
+    </ul>
+  </section>
+</div>

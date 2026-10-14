@@ -173,7 +173,7 @@ class PageTests(LeadsWebCase):
         self.assertLess(html.index('href="/odpowiedzi"'), html.index('href="/leady"'))
         self.assertLess(html.index('href="/leady"'), html.index('href="/automat"'))
         self.assertIn('<a class="topnav-link" href="/leady" aria-current="page">Leady', html)
-        self.assertIn("<title>(2) Perno — Leady</title>", html)
+        self.assertIn("<title>(2) Beyond Sales — Leady</title>", html)
 
     def test_a_broken_counter_never_breaks_a_page(self):
         self.app.ctx.leads_store.get().pending_total = lambda: 1 / 0  # type: ignore[method-assign]

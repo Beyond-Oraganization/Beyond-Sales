@@ -594,7 +594,7 @@ function moveSelection(step) {
 // ---- stan skrzynek, pobieranie ---------------------------------------------------------------------------------------
 
 function updateBadge(unread) {
-  document.title = (unread ? '(' + unread + ') ' : '') + 'Perno — Odpowiedzi';
+  document.title = (unread ? '(' + unread + ') ' : '') + (APP.brand || 'Beyond Sales') + ' — Odpowiedzi';
   const link = document.querySelector('.topnav-link[aria-current="page"]');
   if (!link || !link.querySelector) return;
   let badge = link.querySelector('.topnav-badge');

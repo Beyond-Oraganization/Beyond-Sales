@@ -66,7 +66,7 @@ test('start: lista i stan z serwera, zakładki z licznikami, nieprzeczytane wyr�
   assert.ok(!rowNodes(app)[1].classList.contains('is-unread'));
   const tabs = app.all('.kit-chip').map((n) => n.textContent);
   assert.ok(tabs.includes('Do odpowiedzi2') && tabs.includes('Nieprzypisane1'), tabs.join('|'));
-  assert.equal(app.document.title, '(2) Perno — Odpowiedzi');
+  assert.equal(app.document.title, '(2) Beyond Sales — Odpowiedzi');
 });
 
 test('wrogi tekst w firmie, nadawcy, temacie i treści trafia do DOM tylko jako tekst', async () => {
@@ -276,7 +276,7 @@ test('wzrost liczby nieprzeczytanych pokazuje komunikat i odświeża listę, a l
   await app.settle();
   assert.ok(app.texts().includes('3 nowe odpowiedzi'));
   assert.equal(app.callsTo('/api/odpowiedzi/lista').length, lists + 1);
-  assert.equal(app.document.title, '(5) Perno — Odpowiedzi');
+  assert.equal(app.document.title, '(5) Beyond Sales — Odpowiedzi');
 });
 
 test('samo pobieranie: rusza, gdy minął czas, nie rusza w trakcie pobierania ani przy wyłączonym odświeżaniu', async () => {

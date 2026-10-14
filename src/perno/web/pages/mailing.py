@@ -142,7 +142,7 @@ def api_bulk_log(req: Request, ctx: AppContext) -> Response:
 
 
 PAGE = Page(
-    key="wysylka", label="Wysyłka", path="/", render=render, order=10,
+    key="wysylka", label="Wysyłka", path="/wysylka", render=render, order=10,
     routes={
         ("GET", "/api/maile"): api_maile,
         ("GET", "/api/maile/row"): api_maile_row,

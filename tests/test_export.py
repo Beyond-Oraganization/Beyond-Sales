@@ -345,9 +345,8 @@ class EndpointTests(unittest.TestCase):
     def test_export_page_is_in_the_menu(self):
         html = self.get("/eksport").body.decode("utf-8")
         self.assertIn('href="/eksport" aria-current="page">Eksport</a>', html)
-        self.assertIn('href="/">Wysyłka</a>', html)
-        self.assertLess(self.get("/").body.decode("utf-8").index(">Wysyłka<"),
-                        self.get("/").body.decode("utf-8").index(">Eksport<"))
+        self.assertIn('href="/wysylka">Wysyłka</a>', html)
+        self.assertLess(html.index(">Wysyłka<"), html.index(">Eksport<"))
 
     def test_meta_and_count(self):
         meta = json.loads(self.get("/api/export/meta").body)

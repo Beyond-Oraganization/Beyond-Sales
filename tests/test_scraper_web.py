@@ -66,7 +66,7 @@ class PageAndMetaTests(SkaperCase):
         html = resp.body.decode("utf-8")
         self.assertEqual(resp.status, 200)
         self.assertIn('<a class="topnav-link" href="/skraper" aria-current="page">Skraper</a>', html)
-        self.assertIn('href="/">Wysyłka</a>', html)
+        self.assertIn('href="/wysylka">Wysyłka</a>', html)
         self.assertIn('id="startBtn"', html)
         self.assertIn('id="s_delay"', html)
         self.assertIn("Zasady uprzejmości", html)

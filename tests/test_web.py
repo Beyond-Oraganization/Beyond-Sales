@@ -53,11 +53,11 @@ class WebCase(unittest.TestCase):
 
 
 class PageTests(WebCase):
-    def test_home_page_has_menu_with_active_tab_and_db_tag(self):
-        resp = self.call("GET", "/")
+    def test_mailing_page_has_menu_with_active_tab_and_db_tag(self):
+        resp = self.call("GET", "/wysylka")
         html = resp.body.decode("utf-8")
         self.assertEqual(resp.status, 200)
-        self.assertIn('<a class="topnav-link" href="/" aria-current="page">Wysyłka</a>', html)
+        self.assertIn('<a class="topnav-link" href="/wysylka" aria-current="page">Wysyłka</a>', html)
         self.assertIn("sqlite (test)", html)
         self.assertIn("wysylanie", html)
 
@@ -82,12 +82,12 @@ class PageTests(WebCase):
                             allowed_hosts=set(HOSTS))
         html = self.call("GET", "/raporty").body.decode("utf-8")
         self.assertIn('href="/raporty" aria-current="page">Raporty</a>', html)
-        self.assertIn('href="/">Wysyłka</a>', self.call("GET", "/raporty").body.decode("utf-8"))
+        self.assertIn('href="/wysylka">Wysyłka</a>', self.call("GET", "/raporty").body.decode("utf-8"))
         self.assertEqual(self.data(self.call("GET", "/api/raporty")), {"ok": True})
         self.assertEqual(self.call("GET", "/raporty/").status, 200)
 
     def test_registry_rejects_duplicates(self):
-        page = PAGES[0]
+        page = next(p for p in PAGES if p.key == "wysylka")
         with self.assertRaises(ValueError):
             make_app(self.database, [page, page])
         clash = Page(key="inna", label="Inna", path="/inna", render=lambda ctx: "",

@@ -13,6 +13,8 @@ from perno.domain import statuses as st
 
 logger = logging.getLogger(__name__)
 
+BRAND = "Beyond Sales"  # nazwa narzędzia w pasku, tytułach kart i na stronie głównej (pakiet i polecenia zostają `perno`)
+HOME_KEY = "start"  # klucz strony głównej: nie ma segmentu w menu, bo markę w pasku klika się, żeby do niej wrócić
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pages", "assets")
 # Wspólny interfejs list firm (panel Wysyłka i Eksport): stan filtrów, zaznaczanie, model listy (żądania do serwera) + DOM + style.
 KIT_JS = ("filters.js", "selection.js", "listmodel.js", "kit.js")
@@ -53,8 +55,10 @@ def render_page(ctx, *, title: str, active_key: str, body: str, css: str = "", j
     rendered = [(_nav_link(p, ctx, active_key), p) for p in nav_pages]
     links = "".join(link for (link, _), _ in rendered)
     pending = next((count for (_, count), page in rendered if page.key == active_key), 0)
-    title_text = (f"({pending}) " if pending else "") + f"Perno — {title}"
+    title_text = (f"({pending}) " if pending else "") + f"{BRAND} — {title}"
+    brand_current = ' aria-current="page"' if active_key == HOME_KEY else ""
     boot = _script_json({
+        "brand": BRAND,
         "statusMeta": st.STATUS_META,
         "manualStatuses": list(st.MANUAL_STATUSES),
         "sendable": list(st.SENDABLE_STATUSES),
@@ -71,7 +75,7 @@ def render_page(ctx, *, title: str, active_key: str, body: str, css: str = "", j
         f'<title>{html.escape(title_text)}</title>\n'
         f'<style>\n{read_tokens()}\n{read_asset("base.css")}\n{kit_css}{css}\n</style>\n</head>\n<body>\n'
         '<nav class="topnav" aria-label="Główna nawigacja">'
-        '<span class="topnav-brand">Perno</span>'
+        f'<a class="topnav-brand" href="/"{brand_current}>{html.escape(BRAND)}</a>'
         f'<div class="topnav-seg">{links}</div>'
         f'<span class="topnav-db" title="Baza danych">{html.escape(ctx.db.describe())}</span>'
         '</nav>\n'

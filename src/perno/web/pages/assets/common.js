@@ -25,6 +25,39 @@ async function apiGet(path){
   return {ok: res.ok, status: res.status, data: await readJson(res)};
 }
 
+// Kopiuje tekst do schowka: navigator.clipboard, a gdy przeglądarka odmówi albo go nie ma, zaznaczone pole tekstowe + execCommand.
+// Zwraca true, gdy się udało; komunikat („Skopiowano…”) pokazuje wywołujący przez showToast.
+async function copyToClipboard(text){
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) { /* brak uprawnień albo kontekstu bezpiecznego: próbujemy starą drogą */ }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(area);
+  area.select();
+  let done = false;
+  try { done = Boolean(document.execCommand('copy')); } catch (err) { done = false; }
+  area.remove();
+  return done;
+}
+
+// Kopiuje tekst i od razu mówi, jak poszło (zielony komunikat albo błąd).
+async function copyWithToast(text, message){
+  if (await copyToClipboard(text)) showToast(message || 'Skopiowano.', 'ok');
+  else showToast('Przeglądarka nie pozwoliła skopiować.', 'error');
+}
+
+// Przyciski z data-copy="tekst" (opcjonalnie data-copied="komunikat") kopiują ten tekst po kliknięciu; jedno nasłuchiwanie na całą stronę.
+function bindCopyButtons(){
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-copy]');
+    if (button) copyWithToast(button.getAttribute('data-copy'), button.getAttribute('data-copied'));
+  });
+}
+
 // Eksport wskazanych wierszy: POST z listą id → plik zapisywany przez przeglądarkę (nazwa z Content-Disposition).
 // Zwraca {ok, name, rows, size} albo {ok: false, error}.
 async function downloadExport(payload){

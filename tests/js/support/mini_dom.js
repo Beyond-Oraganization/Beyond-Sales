@@ -72,6 +72,7 @@ class El {
   }
   click() { return this.dispatch('click'); }
   focus() { this.document.activeElement = this; }
+  select() {}
   scrollIntoView() {}
   showModal() { this.opened = true; this.attrs.open = ''; }
   close(value) { if (value !== undefined) this.returnValue = value; delete this.attrs.open; this.dispatch('close'); }
@@ -140,7 +141,7 @@ function createApp({ids, respond, search = '', hidden = false}) {
       return {ok: status < 400, status, json: async () => payload, text: async () => (typeof payload === 'string' ? payload : JSON.stringify(payload)),
         blob: async () => ({size: JSON.stringify(payload).length}), headers: {get: (name) => (/disposition/i.test(name) ? 'attachment; filename="raport_odpowiedzi_20261008.csv"' : 'application/json')}};
     },
-    APP: {statusMeta: {odpowiedzial: ['Odpowiedział', '#0e7490'], zainteresowany: ['Zainteresowany', '#be185d'], nie_kontaktowac: ['Nie kontaktować', '#7f1d1d']},
+    APP: {brand: 'Beyond Sales', statusMeta: {odpowiedzial: ['Odpowiedział', '#0e7490'], zainteresowany: ['Zainteresowany', '#be185d'], nie_kontaktowac: ['Nie kontaktować', '#7f1d1d']},
       segmentOrder: ['eventy', 'driverzy'], countries: [['PL', 'Polska', 'PL'], ['DE', 'Niemcy', 'DE']]},
   };
   sandbox.window = Object.assign(sandbox, {addEventListener: (type, fn) => { (windowListeners[type] = windowListeners[type] || []).push(fn); }});

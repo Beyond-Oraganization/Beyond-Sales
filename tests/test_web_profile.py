@@ -24,7 +24,7 @@ class PanelProfileTests(WebCase):
         return self.call("POST", "/api/update-row", {"id": row_id, **fields})
 
     def test_page_exposes_country_column_filter_and_country_list(self):
-        html = self.call("GET", "/").body.decode("utf-8")
+        html = self.call("GET", "/wysylka").body.decode("utf-8")
         self.assertIn('id="filterBar"', html)  # filtr kraju jest częścią wspólnego paska filtrów (kit.js)
         self.assertIn("Spoza Polski", html)
         self.assertIn('data-sort="country" data-col="country">Kraj</th>', html)

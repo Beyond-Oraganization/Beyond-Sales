@@ -45,20 +45,20 @@ class PageTests(RepliesWebCase):
     def test_the_page_is_in_the_menu_after_the_mailing_tab_with_a_counter(self):
         html = self.call("GET", "/odpowiedzi").body.decode("utf-8")
         self.assertIn('<a class="topnav-link" href="/odpowiedzi" aria-current="page">Odpowiedzi<span class="topnav-badge"', html)
-        self.assertIn("<title>(1) Perno — Odpowiedzi</title>", html)
-        self.assertLess(html.index('href="/">Wysyłka'), html.index('href="/odpowiedzi"'))
+        self.assertIn("<title>(1) Beyond Sales — Odpowiedzi</title>", html)
+        self.assertLess(html.index('href="/wysylka">Wysyłka'), html.index('href="/odpowiedzi"'))
         self.assertLess(html.index('href="/odpowiedzi"'), html.index('href="/automat"'))
 
     def test_the_counter_shows_on_every_page_but_the_title_changes_only_on_its_own(self):
-        html = self.call("GET", "/").body.decode("utf-8")
+        html = self.call("GET", "/wysylka").body.decode("utf-8")
         self.assertIn('href="/odpowiedzi">Odpowiedzi<span class="topnav-badge" role="status" aria-label="1 nowych">1</span>', html)
-        self.assertIn("<title>Perno — Wysyłka</title>", html)
+        self.assertIn("<title>Beyond Sales — Wysyłka</title>", html)
 
     def test_no_counter_when_nothing_is_waiting(self):
         self.store.update_thread("eventy-001", read_at=T0)
         html = self.call("GET", "/odpowiedzi").body.decode("utf-8")
         self.assertNotIn('<span class="topnav-badge"', html)
-        self.assertIn("<title>Perno — Odpowiedzi</title>", html)
+        self.assertIn("<title>Beyond Sales — Odpowiedzi</title>", html)
 
     def test_a_broken_counter_never_breaks_a_page(self):
         original = self.app.ctx.replies_store.get().unread_total

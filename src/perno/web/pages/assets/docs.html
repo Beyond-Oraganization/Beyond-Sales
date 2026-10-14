@@ -1,0 +1,21 @@
+<div class="doc">
+  <header class="doc-head">
+    <a class="doc-back" href="/">Strona główna</a>
+    <h1>$title</h1>
+    <p class="doc-blurb">$blurb</p>
+    <div class="doc-meta">
+      $meta
+      <button type="button" class="doc-file" data-copy="$reference" data-copied="Skopiowano odwołanie do pliku." title="Kopiuj odwołanie dla Claude Code ($reference)">$file</button>
+    </div>
+    $tabs
+  </header>
+  <div class="doc-layout">
+    <details class="doc-toc" id="docToc" open>
+      <summary>Spis treści</summary>
+      <nav aria-label="Spis treści">$toc</nav>
+    </details>
+    <article class="doc-body" id="docBody">
+$article
+    </article>
+  </div>
+</div>
