@@ -29,7 +29,8 @@ Układ kodu (`src/perno/`); zależności idą tylko „w dół", pilnuje tego `l
 - `scraper/` — skraper: `store/` (magazyn podzielony na role), `crawler` (fasada) z `scheduler`, `company_crawl`,
   `page_fetch`, `page_pipeline`, a także `fetcher`, `politeness`, `extract`, `contacts`, `urls`, `runner`;
 - `services/` — reguły biznesowe wspólne dla panelu i terminala: wysyłka, generowanie i uzupełnianie treści,
-  lista firm w panelu (`listing`), zmiany zbiorcze, eksport, import firm, sterowanie skanowaniem, podgląd statyczny;
+  lista firm w panelu (`listing`), zmiany zbiorcze, eksport, import firm, sterowanie skanowaniem, podgląd statyczny,
+  dokumenty w panelu (`docs`: czytanie plików i polecenia dla AI, `markdown_render`: Markdown → bezpieczny HTML);
 - `web/` — serwer: `app` (routing i zabezpieczenia), `context` (zależności stron), `errors` (wyjątki → kody HTTP),
   `pages/` (strony panelu i ich pliki JS/CSS);
 - `cli/` — punkty wejścia (argumenty i wypisywanie wyniku); `settings.py` — jedyny odczyt `config.env` i zmiennych środowiska.
@@ -95,9 +96,15 @@ niepustej tabeli. **Powrót do starej aplikacji:** `python3 migrate_csv_to_sql.p
 
 ## 4. Panel (`python3 server.py`)
 
-Otwiera `http://localhost:8765/` (serwer słucha wyłącznie na `127.0.0.1`). Menu u góry:
+Otwiera `http://localhost:8765/` (serwer słucha wyłącznie na `127.0.0.1`), czyli **stronę główną Beyond Sales** (`web/pages/home.py`).
+Narzędzie nazywa się Beyond Sales (nazwa w pasku i w tytułach kart to `layout.BRAND`); pakiet, skrypty i polecenia zostają `perno`.
+Strona główna pokazuje pięć kroków pracy (znajdź firmy, napisz maile, wyślij, czytaj odpowiedzi, prowadź leady) z licznikami i odnośnikami
+do zakładek, **polecenia dla AI** wyciągnięte z tabeli w `AI_INSTRUCTIONS.md` (klik kopiuje polecenie, numer sekcji prowadzi do opisu),
+odwołanie do pliku do dołączenia w Claude Code (`@Wysylka/AI_INSTRUCTIONS.md`) i kafelki dokumentacji. Każdy licznik jest liczony osobno:
+gdy któregoś nie da się odczytać (np. baza chwilowo niedostępna), pokazuje „—”, a reszta strony działa. Do strony głównej wraca się klikając
+nazwę „Beyond Sales” w pasku; nie ma dla niej segmentu w menu. Menu u góry:
 
-- **Wysyłka** — tabela maili z filtrami, zaznaczaniem i zbiorczymi zmianami (opis niżej). E-mail, temat i status
+- **Wysyłka** (`/wysylka`) — tabela maili z filtrami, zaznaczaniem i zbiorczymi zmianami (opis niżej). E-mail, temat i status
   edytujesz wprost w tabeli; klik w nazwę firmy rozwija edytowalną treść oraz dane o firmie (kraj, miasto, adres, opis);
   🔗 to strona firmy. „Wyślij gotowe” wysyła po kolei, z opóźnieniem i dziennym limitem (limit egzekwuje też serwer).
   „Odśwież dane” dogenerowuje nowe wiersze z `data/*.csv` (nie nadpisuje istniejących) i **odmawia działania na pustej
@@ -126,6 +133,12 @@ Otwiera `http://localhost:8765/` (serwer słucha wyłącznie na `127.0.0.1`). Me
 - **Skraper** — firmy do przeskanowania, start/stop przebiegu, postęp na żywo, a po kliknięciu w firmę: znalezione
   kontakty (e-maile, telefony, profile firmowe w social media, formularze), pobrane strony i `robots.txt`.
   Szczegóły w sekcji 5.
+
+- **Pomoc** — instrukcje i dokumentacja jako podstrony, z zakładkami do przełączania między nimi: `/instrukcje` (`AI_INSTRUCTIONS.md`),
+  `/dokumentacja` (ten plik), `/zasady-maili` (`templates/icebreaker.md`) i `/zasady-projektu` (`CLAUDE.md`). Pliki są czytane z dysku i
+  zamieniane na stronę (spis treści, odnośniki wewnątrz dokumentów, kopiowanie bloków kodu), więc poprawka w pliku jest widoczna po
+  odświeżeniu przeglądarki, bez restartu panelu. Surowy HTML i obrazki z plików są wyłączone, a odnośnik do pliku, którego panel nie
+  serwuje, zostaje zwykłym tekstem.
 
 **Status „Wysyłanie…”** ustawia wyłącznie program, tuż przed wysłaniem (zajęcie wiersza) — dzięki temu
 dwie karty przeglądarki albo panel i terminal nie wyślą tego samego maila dwa razy. Wiersze zawieszone
@@ -330,6 +343,10 @@ przenoszenia adresu między firmami ani łączenia firm.
    (wzór: `src/perno/web/pages/export.py`; HTML/CSS/JS trzymaj w `src/perno/web/pages/assets/`).
 2. W `src/perno/web/pages/__init__.py` zaimportuj moduł i dopisz `raporty.PAGE` do `PAGES`.
 
+Strona główna (`home.PAGE`, trasa `/`, `in_nav=False`) nie ma segmentu w menu: markę w pasku renderuje `layout.render_page` jako odnośnik do `/`
+(`active_key="start"` zaznacza ją jako bieżącą). Nowy dokument w „Pomocy” to wpis `DocSpec(klucz, trasa, plik, tytuł, opis)` w `DOCS`
+(`services/docs.py`): podstrona i kafelek na stronie głównej pojawiają się same, a w menu jest jedna pozycja „Pomoc” (pierwszy dokument).
+
 Funkcja `render(ctx)` i handlery `handler(req, ctx)` dostają `AppContext` (`ctx.db`, `ctx.config`, `ctx.undo_log`, …);
 logikę biznesową woła się z `services/`, a wyjątki zamienia na kody HTTP jedna tabela w `web/errors.py`.
 Strona pojawi się w menu; `layout.render_page` dokłada zakładki, wspólny wygląd i `APP` (statusy) dla JS.
@@ -350,7 +367,8 @@ wstawiana do strony inline (bez webfontów, plików CSS i zewnętrznych zasobów
   motywu (`--ink-mix`), więc ten sam status jest czytelny w jasnym i ciemnym motywie. Nie wpisuj kolorów statusów w CSS.
 - **Komunikaty**: `showToast(tekst, 'ok' | 'error')` i `showSheet({title, message, confirmLabel, tone, focusCancel})` (obie w
   `assets/common.js`; `showSheet` zwraca `Promise<boolean>`) zastępują `alert()`/`confirm()` i własne komunikaty stron. Treść
-  trafia do DOM jako tekst, bo zawiera nazwy firm ze skanowanych stron.
+  trafia do DOM jako tekst, bo zawiera nazwy firm ze skanowanych stron. Kopiowanie do schowka: `copyWithToast(tekst, komunikat)`
+  (z ścieżką awaryjną i komunikatem błędu) oraz `bindCopyButtons()`, które obsługuje przyciski `data-copy="tekst"`.
 - **Zasady dla nowego kodu**: bez własnych kolorów hex w CSS (wyjątek: biały tekst na akcencie) i bez atrybutów `style=` w znacznikach
   (wyjątek: `--c`; szary `#6b7280` w JS to tylko kolor zastępczy nieznanego statusu), bez glifów ▾ ✕ 🔗 w tekście
   (ikony rysuje CSS), kontrolki min. 30 px (44 px na ekranie dotykowym), widoczny `:focus-visible`, animacje wyłączane przez
