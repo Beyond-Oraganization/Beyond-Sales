@@ -20,8 +20,8 @@ backup/
 assets/inline/
 .DS_Store
 
-# Uwaga: data/ zawiera listy firm i adresy e-mail (dane osobowe kontaktów służbowych).
-# Repozytorium jest lokalne — nie wypychaj go do zdalnego serwera bez przeglądu data/.
+# data/ zawiera listy firm i adresy e-mail (dane osobowe kontaktów służbowych) — nie wersjonujemy.
+data/
 
 # Raporty z kampanii: zawierają adresy e-mail i treść odpowiedzi osób trzecich
 raporty/
